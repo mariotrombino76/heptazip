@@ -56,6 +56,15 @@ def run_timed(cmd, cwd=None) -> float:
     return time.perf_counter() - t0
 
 
+def load_note(when: str) -> str:
+    """Carico medio del sistema: con altri processi attivi (build, altre sessioni)
+    le misure multi-thread sono meno affidabili."""
+    l1, l5, _ = os.getloadavg()
+    # a fine misura il load include il nostro stesso carico: avvisiamo solo all'inizio
+    warn = "  << ATTENZIONE: macchina carica, misure MT poco affidabili" if when == "inizio" and l1 > 2 else ""
+    return f"[{when}] load average 1m={l1:.2f} 5m={l5:.2f} su {os.cpu_count()} CPU{warn}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("binaries", nargs="+", help="NOME=PERCORSO del binario 7zz")
@@ -87,6 +96,7 @@ def main() -> int:
 
     print(f"corpus: {corpus} ({raw / 2**20:.1f} MiB), ripetizioni: {args.repeat}, tmp: {work}\n")
     rows = []
+    print(load_note("inizio"))
     try:
         for prof in profiles:
             opts = PROFILES[prof].split()
@@ -113,6 +123,7 @@ def main() -> int:
                 })
             print_table([r for r in rows if r["profile"] == prof])
     finally:
+        print(load_note("fine"))
         shutil.rmtree(work, ignore_errors=True)
 
     if args.csv:
