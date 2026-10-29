@@ -14,6 +14,8 @@
 #   SEVENZIP_LTO         link-time optimization
 #   SEVENZIP_ASM         usa Asm/x86/*.asm (richiede asmc, uasm o jwasm)
 #   SEVENZIP_PGO         OFF | GEN | USE  (profile-guided optimization, vedi tools/pgo.sh)
+#   SEVENZIP_SANITIZE    "" | address | thread | undefined | address,undefined
+#   SEVENZIP_BUILD_TESTS programmi di test e suite CTest (ctest --test-dir build)
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -54,6 +56,11 @@ set(SEVENZIP_PGO_DIR "${CMAKE_BINARY_DIR}/pgo-data" CACHE PATH "Directory dei pr
 # Upstream non forza uno standard: GCC 13 usa gnu17 / gnu++17. Lo rendiamo esplicito
 # per poter migrare a C++20/23 in modo controllato.
 set(SEVENZIP_CXX_STANDARD "17" CACHE STRING "Standard C++ (17, 20, 23)")
+set(SEVENZIP_SANITIZE "" CACHE STRING
+  "Sanitizer: vuoto, address, thread, undefined o lista separata da virgole (es. address,undefined)")
+option(SEVENZIP_SANITIZE_RECOVER
+  "UBSan: continua dopo un errore invece di terminare (per fare l'inventario delle segnalazioni)" OFF)
+option(SEVENZIP_BUILD_TESTS "Compila i programmi di test e registra la suite CTest" ON)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_EXTENSIONS ON)
@@ -125,6 +132,28 @@ elseif(NOT SEVENZIP_PGO STREQUAL "OFF")
   message(FATAL_ERROR "SEVENZIP_PGO deve essere OFF, GEN o USE")
 endif()
 
+# Sanitizer: per i test (TSan per il codice multi-thread, ASan+UBSan per la memoria).
+# -fno-omit-frame-pointer rende leggibili gli stack trace; i simboli non vanno rimossi.
+if(SEVENZIP_SANITIZE)
+  if(SEVENZIP_SANITIZE MATCHES "thread" AND SEVENZIP_SANITIZE MATCHES "address")
+    message(FATAL_ERROR "ThreadSanitizer e AddressSanitizer non possono essere combinati")
+  endif()
+  set(_san -fsanitize=${SEVENZIP_SANITIZE} -fno-omit-frame-pointer)
+  if(SEVENZIP_SANITIZE MATCHES "undefined")
+    # alignment escluso: su x86 upstream definisce MY_CPU_LE_UNALIGN (C/CpuArch.h) e
+    # usa volutamente accessi non allineati tramite cast (GetUi32/SetUi32). E' UB per
+    # lo standard ma voluto; UBSan lo segnalerebbe ovunque. Correzione futura:
+    # accessi tramite memcpy (conformi, stesso codice macchina).
+    list(APPEND _san -fno-sanitize=alignment)
+    if(NOT SEVENZIP_SANITIZE_RECOVER)
+      list(APPEND _san -fno-sanitize-recover=undefined)
+    endif()
+  endif()
+  target_compile_options(sevenzip_flags INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:${_san}>)
+  target_link_options(sevenzip_flags INTERFACE ${_san})
+  set(SEVENZIP_STRIP OFF CACHE BOOL "" FORCE)
+endif()
+
 target_link_options(sevenzip_flags INTERFACE
   -Wl,-z,noexecstack
   $<$<AND:$<BOOL:${SEVENZIP_STRIP}>,$<CONFIG:Release>>:-s>)
@@ -151,6 +180,10 @@ target_link_libraries(sevenzip_c PRIVATE sevenzip_flags)
 add_library(sevenzip_cpp OBJECT ${SEVENZIP_CPP_SOURCES})
 target_link_libraries(sevenzip_cpp PRIVATE sevenzip_flags)
 
+# UI console (main()): separata da sevenzip_cpp per poterla escludere nei test
+add_library(sevenzip_console OBJECT ${SEVENZIP_CONSOLE_SOURCES})
+target_link_libraries(sevenzip_console PRIVATE sevenzip_flags)
+
 # Main.cpp: variante "7zz" (equivale a CONSOLE_VARIANT_FLAGS in Alone2/makefile.gcc)
 set_source_files_properties(CPP/7zip/UI/Console/Main.cpp PROPERTIES
   COMPILE_DEFINITIONS "Z7_PROG_VARIANT_Z$<$<BOOL:${SEVENZIP_ASM}>:;Z7_7ZIP_ASM>")
@@ -161,6 +194,7 @@ set_source_files_properties(CPP/7zip/UI/Console/Main.cpp PROPERTIES
 add_executable(7zz
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
+  $<TARGET_OBJECTS:sevenzip_console>
   ${SEVENZIP_ASM_OBJECTS})
 target_link_libraries(7zz PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
@@ -168,8 +202,17 @@ include(GNUInstallDirs)
 install(TARGETS 7zz RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ---------------------------------------------------------------------------
+# Test
+# ---------------------------------------------------------------------------
+if(SEVENZIP_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
+
+# ---------------------------------------------------------------------------
 # Riepilogo configurazione
 # ---------------------------------------------------------------------------
 message(STATUS "7-Zip modern: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
                "native=${SEVENZIP_NATIVE} lto=${SEVENZIP_LTO} asm=${SEVENZIP_ASM} "
-               "pgo=${SEVENZIP_PGO} c++=${SEVENZIP_CXX_STANDARD}")
+               "pgo=${SEVENZIP_PGO} c++=${SEVENZIP_CXX_STANDARD} "
+               "sanitize=${SEVENZIP_SANITIZE} tests=${SEVENZIP_BUILD_TESTS}")

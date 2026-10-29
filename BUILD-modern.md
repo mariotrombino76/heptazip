@@ -57,6 +57,32 @@ cmake -S . -B build-asm -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON \
   non riordinarlo. Va aggiornato quando upstream cambia `Arc_gcc.mak` /
   `Alone2/makefile.gcc`.
 
+## Test automatici (CTest)
+
+```sh
+cmake --build build -j && ctest --test-dir build --output-on-failure
+```
+
+- `tests/extract_trace`: apre un `.7z` con l'handler 7z ed esegue `Extract()`
+  registrando la sequenza di callback: elementi, modalità, risultati, dimensione e CRC
+  dei dati per file, esito. Rileva le callback chiamate in concorrenza (violazione di
+  `IArchive.h`) e può simulare annullamento (`--abort-at-file=N`) e scrittura fallita
+  (`--fail-write-at-file=N`).
+- `tests/extract_equivalence.py`: genera dati deterministici e 12 tipi di archivio
+  (solid, non-solid, molti folder, BCJ2, PPMd, BZip2, Deflate, copia, AES, LZMA2 a
+  blocchi), più copie corrotte o troncate, ed esegue 172 casi: selezioni parziali,
+  modalità test, errori iniettati, password errata. Confronta la traccia di **due
+  configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
+  essere identiche.
+
+Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,
+`thread` per le race condition. Si usano in una directory di build separata:
+
+```sh
+cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSEVENZIP_SANITIZE=thread
+cmake --build build-tsan -j && ctest --test-dir build-tsan --output-on-failure
+```
+
 ## Test e benchmark (`tools/bench/`)
 
 ```sh

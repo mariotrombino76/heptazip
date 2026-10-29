@@ -39,8 +39,11 @@ METHODS_DEFAULT=(
   "7z-ppmd|-t7z -m0=ppmd -mx7"
   "7z-bzip2|-t7z -m0=bzip2 -mx5 -mmt=4"
   "7z-nonsolid|-t7z -m0=lzma2 -mx5 -ms=off -mmt=4"
+  "7z-solid-ext|-t7z -m0=lzma2 -mx5 -ms=e -mmt=4"
+  "7z-smallsolid|-t7z -m0=lzma2 -mx5 -ms=8m -mmt=4"
   "7z-bcj2|-t7z -mf=BCJ2 -mx5 -mmt=4"
   "7z-aes|-t7z -mx3 -mmt=4 -mhe=on -psegreto"
+  "7z-nonsolid-aes|-t7z -mx3 -ms=off -mmt=4 -psegreto"
   "zip-deflate|-tzip -mx5 -mmt=4"
   "xz|-txz -mx5 -mmt=4"
 )

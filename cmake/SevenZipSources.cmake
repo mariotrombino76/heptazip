@@ -350,6 +350,13 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/UI/Common/UpdateCallback.cpp
   CPP/7zip/UI/Common/UpdatePair.cpp
   CPP/7zip/UI/Common/UpdateProduce.cpp
+)
+
+# Interfaccia a riga di comando di 7zz (contiene main()). Tenuta separata cosi'
+# i programmi di test possono linkare il resto senza duplicare la compilazione.
+# Nella linea di link upstream questi oggetti sono gli ultimi: concatenare
+# SEVENZIP_CPP_SOURCES e SEVENZIP_CONSOLE_SOURCES preserva l'ordine originale.
+set(SEVENZIP_CONSOLE_SOURCES
   # CPP/7zip/UI/Console
   CPP/7zip/UI/Console/BenchCon.cpp
   CPP/7zip/UI/Console/ConsoleClose.cpp

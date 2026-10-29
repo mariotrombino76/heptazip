@@ -1,0 +1,11 @@
+# Soppressioni ThreadSanitizer per race NOTE nel codice upstream (non del fork).
+# Ogni voce deve essere motivata e registrata in docs/upstream-patches.md.
+#
+# C/LzFindMt.c: flag "stopWriting" (BoolInt non atomico) scritto da
+# MtSync_StopWriting() e letto da BtThreadFunc()/HashThreadFunc(). La lettura
+# significativa e' ordinata da Semaphore_Release1/Semaphore_Wait; TSan segnala la
+# lettura dell'iterazione precedente, concorrente alla scrittura (race formale C11,
+# benigna su x86). Solo encoder LZMA/LZMA2 multi-thread (compressione).
+race:MtSync_StopWriting
+race:BtThreadFunc
+race:HashThreadFunc
