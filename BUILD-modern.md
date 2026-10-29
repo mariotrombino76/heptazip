@@ -31,6 +31,25 @@ e archivi prodotti identici byte per byte.
 Nota: con GCC `-Wmaybe-uninitialized` e `-Wstringop-overflow` non sono trattati come errori, perché con
 PGO/LTO/`-O3` producono falsi positivi nel codice upstream.
 
+### Compilatori
+
+Il compilatore si sceglie con le variabili standard di CMake, una directory di build
+per ciascuno:
+
+```sh
+cmake -S . -B build-gcc16   -DCMAKE_C_COMPILER=gcc-16   -DCMAKE_CXX_COMPILER=g++-16
+cmake -S . -B build-clang20 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+```
+
+| Compilatore | Fonte | Stato |
+|---|---|---|
+| GCC 13.3 | Ubuntu 24.04 | riferimento (stesso di upstream `makefile.gcc`) |
+| GCC 16 | PPA `ubuntu-toolchain-r/test` | **snapshot di sviluppo** `16.0.1 20260315`, precedente alla 16.1: da usare per diagnostica e compatibilità, non per binari di produzione o misure di prestazioni |
+| Clang 20.1 | Ubuntu 24.04 | zero warning con `-Wall -Wextra` |
+
+Con GCC ≥ 16 `-Warray-bounds` non è trattato come errore: segnala falsi positivi
+dovuti alla devirtualizzazione speculativa (vedi `CMakeLists.txt`).
+
 ### Assembly x86-64 (consigliato)
 
 `SEVENZIP_ASM=ON` usa le routine assembly upstream: **+22% in decompressione LZMA**

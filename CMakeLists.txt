@@ -98,6 +98,13 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   target_compile_options(sevenzip_flags INTERFACE
     $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-error=maybe-uninitialized -Wno-error=stringop-overflow>)
 endif()
+# GCC 16: -Warray-bounds su chiamate virtuali devirtualizzate in modo speculativo
+# verso il tipo sbagliato, in percorsi mai eseguiti (falsi positivi):
+#   HandlerCont.cpp:281 (CLocalProgress::Release su un CHandlerImgProgress)
+#   RarHandler.cpp:1672 (CFilterCoder::AddRef su un CCopyCoder)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+  target_compile_options(sevenzip_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wno-error=array-bounds>)
+endif()
 
 if(SEVENZIP_NATIVE)
   target_compile_options(sevenzip_flags INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:-march=native>)

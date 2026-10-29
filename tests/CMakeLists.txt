@@ -20,14 +20,17 @@ target_link_libraries(extract_trace PRIVATE sevenzip_flags Threads::Threads ${CM
 # Equivalenza delle callback tra configurazioni di estrazione.
 # Al passo 1 confronta -mmt=1 con -mmt=<tutti i core>: anche la decompressione
 # multi-thread di LZMA2 e il mixer MT devono produrre la stessa traccia.
-# Con i sanitizer: opzioni runtime e, per TSan, ASLR disattivato (setarch -R).
-# La libtsan di GCC 13 non supporta l'entropia ASLR dei kernel recenti
-# ("FATAL: ThreadSanitizer: unexpected memory mapping").
+# Con i sanitizer: opzioni runtime e, per TSan con GCC, ASLR disattivato
+# (setarch -R): la libtsan di GCC 13 non supporta l'entropia ASLR dei kernel
+# recenti ("FATAL: ThreadSanitizer: unexpected memory mapping"). Con Clang 20
+# (compiler-rt) non serve.
 set(_test_launcher "")
 set(_test_env "")
 if(SEVENZIP_SANITIZE MATCHES "thread")
-  find_program(SETARCH_EXECUTABLE setarch REQUIRED)
-  set(_test_launcher ${SETARCH_EXECUTABLE} ${CMAKE_SYSTEM_PROCESSOR} -R)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    find_program(SETARCH_EXECUTABLE setarch REQUIRED)
+    set(_test_launcher ${SETARCH_EXECUTABLE} ${CMAKE_SYSTEM_PROCESSOR} -R)
+  endif()
   list(APPEND _test_env
     "TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tsan.supp")
 endif()
