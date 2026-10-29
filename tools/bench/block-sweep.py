@@ -8,7 +8,7 @@ Uso:
 Per ogni dimensione di blocco comprime INPUT (un singolo file, es. silesia.tar)
 in un archivio .7z con LZMA2 e misura:
   - dimensione e rapporto di compressione
-  - tempo di compressione (encoder con tutti i thread)
+  - tempo di compressione (encoder con tutti i thread) e memoria massima (cRSS)
   - tempo di decompressione (`7zz t -mmt=N`) e memoria massima (RSS) per ogni N
 
 "solid" = un solo blocco (encoder a 1 thread di blocco, come -mmt=1)
@@ -72,7 +72,7 @@ def main() -> int:
     arc = work / "a.7z"
 
     print(f"bin: {binp}\ninput: {inp} ({raw / 2**20:.1f} MiB), -mx{args.level}, ripetizioni: {args.repeat}\n")
-    hdr = f"{'blocco':>7} {'dimensione':>11} {'ratio':>6} {'Δsize':>7} {'comp MiB/s':>10}"
+    hdr = f"{'blocco':>7} {'dimensione':>11} {'ratio':>6} {'Δsize':>7} {'comp MiB/s':>10} {'cRSS MiB':>8}"
     for t in threads:
         hdr += f" {'dec T' + str(t) + ' MiB/s':>15} {'RSS MiB':>8}"
     print(hdr)
@@ -92,11 +92,11 @@ def main() -> int:
             opts += args.extra.split()
 
             arc.unlink(missing_ok=True)
-            ct, _ = run([str(binp), "a", *opts, "-bso0", "-bsp0", str(arc), str(inp)])
+            ct, crss = run([str(binp), "a", *opts, "-bso0", "-bsp0", str(arc), str(inp)])
             size = arc.stat().st_size
             base_size = base_size or size
             line = (f"{blk:>7} {size:>11} {raw / size:>6.3f} {(size / base_size - 1) * 100:>+6.2f}%"
-                    f" {raw / ct / 2**20:>10.1f}")
+                    f" {raw / ct / 2**20:>10.1f} {crss:>8.0f}")
             for t in threads:
                 best, rss = None, 0.0
                 for _ in range(args.repeat):
