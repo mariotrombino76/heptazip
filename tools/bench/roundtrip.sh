@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Test di correttezza: per ogni profilo comprime il corpus, verifica l'archivio
+# (7zz t), estrae e confronta byte per byte con l'originale.
+#
+#   tools/bench/roundtrip.sh <7zz> [corpus_dir]
+#
+# Exit code != 0 al primo errore. Da eseguire dopo OGNI modifica al codice.
+
+source "$(dirname "$0")/common.sh"
+
+BIN="$(realpath "${1:?uso: $0 <7zz> [corpus_dir]}")"
+CORPUS="$(realpath "${2:-$BENCH_DATA/corpus}")"
+require_bin "$BIN"; require_dir "$CORPUS"
+
+work="$BENCH_TMP/roundtrip.$$"
+mkdir -p "$work"
+trap 'rm -rf "$work"' EXIT
+
+fail=0
+for entry in "${METHODS_DEFAULT[@]}"; do
+  name="${entry%%|*}"; opts="${entry#*|}"
+  ext=7z; [[ "$opts" == *-tzip* ]] && ext=zip
+  arc="$work/$name.$ext"
+
+  # xz e' un formato a singolo stream: si comprime un tar del corpus
+  if [[ "$opts" == *-txz* ]]; then
+    arc="$work/$name.tar.xz"
+    tar -C "$CORPUS" -cf "$work/corpus.tar" .
+    # shellcheck disable=SC2086
+    "$BIN" a $opts -bso0 -bsp0 "$arc" "$work/corpus.tar" >/dev/null
+    "$BIN" t -bso0 -bsp0 "$arc" >/dev/null
+    mkdir -p "$work/out"
+    "$BIN" x -bso0 -bsp0 -o"$work/out" "$arc" >/dev/null
+    # .xz non memorizza il nome del file: l'estratto si chiama come l'archivio senza .xz
+    if cmp -s "$work/corpus.tar" "$work/out/$name.tar"; then r=OK; else r=FAIL; fail=1; fi
+    printf '%-20s %-4s %12d byte\n' "$name" "$r" "$(stat -c %s "$arc")"
+    rm -rf "$work/out" "$work/corpus.tar" "$arc"
+    continue
+  fi
+
+  pw=(); [[ "$opts" == *-p* ]] && pw=(-psegreto)
+  # shellcheck disable=SC2086
+  (cd "$CORPUS" && "$BIN" a $opts -bso0 -bsp0 "$arc" . >/dev/null)
+  "$BIN" t "${pw[@]}" -bso0 -bsp0 "$arc" >/dev/null
+  mkdir -p "$work/out"
+  "$BIN" x "${pw[@]}" -bso0 -bsp0 -o"$work/out" "$arc" >/dev/null
+  if diff -rq "$CORPUS" "$work/out" >/dev/null; then r=OK; else r=FAIL; fail=1; fi
+  printf '%-20s %-4s %12d byte\n' "$name" "$r" "$(stat -c %s "$arc")"
+  rm -rf "$work/out" "$arc"
+done
+
+(( fail == 0 )) && info "Tutti i roundtrip OK" || die "roundtrip FALLITO"
