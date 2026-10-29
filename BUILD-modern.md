@@ -31,6 +31,23 @@ e archivi prodotti identici byte per byte.
 Nota: con GCC `-Wmaybe-uninitialized` e `-Wstringop-overflow` non sono trattati come errori, perché con
 PGO/LTO/`-O3` producono falsi positivi nel codice upstream.
 
+### Assembly x86-64 (consigliato)
+
+`SEVENZIP_ASM=ON` usa le routine assembly upstream: **+22% in decompressione LZMA**
+(`LzmaDecOpt.asm`) e qualche punto percentuale in compressione, con output identico.
+Serve un assembler MASM-compatibile. UASM **v2.57r** compila su Linux, mentre
+`master` non compila (include `<direct.h>`):
+
+```sh
+git clone https://github.com/Terraspace/UASM.git ~/.local/src/UASM
+cd ~/.local/src/UASM && git checkout v2.57r
+make -f Makefile-Linux-GCC-64.mak -j"$(nproc)" CFLAGS=-fcommon
+cp GccUnixR/uasm ~/.local/bin/
+
+cmake -S . -B build-asm -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON \
+      -DSEVENZIP_ASSEMBLER="$HOME/.local/bin/uasm"
+```
+
 ### Note di progetto
 
 - Le librerie interne sono **OBJECT library**, non statiche: codec e formati si

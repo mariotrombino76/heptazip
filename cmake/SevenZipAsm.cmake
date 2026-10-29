@@ -56,7 +56,10 @@ foreach(_name IN LISTS _asm_files)
     OUTPUT "${_obj}"
     COMMAND "${SEVENZIP_ASSEMBLER}" -nologo -elf64 -DABI_LINUX "-Fo${_asm_outdir}/" "${_src}"
     DEPENDS "${_src}" "${CMAKE_SOURCE_DIR}/Asm/x86/7zAsm.asm"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Asm/x86"
+    # Alcuni .asm (es. Sort.asm) includono "../../../../Asm/x86/7zAsm.asm":
+    # il percorso e' relativo a CPP/7zip/Bundles/<bundle>, da dove upstream
+    # lancia l'assembler. Usiamo la stessa directory di lavoro.
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/CPP/7zip/Bundles/Alone2"
     COMMENT "ASM ${_name}.asm"
     VERBATIM)
   list(APPEND SEVENZIP_ASM_OBJECTS "${_obj}")
