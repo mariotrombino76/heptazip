@@ -12,3 +12,6 @@ b/
 # Editor / tooling
 .cache/
 compile_commands.json
+
+# Log di errore dell'assembler (UASM/ASMC li scrive accanto al sorgente)
+Asm/**/*.err
