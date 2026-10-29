@@ -334,8 +334,11 @@ else
                 {
                   // SPEC code
                   CLzRef *dest = son + ((size_t)(_cyclicBufferPos) << 1);
+                  /* 7zip-modern: "* 2" instead of "<< 1": the offset is negative
+                     here, and left shift of a negative value is undefined behavior
+                     (reported by UBSan). Same machine code. See docs/upstream-patches.md */
                   const CLzRef *src = dest + ((diff
-                      + (ptrdiff_t)(UInt32)((_cyclicBufferPos < delta) ? cbs : 0)) << 1);
+                      + (ptrdiff_t)(UInt32)((_cyclicBufferPos < delta) ? cbs : 0)) * 2);
                   // CLzRef *ptr = son + ((size_t)(pos) << 1) - CYC_TO_POS_OFFSET * 2;
                   #if 0
                   *(UInt64 *)(void *)dest = *((const UInt64 *)(const void *)src);
