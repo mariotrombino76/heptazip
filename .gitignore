@@ -1,0 +1,14 @@
+# Build CMake
+/build*/
+
+# Output dei makefile originali (makefile.gcc)
+_o/
+b/
+
+# Dati di benchmark/PGO generati localmente
+/bench-data/
+*.gcda
+
+# Editor / tooling
+.cache/
+compile_commands.json
