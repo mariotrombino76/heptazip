@@ -17,7 +17,7 @@ require_bin "$A"; require_bin "$B"; require_dir "$CORPUS"
 
 work="$BENCH_TMP/compare.$$"
 mkdir -p "$work"
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work"; rmdir "$BENCH_TMP" 2>/dev/null || true' EXIT
 
 fail=0
 for entry in "${METHODS_DEFAULT[@]}"; do

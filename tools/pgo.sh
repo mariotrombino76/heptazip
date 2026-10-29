@@ -28,7 +28,7 @@ cmake -S "$ROOT" -B "$GEN" -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_PGO=GEN \
 cmake --build "$GEN" -j"$JOBS" >/dev/null
 
 info "2/3 training"
-work="$BENCH_TMP/pgo.$$"; mkdir -p "$work"; trap 'rm -rf "$work"' EXIT
+work="$BENCH_TMP/pgo.$$"; mkdir -p "$work"; trap 'rm -rf "$work"; rmdir "$BENCH_TMP" 2>/dev/null || true' EXIT
 for entry in "${METHODS_DEFAULT[@]}"; do
   name="${entry%%|*}"; opts="${entry#*|}"
   [[ "$opts" == *-txz* ]] && continue
