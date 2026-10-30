@@ -79,14 +79,17 @@ cmake -S . -B build-asm -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON \
 ## Estrazione parallela dei folder `.7z` (`-mpfd`)
 
 ```sh
-7zz x -mpfd=on archivio.7z     # decomprime in parallelo i folder (blocchi solid) diversi
+7zz x archivio.7z              # attiva di default: folder diversi decompressi in parallelo
+7zz x -mpfd=off archivio.7z    # estrazione sequenziale (comportamento upstream)
 ```
 
 Accelera gli archivi con molti folder (non-solid `-ms=off`, `-ms=e`, solid limitati
 `-ms=<dim>`, archivi molto grandi) anche se creati da 7-Zip upstream; non cambia il formato.
 L'output e le callback sono identici all'estrazione sequenziale (vedi
 `docs/design/0001-estrazione-parallela-folder-7z.md`). Usa al massimo `-mmt` thread e il
-budget di memoria di decompressione (`-mmemuse`). È un'opzione dell'handler 7z: come
+budget di memoria di decompressione (`-mmemuse`). I folder che producono più di 64 MiB
+sono decompressi in linea con tutti i thread (il decoder LZMA2 a blocchi è più veloce
+così). Risultati: da 1,15× a 2,9× sugli archivi con più folder (design 0001, §10). È un'opzione dell'handler 7z: come
 `-mtf`, non è accettata da altri formati (zip, xz…).
 
 ## Test automatici (CTest)

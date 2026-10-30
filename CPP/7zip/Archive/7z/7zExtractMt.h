@@ -53,6 +53,15 @@ public:
      Large jobs are not decoded ahead into memory. */
   static const unsigned kLargeJobDivisor = 4;
 
+  /* A folder that unpacks more than this is decoded inline (with all threads),
+     and not by one worker thread: the decoder of a big folder can be faster
+     with its own multithreading (LZMA2 streams with independent blocks),
+     that can't be known from coder properties. Measured: a 202 MiB LZMA2
+     folder with 16 MiB blocks was 2-3 times slower in one worker thread.
+     A folder below this limit takes at most ~0.5 s in one thread, while other
+     workers decode other folders. */
+  static const UInt64 kMaxParallelFolderUnpackSize = (UInt64)64 << 20;
+
   CMemoryBudget(): _limit(0), _used(0) {}
   void Init(UInt64 limit) { _limit = limit; _used = 0; }
 
@@ -60,6 +69,7 @@ public:
   UInt64 GetUsed() const { return _used; }
 
   bool IsLargeJob(UInt64 cost) const { return cost > _limit / kLargeJobDivisor; }
+  static bool IsBigFolder(UInt64 unpackSize) { return unpackSize > kMaxParallelFolderUnpackSize; }
   bool CanReserve(UInt64 cost) const { return cost <= _limit - _used; }
   void Reserve(UInt64 cost) { _used += cost; }
   void Release(UInt64 cost) { _used -= cost; }

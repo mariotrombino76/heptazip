@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Implementato (passi 1–4); passo 5 (misure e default) in corso |
+| **Stato** | Implementato, attivo di default (vedi §10, risultati) |
 | **Data** | 2026-10-29 |
 | **Fase** | 2: parallelizzazione della decompressione |
 | **Riferimento upstream** | 7-Zip 26.05 (`b88c6bc`) |
@@ -470,3 +470,45 @@ Ogni passo è un commit separato, con i test che passano.
 | Memoria oltre le attese (stima del decoder errata) | Stima prudente, test unitari, misura dell'RSS nei benchmark, budget configurabile |
 | Peggioramento su archivi di default | Attivazione solo con ≥ 2 folder non grandi; criterio di non regressione in §4.2 |
 | Conflitti di merge con upstream | Logica nei file nuovi; in `7zExtract.cpp` solo l'estrazione di due funzioni e l'aggancio |
+
+---
+
+## 10. Risultati (passo 5, 2026-10-30)
+
+Misure con `tools/bench/extract-bench.py`, binario con ASM (GCC 13), minimo su 5
+ripetizioni alternando `pfd=off` e `pfd=on`. La macchina era condivisa con un'altra
+sessione (carico medio 2–4 durante le misure finali), quindi differenze sotto il ±5%
+sono rumore.
+
+| Archivio | Folder | `t` 20 thread, off → on | Speedup | RSS off → on |
+|---|---|---|---|---|
+| Silesia non-solid | 12 | 1,44 s → 0,56 s | **2,6×** | 67 → 431 MiB |
+| Silesia non-solid AES | 12 | — | **2,9×** (prima misura) | 68 → 432 MiB |
+| Corpus `-ms=e` | 990 | 0,30 s → 0,26 s | 1,15× | 117 → 207 MiB |
+| Corpus default | 2 | 0,28 s → 0,22 s | 1,26× | 117 → 182 MiB |
+| Folder LZMA2 grande a blocchi + piccoli | 2 | 0,49 s → 0,49 s | 1,00× | invariato |
+| Silesia solid | 1 | — | 1,00× (stesso percorso) | invariato |
+
+**Obiettivo di §4.2 (≥ 3× su Silesia non-solid) non raggiunto, ma per un errore di stima
+dell'obiettivo.** Il limite inferiore è il tempo del folder più grande, misurato a
+0,43 s (`mozilla`, 51 MB, avvio del processo e CRC compresi): lo speedup massimo
+teorico è 1,44 / 0,43 = **3,35×** e il risultato (2,5–2,6×) ne è il 75–78%. Il resto è
+dovuto a:
+- CPU ibrida (6 P-core con SMT + 8 E-core): sotto WSL2 lo scheduler non conosce la
+  topologia, il folder più lungo può finire su un E-core o su un core condiviso;
+- consegna (replay) e CRC sul thread principale (~0,05 s): vedi evoluzione "CRC nei
+  worker" e CRC con PCLMUL.
+
+**Regressione trovata e corretta.** Nella prima misura un folder LZMA2 da 202 MiB con
+blocchi da 16 MiB era 2–3 volte più lento (0,30–0,48×): un worker lo decomprimeva con
+un solo thread, mentre in sequenziale `Lzma2DecMt` usa tutti i thread sui blocchi. Dalle
+proprietà del coder non si può sapere se lo stream è a blocchi: ora un folder che
+produce più di 64 MiB (`CMemoryBudget::kMaxParallelFolderUnpackSize`) è decompresso in
+linea con tutti i thread. Dopo la correzione: 1,00×.
+
+**Decisione (D2): `pfd` attivo di default.** Nessuna regressione misurata, guadagni da
+1,15× a 2,9× sugli archivi con più folder, equivalenza delle callback verificata
+(4 configurazioni × 179 casi, GCC 13/16, Clang 20, ASan+UBSan, TSan). Costo: memoria
+fino al budget di decompressione (`-mmemuse`), per Silesia 431 MiB invece di 67.
+`-mpfd=off` ripristina il comportamento sequenziale.
+

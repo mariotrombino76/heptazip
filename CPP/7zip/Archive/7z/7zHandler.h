@@ -31,7 +31,7 @@ namespace NArchive {
 namespace N7z {
 
 // 7zip-modern: default of property "pfd" (parallel extraction of folders)
-const bool k_ParallelFolderDecoding_Default = false;
+const bool k_ParallelFolderDecoding_Default = true;
 
 
 #ifndef Z7_EXTRACT_ONLY

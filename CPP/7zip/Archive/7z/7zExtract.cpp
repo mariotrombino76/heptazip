@@ -698,8 +698,10 @@ void CParallelExtract::PlanStep(UInt32 numItems, UInt32 i, const CMemoryBudget &
   const UInt64 kTaskOverhead = (UInt64)1 << 20;
   task.Cost = task.Job.PackSize + task.Job.UnpackSize + decoderMem + kTaskOverhead;
   task.PackStartPos = db.GetFolderStreamPos(folderIndex, 0);
-  // overflow check of the sum, then the "large job" rule
-  task.IsParallel = (task.Cost >= decoderMem && !budget.IsLargeJob(task.Cost));
+  // overflow check of the sum, then the "large job" and "big folder" rules
+  task.IsParallel = (task.Cost >= decoderMem
+      && !budget.IsLargeJob(task.Cost)
+      && !CMemoryBudget::IsBigFolder(task.Job.UnpackSize));
 }
 
 

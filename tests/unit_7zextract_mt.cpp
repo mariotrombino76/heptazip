@@ -118,6 +118,9 @@ static void Test_MemoryBudget()
   b.Init(0);
   CHECK(!b.CanReserve(1));
   CHECK(b.IsLargeJob(1));
+  // cartella "grande" in valore assoluto (decompressa in linea con tutti i thread)
+  CHECK(!CMemoryBudget::IsBigFolder((UInt64)64 << 20));
+  CHECK(CMemoryBudget::IsBigFolder(((UInt64)64 << 20) + 1));
 }
 
 // ---------------------------------------------------------------------------
