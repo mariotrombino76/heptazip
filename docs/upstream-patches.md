@@ -15,6 +15,7 @@ Nel codice ogni modifica è marcata con un commento che inizia con `7zip-modern:
 
 | File | Modifica | Motivo | Effetto sull'output / sulle prestazioni |
 |---|---|---|---|
+| `CPP/7zip/Archive/7z/7zExtract.cpp` (`CHandler::Extract`) | Raggruppamento degli elementi per folder → `GetExtractJob()`; gestione dell'esito di `Decode` → `ProcessFolderDecodeResult()`. Solo codice spostato | Riutilizzo della stessa logica nell'estrazione parallela (design 0001). In un merge, applicare le modifiche upstream di quei blocchi alle due funzioni | Nessuno: tracce delle callback identiche alla build precedente su 175 casi |
 | `C/LzFindOpt.c` (`GetMatchesSpecN_2`, calcolo di `src`) | `(...) << 1` → `(...) * 2` | Shift a sinistra di un valore negativo: comportamento indefinito in C, segnalato da UBSan (`-fsanitize=shift-base`) | Nessuno: stesso codice macchina; archivi identici (`compare-archives.sh`) |
 
 ## Comportamenti upstream noti, non modificati
