@@ -30,7 +30,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import struct
 import tempfile
+import zlib
 from pathlib import Path
 
 PASSWORD = "segreto"
@@ -126,6 +128,28 @@ def corrupt_copy(src: Path, dst: Path, point: float) -> None:
     dst.write_bytes(bytes(data))
 
 
+def unsupported_method_copy(src: Path, dst: Path) -> bool:
+    """Copia un archivio PPMd con intestazione NON compressa (-mhc=off) cambiando
+    l'ID del metodo del PRIMO folder in uno sconosciuto (03 04 01 -> 03 04 7F) e
+    ricalcolando i CRC delle intestazioni: l'archivio si apre, ma quel folder
+    produce E_NOTIMPL -> kUnsupportedMethod (ramo di ProcessFolderDecodeResult).
+
+    Formato (DOC/7zFormat.txt, SignatureHeader): byte 8..11 StartHeaderCRC,
+    12..19 NextHeaderOffset, 20..27 NextHeaderSize, 28..31 NextHeaderCRC."""
+    data = bytearray(src.read_bytes())
+    next_off, next_size = struct.unpack_from("<QQ", data, 12)
+    start = 32 + next_off
+    header = data[start:start + next_size]
+    pos = header.find(b"\x23\x03\x04\x01")  # flag 0x23: ID di 3 byte + proprieta'
+    if pos < 0:
+        return False
+    data[start + pos + 3] = 0x7F
+    struct.pack_into("<I", data, 28, zlib.crc32(data[start:start + next_size]))
+    struct.pack_into("<I", data, 8, zlib.crc32(data[12:32]))
+    dst.write_bytes(bytes(data))
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Esecuzione dei casi
 # ---------------------------------------------------------------------------
@@ -210,6 +234,17 @@ def main() -> int:
                 cases.append((f"{name}/failwrite@2", arc, ["--fail-write-at-file=2"], False))
             if enc:
                 cases.append((f"{name}/wrong-password", arc, ["-psbagliata"], False))
+
+        # metodo non supportato in un solo folder (E_NOTIMPL)
+        src = arcs / "ppmd-plainheader.7z"
+        create_archive(sz, data, src, ["-m0=ppmd", "-ms=off", "-mhc=off"])
+        dst = arcs / "unsupported-method.7z"
+        if not unsupported_method_copy(src, dst):
+            print("ERRORE: ID di PPMd non trovato nell'intestazione")
+            return 1
+        for mode in ([], ["-t"]):
+            cases.append((f"unsupported-method{'/test' if mode else ''}", dst, mode, False))
+        cases.append(("unsupported-method/every3", dst, ["-i" + ",".join(str(i) for i in range(0, 40, 3))], False))
 
         for name in CORRUPT_FROM:
             src = arcs / f"{name}.7z"

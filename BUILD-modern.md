@@ -89,8 +89,10 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   (`--fail-write-at-file=N`).
 - `tests/extract_equivalence.py`: genera dati deterministici e 12 tipi di archivio
   (solid, non-solid, molti folder, BCJ2, PPMd, BZip2, Deflate, copia, AES, LZMA2 a
-  blocchi), più copie corrotte o troncate, ed esegue 172 casi: selezioni parziali,
-  modalità test, errori iniettati, password errata. Confronta la traccia di **due
+  blocchi), più copie corrotte o troncate e un archivio con un metodo sconosciuto in
+  un folder, ed esegue 175 casi: selezioni parziali, modalità test, errori iniettati,
+  password errata. Lacuna nota: il caso `dataAfterEnd` (dati dopo la fine dello
+  stream compresso) non è ancora generato. Confronta la traccia di **due
   configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
   essere identiche.
 
