@@ -433,6 +433,13 @@ static void GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UStr
   }
 }
 
+// 7zip-modern: property names of -slt, also used by the JSON output (ListJson.cpp)
+void List_GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UString &nameU);
+void List_GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UString &nameU)
+{
+  GetPropName(propID, name, nameA, nameU);
+}
+
 void CFieldPrinter::AddProp(const wchar_t *name, PROPID propID, bool isRawProp)
 {
   CFieldInfo f;

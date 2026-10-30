@@ -66,6 +66,7 @@ struct CArcCmdLineOptions
   bool YesToAll;
   bool ShowDialog;
   bool TechMode;
+  bool JsonOutput; // 7zip-modern: -json
   bool ShowTime;
   CBoolPair ListPathSeparatorSlash;
 
@@ -139,6 +140,7 @@ struct CArcCmdLineOptions
       YesToAll(false),
       ShowDialog(false),
       TechMode(false),
+      JsonOutput(false),
       ShowTime(false),
 
       ConsoleCodePage(-1),

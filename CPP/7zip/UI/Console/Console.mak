@@ -10,6 +10,7 @@ CONSOLE_OBJS = \
   $O\ExtractCallbackConsole.obj \
   $O\HashCon.obj \
   $O\List.obj \
+  $O\ListJson.obj \
   $O\Main.obj \
   $O\MainAr.obj \
   $O\OpenCallbackConsole.obj \

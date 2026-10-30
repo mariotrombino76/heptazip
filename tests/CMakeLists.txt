@@ -86,3 +86,9 @@ add_executable(unit_crc_clmul unit_crc_clmul.c ${CMAKE_SOURCE_DIR}/C/CpuArch.c)
 target_link_libraries(unit_crc_clmul PRIVATE sevenzip_flags)
 add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+# Output JSON di "l -json" confrontato con "-slt" (docs/json-output.md).
+add_test(NAME list_json
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/list_json.py
+          --7zz $<TARGET_FILE:7zz>)
+set_tests_properties(list_json PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

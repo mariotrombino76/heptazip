@@ -84,6 +84,7 @@ CONSOLE_OBJS = \
   $O/ExtractCallbackConsole.o \
   $O/HashCon.o \
   $O/List.o \
+  $O/ListJson.o \
   $O/Main.o \
   $O/MainAr.o \
   $O/OpenCallbackConsole.o \

@@ -970,6 +970,8 @@ $O/HashCon.o: ../../UI/Console/HashCon.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/List.o: ../../UI/Console/List.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/ListJson.o: ../../UI/Console/ListJson.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/Main.o: ../../UI/Console/Main.cpp ../../../../C/7zVersion.h
 	$(CXX) $(CXXFLAGS) $(CONSOLE_VARIANT_FLAGS) $(CONSOLE_ASM_FLAGS) $<
 $O/MainAr.o: ../../UI/Console/MainAr.cpp

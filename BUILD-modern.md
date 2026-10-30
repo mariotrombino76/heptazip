@@ -106,6 +106,15 @@ Metodo `0x4F71101`, compatibile con 7-Zip-zstd. L'estrazione usa il decoder di 7
 Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 `docs/design/0002-zstd-nel-formato-7z.md`.
 
+## Output JSON dell'elenco (`l -json`)
+
+```sh
+7zz l -json archivio.7z | jq '.archives[0].items[] | {path, size}'
+```
+
+Un solo documento JSON su stdout, con gli stessi campi di `-slt` (nomi in camelCase, date
+ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
+
 ## Test automatici (CTest)
 
 ```sh

@@ -207,7 +207,8 @@ enum Enum
   kNameTrailReplace,
 
   kDeleteAfterCompressing,
-  kSetArcMTime
+  kSetArcMTime,
+  kJsonOutput // 7zip-modern: -json (JSON output of the list command)
 
   #ifndef Z7_NO_CRYPTO
   , kPassword
@@ -359,7 +360,8 @@ static const CSwitchForm kSwitchForms[] =
   { "snt", SWFRM_MINUS },
   
   { "sdel", SWFRM_SIMPLE },
-  { "stl", SWFRM_SIMPLE }
+  { "stl", SWFRM_SIMPLE },
+  { "json", SWFRM_SIMPLE } // 7zip-modern
 
   #ifndef Z7_NO_CRYPTO
   , { "p", SWFRM_STRING }
@@ -1075,6 +1077,10 @@ void CArcCmdLineParser::Parse1(const UStringVector &commandStrings,
   if (parser[NKey::kListTimestampUTC].ThereIs)
     g_Timestamp_Show_UTC = !parser[NKey::kListTimestampUTC].WithMinus;
   options.TechMode = parser[NKey::kTechMode].ThereIs;
+  // 7zip-modern: with -json, stdout contains only the JSON document (no banner)
+  options.JsonOutput = parser[NKey::kJsonOutput].ThereIs;
+  if (options.JsonOutput)
+    options.EnableHeaders = false;
   options.ShowTime = parser[NKey::kShowTime].ThereIs;
 
   if (parser[NKey::kDisablePercents].ThereIs)
@@ -1531,6 +1537,15 @@ void CArcCmdLineParser::Parse2(CArcCmdLineOptions &options)
       options.Command.CommandType != NCommandType::kBenchmark &&
       options.Command.CommandType != NCommandType::kInfo &&
       options.Command.CommandType != NCommandType::kHash;
+
+  // 7zip-modern: -json is implemented for the l (list) command only
+  if (options.JsonOutput)
+  {
+    if (options.Command.CommandType != NCommandType::kList)
+      throw CArcCmdLineException("-json is supported only for the l (list) command");
+    if (options.Number_for_Errors == k_OutStream_stdout)
+      throw CArcCmdLineException("-json can't be used with -bse1 (errors to stdout)");
+  }
 
   const bool isExtractGroupCommand = options.Command.IsFromExtractGroup();
   const bool isExtractOrList = isExtractGroupCommand || options.Command.CommandType == NCommandType::kList;

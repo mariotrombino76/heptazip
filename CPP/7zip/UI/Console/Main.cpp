@@ -72,6 +72,7 @@ typedef PROCESS_MEMORY_COUNTERS *PPROCESS_MEMORY_COUNTERS;
 #include "ExtractCallbackConsole.h"
 #include "HashCon.h"
 #include "List.h"
+#include "ListJson.h"
 #include "OpenCallbackConsole.h"
 #include "UpdateCallbackConsole.h"
 
@@ -182,6 +183,7 @@ static const char * const kHelpString =
     "  -si[{name}] : read data from stdin\n"
     "  -slp : set Large Pages mode\n"
     "  -slt : show technical information for l (List) command\n"
+    "  -json : JSON output for l (List) command\n"
     "  -snh : store hard links as links\n"
     "  -snl : store symbolic links as links\n"
     "  -sni : store NT security information\n"
@@ -1523,6 +1525,25 @@ int Main2(
       lo.ExcludeFileItems = options.Censor.ExcludeFileItems;
       lo.DisablePercents = options.DisablePercents;
 
+      if (options.JsonOutput) // 7zip-modern: -json
+        hresultMain = ListArchives_Json(
+          lo,
+          codecs,
+          types,
+          excludedFormats,
+          options.StdInMode,
+          ArchivePathsSorted,
+          ArchivePathsFullSorted,
+          options.ExtractOptions.NtOptions.AltStreams.Val,
+          options.AltStreams.Val,
+          options.Censor.Pairs.Front().Head,
+          #ifndef Z7_NO_CRYPTO
+          options.PasswordEnabled,
+          options.Password,
+          #endif
+          &options.Properties,
+          numErrors, numWarnings);
+      else
       hresultMain = ListArchives(
           lo,
           codecs,

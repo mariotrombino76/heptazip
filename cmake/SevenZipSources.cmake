@@ -365,6 +365,7 @@ set(SEVENZIP_CONSOLE_SOURCES
   CPP/7zip/UI/Console/ExtractCallbackConsole.cpp
   CPP/7zip/UI/Console/HashCon.cpp
   CPP/7zip/UI/Console/List.cpp
+  CPP/7zip/UI/Console/ListJson.cpp
   CPP/7zip/UI/Console/Main.cpp
   CPP/7zip/UI/Console/MainAr.cpp
   CPP/7zip/UI/Console/OpenCallbackConsole.cpp
