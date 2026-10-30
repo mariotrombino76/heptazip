@@ -25,7 +25,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_LTO` | `OFF` | link-time optimization |
 | `SEVENZIP_ASM` | `OFF` | usa `Asm/x86/*.asm` (CRC, AES, SHA, LzFind, **LzmaDecOpt**); richiede `asmc`, `uasm` o `jwasm` |
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
-| `SEVENZIP_CXX_STANDARD` | `17` | standard C++ (17/20/23) |
+| `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 

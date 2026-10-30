@@ -53,9 +53,10 @@ option(SEVENZIP_STRIP "Rimuove i simboli dal binario in Release (come upstream: 
 set(SEVENZIP_PGO "OFF" CACHE STRING "Profile-guided optimization: OFF, GEN, USE")
 set_property(CACHE SEVENZIP_PGO PROPERTY STRINGS OFF GEN USE)
 set(SEVENZIP_PGO_DIR "${CMAKE_BINARY_DIR}/pgo-data" CACHE PATH "Directory dei profili PGO")
-# Upstream non forza uno standard: GCC 13 usa gnu17 / gnu++17. Lo rendiamo esplicito
-# per poter migrare a C++20/23 in modo controllato.
-set(SEVENZIP_CXX_STANDARD "17" CACHE STRING "Standard C++ (17, 20, 23)")
+# Upstream non forza uno standard (GCC 13 usa gnu++17). Il fork usa C++20 (gnu++20):
+# verificato senza warning con GCC 13 e Clang 20, archivi identici a upstream.
+# Il codice nuovo puo' usare C++20 (es. std::span); per tornare a C++17: -DSEVENZIP_CXX_STANDARD=17
+set(SEVENZIP_CXX_STANDARD "20" CACHE STRING "Standard C++ (17, 20, 23)")
 set(SEVENZIP_SANITIZE "" CACHE STRING
   "Sanitizer: vuoto, address, thread, undefined o lista separata da virgole (es. address,undefined)")
 option(SEVENZIP_SANITIZE_RECOVER
