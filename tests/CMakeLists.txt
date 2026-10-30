@@ -80,3 +80,9 @@ foreach(_variant IN ITEMS "default;" "lowmem;-mmemuse=28m" "2threads;-mmt=2")
             "--config-b=-mpfd=on ${_opts}")
   set_tests_properties(extract_equivalence_pfd_${_name} PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
 endforeach()
+
+# CRC32 con PCLMULQDQ (C/7zCrcClmul.h) contro un CRC32 di riferimento indipendente.
+add_executable(unit_crc_clmul unit_crc_clmul.c ${CMAKE_SOURCE_DIR}/C/CpuArch.c)
+target_link_libraries(unit_crc_clmul PRIVATE sevenzip_flags)
+add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} $<TARGET_FILE:unit_crc_clmul>)
+set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

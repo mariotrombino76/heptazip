@@ -6,6 +6,13 @@
 #include "7zCrc.h"
 #include "CpuArch.h"
 
+/* 7zip-modern: CRC32 with PCLMULQDQ folding on x86-64 (selected at runtime).
+   Implementation header with static functions: see C/7zCrcClmul.h */
+#include "7zCrcClmul.h"
+#if defined(Z7_CRC_CLMUL) && (defined(__ARM_FEATURE_CRC32) || defined(Z7_CRC_HW_USE))
+#undef Z7_CRC_CLMUL
+#endif
+
 // for debug:
 // #define __ARM_FEATURE_CRC32 1
 
@@ -252,7 +259,7 @@ static unsigned g_Crc_Be;
 
 
 Z7_NO_INLINE
-#ifdef Z7_CRC_HW_USE
+#if defined(Z7_CRC_HW_USE) || defined(Z7_CRC_CLMUL)
   static UInt32 Z7_FASTCALL CrcUpdate_Base
 #else
          UInt32 Z7_FASTCALL CrcUpdate
@@ -287,6 +294,24 @@ UInt32 Z7_FASTCALL CrcUpdate(UInt32 crc, const void *data, size_t size)
 {
   if (g_Crc_Algo == 0)
     return CrcUpdate_HW(crc, data, size);
+  return CrcUpdate_Base(crc, data, size);
+}
+#endif
+
+#ifdef Z7_CRC_CLMUL
+// 7zip-modern: set by CrcGenerateTable(), if the CPU supports PCLMULQDQ
+static int g_Crc_Clmul;
+
+static UInt32 Z7_FASTCALL CrcUpdate_Clmul(UInt32 crc, const void *data, size_t size)
+{
+  return CrcClmul_Update(crc, data, size, CrcUpdate_Base);
+}
+
+Z7_NO_INLINE
+UInt32 Z7_FASTCALL CrcUpdate(UInt32 crc, const void *data, size_t size)
+{
+  if (g_Crc_Clmul)
+    return CrcUpdate_Clmul(crc, data, size);
   return CrcUpdate_Base(crc, data, size);
 }
 #endif
@@ -372,6 +397,10 @@ void Z7_FASTCALL CrcGenerateTable(void)
 
 #endif // Z7_CRC_NUM_TABLES_USE <= 1
 #endif // g_Crc_Algo was declared
+
+#ifdef Z7_CRC_CLMUL
+  g_Crc_Clmul = CrcClmul_IsSupported(); // 7zip-modern
+#endif
 }
 
 Z7_CRC_UPDATE_FUNC z7_GetFunc_CrcUpdate(unsigned algo)
@@ -391,10 +420,16 @@ Z7_CRC_UPDATE_FUNC z7_GetFunc_CrcUpdate(unsigned algo)
   }
 #endif
 
+#ifdef Z7_CRC_CLMUL
+  // 7zip-modern: 128 = PCLMULQDQ (128-bit folding), if the CPU supports it
+  if (algo == 128)
+    return g_Crc_Clmul ? &CrcUpdate_Clmul : NULL;
+#endif
+
 #ifndef Z7_CRC_HW_FORCE
   if (algo == Z7_CRC_NUM_TABLES_USE)
     return
-  #ifdef Z7_CRC_HW_USE
+  #if defined(Z7_CRC_HW_USE) || defined(Z7_CRC_CLMUL)
       &CrcUpdate_Base;
   #else
       &CrcUpdate;

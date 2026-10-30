@@ -512,3 +512,11 @@ linea con tutti i thread. Dopo la correzione: 1,00×.
 fino al budget di decompressione (`-mmemuse`), per Silesia 431 MiB invece di 67.
 `-mpfd=off` ripristina il comportamento sequenziale.
 
+### Aggiornamento: CRC32 con PCLMULQDQ (2026-10-30)
+
+Il CRC sul thread principale (consegna) era un limite con i decoder veloci. Con il CRC32
+PCLMULQDQ (`C/7zCrcClmul.h`, da ~5 a ~11 GB/s su buffer grandi) l'estrazione migliora del
+18–20% con zstd, del 4–8% con LZMA2 e "copy". A questa velocità il CRC non è più il collo di
+bottiglia: l'evoluzione "CRC calcolato nei worker", che richiederebbe di modificare
+`CFolderOutStream` (upstream), non è più giustificata e non viene implementata.
+
