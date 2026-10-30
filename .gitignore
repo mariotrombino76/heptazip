@@ -15,3 +15,7 @@ compile_commands.json
 
 # Log di errore dell'assembler (UASM/ASMC li scrive accanto al sorgente)
 Asm/**/*.err
+
+# Cache di Python
+__pycache__/
+*.pyc
