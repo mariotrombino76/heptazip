@@ -171,6 +171,63 @@ def unsupported_method_copy(src: Path, dst: Path) -> bool:
     return True
 
 
+def read_7z_number(buf, pos):
+    """UINT64 a lunghezza variabile del formato 7z (DOC/7zFormat.txt)."""
+    first = buf[pos]
+    mask = 0x80
+    value = 0
+    for i in range(8):
+        if first & mask == 0:
+            high = first & (mask - 1)
+            return value | (high << (8 * i)), pos + 1 + i
+        value |= buf[pos + 1 + i] << (8 * i)
+        mask >>= 1
+    return value, pos + 9
+
+
+def write_7z_number(v):
+    """Inversa di read_7z_number: i bit alti nel primo byte, gli n byte bassi dopo."""
+    for n in range(8):
+        if (v >> (8 * n)) < (1 << (7 - n)):
+            first = ((0xFF << (8 - n)) & 0xFF) | (v >> (8 * n))
+            low = v & ((1 << (8 * n)) - 1)
+            return bytes([first]) + low.to_bytes(n, "little")
+    return b"\xFF" + v.to_bytes(8, "little")
+
+
+def data_after_end_copy(src: Path, dst: Path, extra: int = 16) -> None:
+    """Copia di un archivio con intestazione NON compressa (-mhc=off) in cui il primo
+    pack stream ha (extra) byte estranei dopo la fine dei dati compressi: la dimensione
+    nell'intestazione cresce di (extra), i byte sono inseriti e offset/CRC ricalcolati.
+    Il decoder del primo folder termina prima della fine del pack stream ->
+    dataAfterEnd_Error -> kDataAfterEnd (ramo di ProcessFolderDecodeResult)."""
+    data = bytearray(src.read_bytes())
+    next_off, next_size = struct.unpack_from("<QQ", data, 12)
+    start = 32 + next_off
+    header = bytes(data[start:start + next_size])
+    if header[:3] != b"\x01\x04\x06":
+        raise RuntimeError(f"intestazione inattesa: {header[:8].hex()}")
+    pack_pos, p = read_7z_number(header, 3)
+    num_streams, p = read_7z_number(header, p)
+    if header[p] != 0x09:
+        raise RuntimeError("kSize atteso nel PackInfo")
+    size_pos = p + 1
+    size0, after0 = read_7z_number(header, size_pos)
+    q = after0
+    for _ in range(num_streams - 1):
+        _, q = read_7z_number(header, q)
+    if header[q] != 0x00:  # kEnd: niente CRC dei pack stream (cambierebbero)
+        raise RuntimeError("PackInfo con CRC dei pack stream: caso non supportato")
+    new_header = header[:size_pos] + write_7z_number(size0 + extra) + header[after0:]
+    if read_7z_number(new_header, size_pos)[0] != size0 + extra:
+        raise RuntimeError("codifica UINT64 7z errata")
+    insert_at = 32 + pack_pos + size0
+    out = data[:insert_at] + bytes([0x5A]) * extra + data[insert_at:start] + new_header
+    struct.pack_into("<QQI", out, 12, next_off + extra, len(new_header), zlib.crc32(new_header))
+    struct.pack_into("<I", out, 8, zlib.crc32(out[12:32]))
+    dst.write_bytes(bytes(out))
+
+
 # ---------------------------------------------------------------------------
 # Esecuzione dei casi
 # ---------------------------------------------------------------------------
@@ -262,6 +319,25 @@ def main() -> int:
                 cases.append((f"{name}/failwrite@2", arc, ["--fail-write-at-file=2"], False))
             if enc:
                 cases.append((f"{name}/wrong-password", arc, ["-psbagliata"], False))
+
+        # dati estranei dopo la fine del primo pack stream: rami "wasFinished" di
+        # ProcessFolderDecodeResult (REPORT a livello di blocco dopo i file consegnati)
+        #   LZMA2: il decoder restituisce S_FALSE      -> REPORT ... 2 (kDataError)
+        #   Copy : S_OK con input non consumato         -> REPORT ... 6 (kDataAfterEnd)
+        for name, opts, expected in (
+                ("dae-lzma2-solid", ["-mx5", "-mhc=off"], 2),
+                ("dae-lzma2-nonsolid", ["-mx5", "-ms=off", "-mhc=off"], 2),
+                ("dae-copy", ["-mx0", "-ms=off", "-mhc=off"], 6)):
+            src = arcs / f"{name}-src.7z"
+            create_archive(sz, data, src, opts)
+            dst = arcs / f"{name}.7z"
+            data_after_end_copy(src, dst)
+            _, out, _ = run_trace(trace_a, dst, ["-mpfd=off"], ["-t"])
+            if not re.search(rf"^REPORT \d+ 0 {expected}$", out, re.M):
+                print(f"ERRORE: {name}: atteso 'REPORT <tipo> 0 {expected}', traccia:\n{out[-500:]}")
+                return 1
+            for mode in ([], ["-t"]):
+                cases.append((f"{name}{'/test' if mode else ''}", dst, mode, False))
 
         # molti passi: oltre la finestra di pianificazione dell'estrazione parallela
         many = work / "many"

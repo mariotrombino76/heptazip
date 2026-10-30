@@ -129,11 +129,12 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 - `tests/extract_equivalence.py`: genera dati deterministici e 12 tipi di archivio
   (solid, non-solid, molti folder, BCJ2, PPMd, BZip2, Deflate, copia, AES, LZMA2 a
   blocchi), più copie corrotte o troncate e un archivio con un metodo sconosciuto in
-  un folder, ed esegue 175 casi: selezioni parziali, modalità test, errori iniettati,
-  password errata, un archivio da 3000 file (oltre la finestra di pianificazione
-  dell'estrazione parallela). Configurazioni in CTest: `-mmt=1` contro `-mmt=on` e
-  `-mpfd=off` contro `-mpfd=on` (default, memoria ridotta, 2 thread). Lacuna nota: il caso `dataAfterEnd` (dati dopo la fine dello
-  stream compresso) non è ancora generato. Confronta la traccia di **due
+  un folder, ed esegue 219 casi: selezioni parziali, modalità test, errori iniettati,
+  password errata, zstd, dati estranei dopo la fine di un pack stream (`kDataAfterEnd`
+  e `kDataError` segnalati a livello di blocco), un archivio da 3000 file (oltre la
+  finestra di pianificazione dell'estrazione parallela). Configurazioni in CTest:
+  `-mmt=1` contro `-mmt=on` e `-mpfd=off` contro `-mpfd=on` (default, memoria ridotta,
+  2 thread). Confronta la traccia di **due
   configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
   essere identiche.
 
