@@ -59,3 +59,22 @@ set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT 
 
 add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zextract_mt>)
 set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+# Estrazione parallela dei folder (-mpfd, docs/design/0001): la traccia deve essere
+# identica all'estrazione sequenziale. Varianti:
+#  - lowmem: con 28 MiB il limite dei job "grandi" e' 7 MiB; nell'archivio non-solid
+#    della suite i folder dei file piccoli costano ~6.5 MiB (dizionario LZMA2 di 3 MiB
+#    comune a tutti i folder) e vanno in parallelo, quelli dei file grandi (7.5-9 MiB)
+#    in linea: i due percorsi si alternano (verificato: 42 paralleli, 4 in linea).
+#  - 2threads: pochi worker, il controllo d'ammissione resta in attesa.
+foreach(_variant IN ITEMS "default;" "lowmem;-mmemuse=28m" "2threads;-mmt=2")
+  list(GET _variant 0 _name)
+  list(GET _variant 1 _opts)
+  add_test(NAME extract_equivalence_pfd_${_name}
+    COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/extract_equivalence.py
+            --7zz $<TARGET_FILE:7zz>
+            --trace-a $<TARGET_FILE:extract_trace>
+            "--config-a=-mpfd=off ${_opts}"
+            "--config-b=-mpfd=on ${_opts}")
+  set_tests_properties(extract_equivalence_pfd_${_name} PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
+endforeach()

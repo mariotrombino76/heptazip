@@ -158,6 +158,46 @@ static void Test_FolderBufOutStream()
 }
 
 // ---------------------------------------------------------------------------
+// CBufInStreamAt
+// ---------------------------------------------------------------------------
+
+static void Test_BufInStreamAt()
+{
+  const Byte data[8] = { 10, 11, 12, 13, 14, 15, 16, 17 };
+  CBufInStreamAt *spec = new CBufInStreamAt;
+  CMyComPtr<IInStream> stream = spec;
+  const UInt64 kBase = (UInt64)5 << 32; // posizione oltre 4 GiB nell'archivio
+  spec->Init(data, sizeof(data), kBase, S_OK);
+
+  Byte buf[16];
+  UInt32 processed = 99;
+  UInt64 pos = 0;
+
+  // posizione iniziale = base: lettura senza Seek
+  CHECK(stream->Read(buf, 3, &processed) == S_OK && processed == 3 && buf[0] == 10 && buf[2] == 12);
+  // Seek assoluto alla posizione reale nell'archivio
+  CHECK(stream->Seek((Int64)kBase + 6, STREAM_SEEK_SET, &pos) == S_OK && pos == kBase + 6);
+  CHECK(stream->Read(buf, 10, &processed) == S_OK && processed == 2 && buf[0] == 16 && buf[1] == 17);
+  // alla fine dei dati: endRes (S_OK = fine dello stream, 0 byte)
+  CHECK(stream->Read(buf, 4, &processed) == S_OK && processed == 0);
+  CHECK(stream->Read(buf, 0, &processed) == S_OK && processed == 0);
+  // Seek relativo
+  CHECK(stream->Seek(-4, STREAM_SEEK_CUR, &pos) == S_OK && pos == kBase + 4);
+  CHECK(stream->Read(buf, 1, &processed) == S_OK && processed == 1 && buf[0] == 14);
+  // prima della base: errore (il decoder non legge fuori dai pack stream del folder)
+  CHECK(stream->Seek((Int64)kBase - 1, STREAM_SEEK_SET, &pos) == S_OK);
+  CHECK(stream->Read(buf, 1, &processed) == E_FAIL && processed == 0);
+  // Seek negativo e origine non valida
+  CHECK(stream->Seek(-1, STREAM_SEEK_SET, &pos) == HRESULT_WIN32_ERROR_NEGATIVE_SEEK);
+  CHECK(stream->Seek(0, 7, &pos) == STG_E_INVALIDFUNCTION);
+
+  // lettura interrotta da un errore: i byte letti, poi l'errore alla fine
+  spec->Init(data, 4, kBase, E_OUTOFMEMORY);
+  CHECK(stream->Read(buf, 10, &processed) == S_OK && processed == 4);
+  CHECK(stream->Read(buf, 10, &processed) == E_OUTOFMEMORY && processed == 0);
+}
+
+// ---------------------------------------------------------------------------
 // CCachedPassword
 // ---------------------------------------------------------------------------
 
@@ -386,6 +426,7 @@ int main()
   Test_EstimateMemory();
   Test_MemoryBudget();
   Test_FolderBufOutStream();
+  Test_BufInStreamAt();
 #ifndef Z7_NO_CRYPTO
   Test_CachedPassword();
 #endif

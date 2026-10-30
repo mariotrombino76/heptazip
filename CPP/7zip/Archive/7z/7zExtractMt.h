@@ -97,6 +97,39 @@ public:
 };
 
 
+// ---------------------------------------------------------------------------
+// Input stream over packed data that was read ahead into memory.
+//
+// The data is exposed at its original position (base) in the archive stream,
+// so CDecoder::Decode() can be called with the usual (startPos) and
+// PackPositions[], exactly as for the real archive stream.
+// If reading of the archive stream was stopped by an error (or by the end of
+// stream), Read() at the end of the data returns (endRes): the decoder sees
+// the same data and the same result at the same position as in sequential
+// extraction.
+// ---------------------------------------------------------------------------
+
+Z7_CLASS_IMP_IInStream(
+  CBufInStreamAt
+)
+  const Byte *_data;
+  size_t _size;
+  UInt64 _base;
+  UInt64 _pos;     // absolute position in the archive stream
+  HRESULT _endRes;
+public:
+  CBufInStreamAt(): _data(NULL), _size(0), _base(0), _pos(0), _endRes(S_OK) {}
+  void Init(const Byte *data, size_t size, UInt64 base, HRESULT endRes)
+  {
+    _data = data;
+    _size = size;
+    _base = base;
+    _pos = base;
+    _endRes = endRes;
+  }
+};
+
+
 #ifndef Z7_NO_CRYPTO
 
 // ---------------------------------------------------------------------------

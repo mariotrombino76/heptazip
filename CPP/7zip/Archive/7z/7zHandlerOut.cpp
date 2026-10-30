@@ -865,6 +865,7 @@ void COutHandler::InitProps7z()
   Write_Attrib.Init();
 
   _useMultiThreadMixer = true;
+  _parallelFolderDecoding = k_ParallelFolderDecoding_Default;
 
   // _volumeMode = false;
 
@@ -1040,6 +1041,8 @@ HRESULT COutHandler::SetProperty(const wchar_t *nameSpec, const PROPVARIANT &val
     if (name.IsEqualTo("tr")) return PROPVARIANT_to_BoolPair(value, Write_Attrib);
     
     if (name.IsEqualTo("mtf")) return PROPVARIANT_to_bool(value, _useMultiThreadMixer);
+    // 7zip-modern: parallel extraction of folders (docs/design/0001)
+    if (name.IsEqualTo("pfd")) return PROPVARIANT_to_bool(value, _parallelFolderDecoding);
 
     if (name.IsEqualTo("qs")) return PROPVARIANT_to_bool(value, _useTypeSorting);
 

@@ -42,6 +42,7 @@ CHandler::CHandler()
   #ifdef Z7_7Z_SET_PROPERTIES
   _useMultiThreadMixer = true;
   #endif
+  _parallelFolderDecoding = k_ParallelFolderDecoding_Default;
   
   #endif
 }
@@ -760,6 +761,7 @@ Z7_COM7F_IMF(CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
   
   InitCommon();
   _useMultiThreadMixer = true;
+  _parallelFolderDecoding = k_ParallelFolderDecoding_Default;
 
   for (UInt32 i = 0; i < numProps; i++)
   {
@@ -775,6 +777,11 @@ Z7_COM7F_IMF(CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
       if (name.IsEqualTo("mtf"))
       {
         RINOK(PROPVARIANT_to_bool(value, _useMultiThreadMixer))
+        continue;
+      }
+      if (name.IsEqualTo("pfd"))
+      {
+        RINOK(PROPVARIANT_to_bool(value, _parallelFolderDecoding))
         continue;
       }
       {

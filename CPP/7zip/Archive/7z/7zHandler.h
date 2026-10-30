@@ -30,6 +30,9 @@
 namespace NArchive {
 namespace N7z {
 
+// 7zip-modern: default of property "pfd" (parallel extraction of folders)
+const bool k_ParallelFolderDecoding_Default = false;
+
 
 #ifndef Z7_EXTRACT_ONLY
 
@@ -54,6 +57,8 @@ public:
   CBoolPair Write_Attrib;
 
   bool _useMultiThreadMixer;
+  // 7zip-modern: parallel extraction of folders, property "pfd" (docs/design/0001)
+  bool _parallelFolderDecoding;
   bool _removeSfxBlock;
   // bool _volumeMode;
 
@@ -140,6 +145,8 @@ private:
   #ifdef Z7_7Z_SET_PROPERTIES
   bool _useMultiThreadMixer;
   #endif
+  // 7zip-modern: parallel extraction of folders, property "pfd" (docs/design/0001)
+  bool _parallelFolderDecoding;
 
   UInt32 _crcSize;
 

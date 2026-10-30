@@ -158,6 +158,50 @@ Z7_COM7F_IMF(CFolderBufOutStream::Write(const void *data, UInt32 size, UInt32 *p
 }
 
 
+// ---------------------------------------------------------------------------
+// CBufInStreamAt
+// ---------------------------------------------------------------------------
+
+Z7_COM7F_IMF(CBufInStreamAt::Read(void *data, UInt32 size, UInt32 *processedSize))
+{
+  if (processedSize)
+    *processedSize = 0;
+  if (size == 0)
+    return S_OK;
+  if (_pos < _base)
+    return E_FAIL; // the decoder reads only inside the packed streams of the folder
+  const UInt64 offset = _pos - _base;
+  if (offset >= _size)
+    return _endRes;
+  size_t rem = _size - (size_t)offset;
+  if (rem > size)
+    rem = (size_t)size;
+  memcpy(data, _data + (size_t)offset, rem);
+  _pos += rem;
+  if (processedSize)
+    *processedSize = (UInt32)rem;
+  return S_OK;
+}
+
+Z7_COM7F_IMF(CBufInStreamAt::Seek(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition))
+{
+  switch (seekOrigin)
+  {
+    case STREAM_SEEK_SET: break;
+    case STREAM_SEEK_CUR: offset += (Int64)_pos; break;
+    // the real end of the archive stream is unknown here: we use the end of the data
+    case STREAM_SEEK_END: offset += (Int64)(_base + _size); break;
+    default: return STG_E_INVALIDFUNCTION;
+  }
+  if (offset < 0)
+    return HRESULT_WIN32_ERROR_NEGATIVE_SEEK;
+  _pos = (UInt64)offset;
+  if (newPosition)
+    *newPosition = (UInt64)offset;
+  return S_OK;
+}
+
+
 #ifndef Z7_NO_CRYPTO
 
 // ---------------------------------------------------------------------------

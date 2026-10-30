@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Proposta, da rivedere |
+| **Stato** | Implementato (passi 1–4); passo 5 (misure e default) in corso |
 | **Data** | 2026-10-29 |
 | **Fase** | 2: parallelizzazione della decompressione |
 | **Riferimento upstream** | 7-Zip 26.05 (`b88c6bc`) |

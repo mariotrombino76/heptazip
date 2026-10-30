@@ -112,6 +112,18 @@ def sanitizer_report(stderr: str):
     return None
 
 
+def make_many_files(root: Path) -> None:
+    """3000 file piccoli + file vuoti: molti piu' passi della finestra di
+    pianificazione dell'estrazione parallela (docs/design/0001)."""
+    r = random.Random(7)
+    for d in range(30):
+        sub = root / f"d{d:02}"
+        sub.mkdir(parents=True)
+        for k in range(100):
+            n = 0 if k % 17 == 0 else r.randint(1, 4096)
+            (sub / f"f{k:03}.txt").write_bytes(bytes(r.choice(b"abcdefgh \n") for _ in range(n)))
+
+
 def create_archive(sz: str, data: Path, arc: Path, opts) -> None:
     p = subprocess.run([sz, "a", "-t7z", *opts, "-bso0", "-bsp0", str(arc), "."],
                        cwd=data, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
@@ -234,6 +246,17 @@ def main() -> int:
                 cases.append((f"{name}/failwrite@2", arc, ["--fail-write-at-file=2"], False))
             if enc:
                 cases.append((f"{name}/wrong-password", arc, ["-psbagliata"], False))
+
+        # molti passi: oltre la finestra di pianificazione dell'estrazione parallela
+        many = work / "many"
+        many.mkdir()
+        make_many_files(many)
+        arc = arcs / "many-files.7z"
+        create_archive(sz, many, arc, ["-mx1", "-ms=off"])
+        cases.append(("many-files/all", arc, [], True))
+        cases.append(("many-files/all/test", arc, ["-t"], True))
+        cases.append(("many-files/every7", arc, ["-i" + ",".join(str(k) for k in range(3, 3000, 7))], True))
+        cases.append(("many-files/abort@1500", arc, ["--abort-at-file=1500"], False))
 
         # metodo non supportato in un solo folder (E_NOTIMPL)
         src = arcs / "ppmd-plainheader.7z"

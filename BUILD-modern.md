@@ -76,6 +76,19 @@ cmake -S . -B build-asm -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON \
   non riordinarlo. Va aggiornato quando upstream cambia `Arc_gcc.mak` /
   `Alone2/makefile.gcc`.
 
+## Estrazione parallela dei folder `.7z` (`-mpfd`)
+
+```sh
+7zz x -mpfd=on archivio.7z     # decomprime in parallelo i folder (blocchi solid) diversi
+```
+
+Accelera gli archivi con molti folder (non-solid `-ms=off`, `-ms=e`, solid limitati
+`-ms=<dim>`, archivi molto grandi) anche se creati da 7-Zip upstream; non cambia il formato.
+L'output e le callback sono identici all'estrazione sequenziale (vedi
+`docs/design/0001-estrazione-parallela-folder-7z.md`). Usa al massimo `-mmt` thread e il
+budget di memoria di decompressione (`-mmemuse`). È un'opzione dell'handler 7z: come
+`-mtf`, non è accettata da altri formati (zip, xz…).
+
 ## Test automatici (CTest)
 
 ```sh
@@ -91,7 +104,9 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   (solid, non-solid, molti folder, BCJ2, PPMd, BZip2, Deflate, copia, AES, LZMA2 a
   blocchi), più copie corrotte o troncate e un archivio con un metodo sconosciuto in
   un folder, ed esegue 175 casi: selezioni parziali, modalità test, errori iniettati,
-  password errata. Lacuna nota: il caso `dataAfterEnd` (dati dopo la fine dello
+  password errata, un archivio da 3000 file (oltre la finestra di pianificazione
+  dell'estrazione parallela). Configurazioni in CTest: `-mmt=1` contro `-mmt=on` e
+  `-mpfd=off` contro `-mpfd=on` (default, memoria ridotta, 2 thread). Lacuna nota: il caso `dataAfterEnd` (dati dopo la fine dello
   stream compresso) non è ancora generato. Confronta la traccia di **due
   configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
   essere identiche.
