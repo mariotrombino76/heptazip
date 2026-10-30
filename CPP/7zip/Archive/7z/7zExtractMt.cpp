@@ -1,0 +1,308 @@
+// 7zExtractMt.cpp
+// 7zip-modern: building blocks for parallel extraction of 7z folders.
+// See docs/design/0001-estrazione-parallela-folder-7z.md
+
+#include "StdAfx.h"
+
+#include <string.h>
+
+#include "../../../../C/CpuArch.h"
+
+#include "7zExtractMt.h"
+#include "7zHeader.h"
+
+namespace NArchive {
+namespace N7z {
+
+// ---------------------------------------------------------------------------
+// Memory estimation
+// ---------------------------------------------------------------------------
+
+/* Fixed overhead for each coder: input/output buffers of the decoder wrappers
+   (LzmaDecoder / Lzma2Decoder use 1 MiB input buffer and 1 MiB output step),
+   stream binders of the mixer, and objects. */
+static const UInt64 kCoderOverhead = (UInt64)2 << 20;
+
+static const UInt64 kMem_BZip2   = (UInt64)16 << 20; // ~7.5 MiB per block, rounded up
+static const UInt64 kMem_Deflate = (UInt64)1 << 20;  // 64 KiB window + Huffman tables
+static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 streams
+
+// LZMA_LIT_SIZE and LZMA probability model size (C/LzmaDec.c), with 16-bit probs
+static UInt64 GetLzmaProbsMemory(unsigned lc, unsigned lp)
+{
+  return ((UInt64)1846 + ((UInt64)0x300 << (lc + lp))) * 2;
+}
+
+bool EstimateCoderDecodeMemory(CMethodId methodId, const Byte *props, size_t propsSize, UInt64 &memUsage)
+{
+  memUsage = 0;
+  UInt64 mem = 0;
+
+  if (methodId > (UInt32)0xFFFFFFFF)
+    return false;
+
+  switch ((UInt32)methodId)
+  {
+    case k_LZMA:
+    {
+      if (propsSize < 5)
+        return false;
+      unsigned d = props[0];
+      if (d >= 9 * 5 * 5)
+        return false;
+      const unsigned lc = d % 9;
+      d /= 9;
+      const unsigned lp = d % 5;
+      UInt32 dictSize = GetUi32(props + 1);
+      if (dictSize < (1 << 12))
+        dictSize = (1 << 12);
+      mem = (UInt64)dictSize + GetLzmaProbsMemory(lc, lp);
+      break;
+    }
+
+    case k_LZMA2:
+    {
+      if (propsSize < 1)
+        return false;
+      const unsigned p = props[0];
+      if (p > 40)
+        return false;
+      const UInt64 dictSize = (p == 40) ?
+          (UInt64)0xFFFFFFFF :
+          (UInt64)(((UInt32)2 | (p & 1)) << (p / 2 + 11));
+      // LZMA2 limits (lc + lp <= 4)
+      mem = dictSize + GetLzmaProbsMemory(4, 0);
+      break;
+    }
+
+    case k_PPMD:
+    {
+      if (propsSize < 5)
+        return false;
+      mem = GetUi32(props + 1);
+      break;
+    }
+
+    case k_BZip2:
+      mem = kMem_BZip2;
+      break;
+
+    case k_Deflate:
+    case k_Deflate64:
+      mem = kMem_Deflate;
+      break;
+
+    case k_BCJ2:
+      mem = kMem_BCJ2;
+      break;
+
+    case k_Copy:
+    case k_AES:
+      break;
+
+    default:
+      if (!IsFilterMethod(methodId))
+        return false;
+      break;
+  }
+
+  memUsage = mem + kCoderOverhead;
+  return true;
+}
+
+
+bool EstimateFolderDecodeMemory(const CFolder &folder, UInt64 &memUsage)
+{
+  memUsage = 0;
+  UInt64 sum = 0;
+  for (unsigned i = 0; i < folder.Coders.Size(); i++)
+  {
+    const CCoderInfo &coder = folder.Coders[i];
+    UInt64 mem;
+    if (!EstimateCoderDecodeMemory(coder.MethodID, coder.Props, coder.Props.Size(), mem))
+      return false;
+    sum += mem;
+  }
+  memUsage = sum;
+  return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// CFolderBufOutStream
+// ---------------------------------------------------------------------------
+
+Z7_COM7F_IMF(CFolderBufOutStream::Write(const void *data, UInt32 size, UInt32 *processedSize))
+{
+  if (processedSize)
+    *processedSize = 0;
+  if (size == 0)
+    return S_OK;
+
+  const size_t rem = _size - _pos;
+  const size_t cur = (size <= rem) ? (size_t)size : rem;
+  if (cur != 0)
+  {
+    memcpy(_buf + _pos, data, cur);
+    _pos += cur;
+  }
+  if (processedSize)
+    *processedSize = (UInt32)cur;
+  if (cur != size)
+  {
+    // same as CFolderOutStream::Write(), when there are no more requested files
+    WritingWasCut = true;
+    return k_My_HRESULT_WritingWasCut;
+  }
+  return S_OK;
+}
+
+
+#ifndef Z7_NO_CRYPTO
+
+// ---------------------------------------------------------------------------
+// CCachedPassword
+// ---------------------------------------------------------------------------
+
+HRESULT CCachedPassword::Fetch(ICryptoGetTextPassword *callback)
+{
+  _fetched = true;
+  _password.Wipe_and_Empty();
+  if (!callback)
+  {
+    // 7zDecode.cpp returns E_NOTIMPL for encrypted folders without password callback
+    _res = E_NOTIMPL;
+    return _res;
+  }
+  CMyComBSTR_Wipe bstr;
+  _res = callback->CryptoGetTextPassword(&bstr);
+  if (_res == S_OK && bstr)
+    static_cast<UString &>(_password) = (LPCOLESTR)bstr; // as in 7zDecode.cpp
+  return _res;
+}
+
+Z7_COM7F_IMF(CCachedPassword::CryptoGetTextPassword(BSTR *password))
+{
+  *password = NULL;
+  if (!_fetched)
+    return E_FAIL; // programming error: Fetch() must be called first
+  if (_res != S_OK)
+    return _res;
+  return StringToBstr(_password, password);
+}
+
+#endif
+
+
+#ifndef Z7_ST
+
+// ---------------------------------------------------------------------------
+// CMtTaskPool
+// ---------------------------------------------------------------------------
+
+using namespace NWindows::NSynchronization;
+
+static const UInt32 kMaxQueued = (UInt32)1 << 30;
+
+THREAD_FUNC_DECL CMtTaskPool::WorkerThread(void *p)
+{
+  CWorker *w = (CWorker *)p;
+  w->Pool->WorkerLoop(w->Index);
+  return THREAD_FUNC_RET_ZERO;
+}
+
+void CMtTaskPool::WorkerLoop(unsigned workerIndex)
+{
+  for (;;)
+  {
+    if (_numQueued.Lock() != 0)
+      return;
+    CMtTask *task;
+    {
+      CCriticalSectionLock lock(_cs);
+      if (_exit)
+        return;
+      task = _queue[_queueHead++];
+      if (_queueHead == _queue.Size())
+      {
+        _queue.Clear();
+        _queueHead = 0;
+      }
+    }
+    try
+    {
+      task->Run(workerIndex);
+    }
+    catch(...)
+    {
+      task->ExceptionWasCaught = true;
+    }
+    task->Done.Set();
+  }
+}
+
+HRESULT CMtTaskPool::Start(unsigned numThreads)
+{
+  if (!_workers.IsEmpty() || numThreads == 0)
+    return E_FAIL;
+  {
+    // OptCreateInit(): Start() can be called again after Stop()
+    const WRes wres = _numQueued.OptCreateInit(0, kMaxQueued);
+    if (wres != 0)
+      return HRESULT_FROM_WIN32(wres);
+  }
+  _exit = false;
+  for (unsigned i = 0; i < numThreads; i++)
+  {
+    CWorker &w = _workers.AddNew();
+    w.Pool = this;
+    w.Index = i;
+    const WRes wres = w.Thread.Create(WorkerThread, &w);
+    if (wres != 0)
+    {
+      _workers.DeleteBack();
+      Stop();
+      return HRESULT_FROM_WIN32(wres);
+    }
+  }
+  return S_OK;
+}
+
+HRESULT CMtTaskPool::Submit(CMtTask *task)
+{
+  {
+    const WRes wres = task->Done.CreateIfNotCreated_Reset();
+    if (wres != 0)
+      return HRESULT_FROM_WIN32(wres);
+  }
+  task->ExceptionWasCaught = false;
+  {
+    CCriticalSectionLock lock(_cs);
+    if (_exit || _workers.IsEmpty())
+      return E_FAIL;
+    _queue.Add(task);
+  }
+  const WRes wres = _numQueued.Release();
+  return wres == 0 ? S_OK : HRESULT_FROM_WIN32(wres);
+}
+
+void CMtTaskPool::Stop()
+{
+  if (_workers.IsEmpty())
+    return;
+  {
+    CCriticalSectionLock lock(_cs);
+    _exit = true;
+    _queue.Clear();
+    _queueHead = 0;
+  }
+  // wake up all workers: each one sees (_exit) and returns
+  _numQueued.Release(_workers.Size());
+  FOR_VECTOR (i, _workers)
+    _workers[i].Thread.Wait_Close();
+  _workers.Clear();
+}
+
+#endif // Z7_ST
+
+}}

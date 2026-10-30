@@ -17,6 +17,14 @@ add_executable(extract_trace
   ${SEVENZIP_ASM_OBJECTS})
 target_link_libraries(extract_trace PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
+# Test unitari del modulo di estrazione parallela (7zExtractMt).
+add_executable(unit_7zextract_mt
+  unit_7zextract_mt.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS})
+target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+
 # Equivalenza delle callback tra configurazioni di estrazione.
 # Al passo 1 confronta -mmt=1 con -mmt=<tutti i core>: anche la decompressione
 # multi-thread di LZMA2 e il mixer MT devono produrre la stessa traccia.
@@ -48,3 +56,6 @@ add_test(NAME extract_equivalence_mt
           --config-a=-mmt=1
           --config-b=-mmt=on)
 set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
+
+add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zextract_mt>)
+set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

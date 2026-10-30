@@ -61,6 +61,7 @@ AR_COMMON_OBJS = \
   $O\7zDecode.obj \
   $O\7zEncode.obj \
   $O\7zExtract.obj \
+  $O\7zExtractMt.obj \
   $O\7zFolderInStream.obj \
   $O\7zHandler.obj \
   $O\7zHandlerOut.obj \

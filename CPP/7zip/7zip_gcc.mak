@@ -606,6 +606,8 @@ $O/7zEncode.o: ../../Archive/7z/7zEncode.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/7zExtract.o: ../../Archive/7z/7zExtract.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/7zExtractMt.o: ../../Archive/7z/7zExtractMt.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/7zFolderInStream.o: ../../Archive/7z/7zFolderInStream.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/7zHandler.o: ../../Archive/7z/7zHandler.cpp

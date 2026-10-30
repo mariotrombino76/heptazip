@@ -195,6 +195,7 @@ AR_COMMON_OBJS = \
   $O/7zDecode.o \
   $O/7zEncode.o \
   $O/7zExtract.o \
+  $O/7zExtractMt.o \
   $O/7zFolderInStream.o \
   $O/7zHandler.o \
   $O/7zHandlerOut.o \
