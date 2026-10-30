@@ -180,6 +180,7 @@ COMPRESS_OBJS = \
   $O\XzDecoder.obj \
   $O\XzEncoder.obj \
   $O\ZstdDecoder.obj \
+  $O\ZstdCodecRegister.obj \
 
 #  $O\LzfseDecoder.obj \
 #  $O\ZstdRegister.obj \

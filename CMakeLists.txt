@@ -60,6 +60,8 @@ set(SEVENZIP_SANITIZE "" CACHE STRING
   "Sanitizer: vuoto, address, thread, undefined o lista separata da virgole (es. address,undefined)")
 option(SEVENZIP_SANITIZE_RECOVER
   "UBSan: continua dopo un errore invece di terminare (per fare l'inventario delle segnalazioni)" OFF)
+option(SEVENZIP_ZSTD_ENCODER
+  "Encoder Zstandard per .7z con la libreria inclusa in third_party/zstd (il decoder e' sempre presente)" ON)
 option(SEVENZIP_BUILD_TESTS "Compila i programmi di test e registra la suite CTest" ON)
 
 set(CMAKE_C_STANDARD 17)
@@ -173,6 +175,9 @@ if(SEVENZIP_ASM)
   include(cmake/SevenZipAsm.cmake)
 endif()
 
+# Encoder Zstandard opzionale (modifica SEVENZIP_CPP_SOURCES, definisce SEVENZIP_ZSTD_OBJECTS)
+include(cmake/SevenZipZstd.cmake)
+
 # ---------------------------------------------------------------------------
 # Librerie
 #
@@ -202,7 +207,8 @@ add_executable(7zz
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   $<TARGET_OBJECTS:sevenzip_console>
-  ${SEVENZIP_ASM_OBJECTS})
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(7zz PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 include(GNUInstallDirs)
@@ -222,4 +228,5 @@ endif()
 message(STATUS "7-Zip modern: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
                "native=${SEVENZIP_NATIVE} lto=${SEVENZIP_LTO} asm=${SEVENZIP_ASM} "
                "pgo=${SEVENZIP_PGO} c++=${SEVENZIP_CXX_STANDARD} "
-               "sanitize=${SEVENZIP_SANITIZE} tests=${SEVENZIP_BUILD_TESTS}")
+               "sanitize=${SEVENZIP_SANITIZE} tests=${SEVENZIP_BUILD_TESTS} "
+               "zstd-encoder=${SEVENZIP_ZSTD_ENCODER}")

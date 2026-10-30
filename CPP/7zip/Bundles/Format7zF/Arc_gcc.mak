@@ -280,6 +280,7 @@ COMPRESS_OBJS = \
   $O/ZlibEncoder.o \
   $O/ZDecoder.o \
   $O/ZstdDecoder.o \
+  $O/ZstdCodecRegister.o \
 
 ifdef DISABLE_RAR
 DISABLE_RAR_COMPRESS=1

@@ -271,6 +271,7 @@ COMPRESS_OBJS = \
   $O/XzDecoder.o \
   $O/XzEncoder.o \
   $O/ZstdDecoder.o \
+  $O/ZstdCodecRegister.o \
 
 #  $O/LzfseDecoder.o \
 #  $O/ZstdRegister.o

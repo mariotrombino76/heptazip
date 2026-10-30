@@ -14,7 +14,8 @@ add_executable(extract_trace
   extract_trace.cpp
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
-  ${SEVENZIP_ASM_OBJECTS})
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(extract_trace PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Test unitari del modulo di estrazione parallela (7zExtractMt).
@@ -22,7 +23,8 @@ add_executable(unit_7zextract_mt
   unit_7zextract_mt.cpp
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
-  ${SEVENZIP_ASM_OBJECTS})
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Equivalenza delle callback tra configurazioni di estrazione.

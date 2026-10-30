@@ -24,6 +24,10 @@ for entry in "${METHODS_DEFAULT[@]}"; do
   name="${entry%%|*}"; opts="${entry#*|}"
   # AES usa un IV/salt casuale: l'output non e' deterministico per costruzione
   [[ "$opts" == *-p* ]] && { printf '%-20s %s\n' "$name" "SKIP (AES: IV casuale)"; continue; }
+  # zstd: encoder del fork, assente in 7-Zip upstream
+  if [[ "$opts" == *zstd* ]] && ! { has_encoder "$A" 4F71101 && has_encoder "$B" 4F71101; }; then
+    printf '%-20s %s\n' "$name" "SKIP (encoder zstd assente in uno dei binari)"; continue
+  fi
   for side in A B; do
     bin=$A; [[ $side == B ]] && bin=$B
     if [[ "$opts" == *-txz* ]]; then

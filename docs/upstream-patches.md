@@ -8,7 +8,10 @@ in `C/`. Serve per due scopi:
   proporre a upstream.
 
 I file nuovi del fork (`CMakeLists.txt`, `cmake/`, `tools/`, `tests/`, `docs/`, moduli
-`*Mt.*` nuovi) non sono elencati qui.
+nuovi come `7zExtractMt.*`, `ZstdLibEncoder.*`, `ZstdCodecRegister.cpp`) non sono elencati
+qui. Il codice esterno incluso è in `third_party/` (provenienza e versione nel README di
+ciascuna libreria). Possibili conflitti futuri: se upstream registrerà zstd per `.7z` con
+lo stesso ID, `ZstdCodecRegister.cpp` andrà rimosso o adattato.
 
 Nel codice ogni modifica è marcata con un commento che inizia con `7zip-modern:`
 (`grep -rn "7zip-modern:" C CPP`).
@@ -18,6 +21,7 @@ Nel codice ogni modifica è marcata con un commento che inizia con `7zip-modern:
 | `CPP/7zip/Archive/7z/7zExtract.cpp` (`CHandler::Extract`) | Raggruppamento degli elementi per folder → `GetExtractJob()`; esito di `Decode` → `ProcessFolderDecodeResult()`; corpo del ciclo → `InitJobOutput()` + `DecodeJobInline()` con `CExtractContext`. Nuova sezione `#if !defined(Z7_ST)` con l'estrazione parallela (`CParallelExtract`), attivata da `-mpfd` | Estrazione parallela dei folder (design 0001). In un merge, applicare le modifiche upstream del ciclo di `Extract` alle funzioni estratte | Con `pfd=off` nessuno (tracce identiche alla build upstream su 175 casi); con `pfd=on` tracce identiche al sequenziale (suite CTest) |
 | `CPP/7zip/Archive/7z/7zHandler.h/.cpp`, `7zHandlerOut.cpp` | Campo `_parallelFolderDecoding` e proprietà `pfd` (stesso schema di `_useMultiThreadMixer` / `mtf`), default `k_ParallelFolderDecoding_Default` | Opzione `-mpfd` | Nessuno con il default |
 | Makefile upstream (16 file: `7zip_gcc.mak`, `Arc_gcc.mak`, `Arc.mak`, `Archive/7z/makefile`, `Bundles/*/makefile[.gcc]`) | Aggiunto l'oggetto `7zExtractMt` accanto a `7zExtract` (e la regola in `7zip_gcc.mak`) | Nuovo modulo del fork per l'estrazione parallela (design 0001); le build originali restano equivalenti a CMake | Nessuno sull'output |
+| Makefile upstream (`7zip_gcc.mak`, `Arc_gcc.mak`, `Arc.mak`, `Bundles/Alone/makefile[.gcc]`) | Aggiunto `ZstdCodecRegister` accanto a `ZstdDecoder` | Decoder zstd registrato per `.7z` (design 0002) | `7zz i` elenca `4F71101 ZSTD`; nessun effetto sugli altri formati |
 | `C/LzFindOpt.c` (`GetMatchesSpecN_2`, calcolo di `src`) | `(...) << 1` → `(...) * 2` | Shift a sinistra di un valore negativo: comportamento indefinito in C, segnalato da UBSan (`-fsanitize=shift-base`) | Nessuno: stesso codice macchina; archivi identici (`compare-archives.sh`) |
 
 ## Comportamenti upstream noti, non modificati

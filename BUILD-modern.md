@@ -26,6 +26,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_ASM` | `OFF` | usa `Asm/x86/*.asm` (CRC, AES, SHA, LzFind, **LzmaDecOpt**); richiede `asmc`, `uasm` o `jwasm` |
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
 | `SEVENZIP_CXX_STANDARD` | `17` | standard C++ (17/20/23) |
+| `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 
 Nota: con GCC `-Wmaybe-uninitialized` e `-Wstringop-overflow` non sono trattati come errori, perché con
@@ -91,6 +92,19 @@ budget di memoria di decompressione (`-mmemuse`). I folder che producono più di
 sono decompressi in linea con tutti i thread (il decoder LZMA2 a blocchi è più veloce
 così). Risultati: da 1,15× a 2,9× sugli archivi con più folder (design 0001, §10). È un'opzione dell'handler 7z: come
 `-mtf`, non è accettata da altri formati (zip, xz…).
+
+## Zstandard nei `.7z` (`-m0=zstd`)
+
+```sh
+7zz a -m0=zstd -mx3 archivio.7z dati/      # veloce; livelli 1..22 (-mx o -m0=zstd:x=N)
+7zz a -m0=zstd -mx19 -ms=32m archivio.7z dati/   # blocchi solid piccoli: estrazione piu' veloce
+```
+
+Metodo `0x4F71101`, compatibile con 7-Zip-zstd. L'estrazione usa il decoder di 7-Zip
+(sempre presente, anche nelle build con i makefile originali); la compressione usa libzstd
+1.5.7 inclusa in `third_party/zstd` (opzione CMake `SEVENZIP_ZSTD_ENCODER`, ON di default).
+Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
+`docs/design/0002-zstd-nel-formato-7z.md`.
 
 ## Test automatici (CTest)
 

@@ -85,8 +85,13 @@ static void Test_EstimateMemory()
   CHECK(EstimateCoderDecodeMemory(k_BCJ2, NULL, 0, mem));
   CHECK(EstimateCoderDecodeMemory(k_ARM64, NULL, 0, mem));
   CHECK(EstimateCoderDecodeMemory(k_AES, NULL, 0, mem));
+  // zstd (ID di 7-Zip-zstd): finestra massima dei livelli standard (2^27)
+  {
+    const Byte props[5] = { 1, 5, 3, 0, 0 };
+    CHECK(EstimateCoderDecodeMemory(0x4F71101, props, 5, mem) && mem >= ((UInt64)128 << 20));
+  }
   // metodi sconosciuti -> false (il folder va al percorso sequenziale)
-  CHECK(!EstimateCoderDecodeMemory(0x4F71101, NULL, 0, mem)); // zstd di 7-Zip-zstd
+  CHECK(!EstimateCoderDecodeMemory(0x4F71103, NULL, 0, mem));
   CHECK(!EstimateCoderDecodeMemory((UInt64)1 << 40, NULL, 0, mem));
   CHECK(mem == 0);
 }

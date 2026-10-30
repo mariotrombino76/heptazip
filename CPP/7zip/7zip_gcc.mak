@@ -827,6 +827,8 @@ $O/ZlibEncoder.o: ../../Compress/ZlibEncoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/ZstdDecoder.o: ../../Compress/ZstdDecoder.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/ZstdCodecRegister.o: ../../Compress/ZstdCodecRegister.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/ZstdRegister.o: ../../Compress/ZstdRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
 

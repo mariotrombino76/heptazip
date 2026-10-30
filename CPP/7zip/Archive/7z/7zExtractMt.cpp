@@ -27,6 +27,15 @@ static const UInt64 kMem_BZip2   = (UInt64)16 << 20; // ~7.5 MiB per block, roun
 static const UInt64 kMem_Deflate = (UInt64)1 << 20;  // 64 KiB window + Huffman tables
 static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 streams
 
+/* Zstandard, 7z method of 7-Zip-zstd (registered in ZstdCodecRegister.cpp).
+   The 7-Zip decoder (C/ZstdDec.c) allocates MIN(content size, window size) of the
+   frame. The properties don't contain the window: we use the largest window of
+   the standard levels (2^27, level 22). Frames with bigger windows (long mode,
+   custom window) and without content size can use more memory than estimated;
+   the 7-Zip-modern encoder always stores the content size. */
+static const UInt32 k_ZSTD_7zZstd = 0x4F71101;
+static const UInt64 kMem_Zstd = (UInt64)1 << 27;
+
 // LZMA_LIT_SIZE and LZMA probability model size (C/LzmaDec.c), with 16-bit probs
 static UInt64 GetLzmaProbsMemory(unsigned lc, unsigned lp)
 {
@@ -94,6 +103,10 @@ bool EstimateCoderDecodeMemory(CMethodId methodId, const Byte *props, size_t pro
 
     case k_BCJ2:
       mem = kMem_BCJ2;
+      break;
+
+    case k_ZSTD_7zZstd:
+      mem = kMem_Zstd;
       break;
 
     case k_Copy:

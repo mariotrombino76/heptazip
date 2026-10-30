@@ -51,10 +51,13 @@ PROFILES = [
     ("copy",               ["-mx0"], False),
     ("aes-headers",        ["-mx3", "-ms=1m", "-mhe=on", f"-p{PASSWORD}"], True),
     ("aes-nonsolid",       ["-mx3", "-ms=off", f"-p{PASSWORD}"], True),
+    ("zstd-solid",         ["-m0=zstd", "-mx3"], False),
+    ("zstd-nonsolid",      ["-m0=zstd", "-mx9", "-ms=off"], False),
 ]
 
 # archivi da cui derivare copie corrotte
-CORRUPT_FROM = ["solid-lzma2", "solid-lzma2-blocks", "nonsolid", "small-solid", "bcj2", "aes-nonsolid"]
+CORRUPT_FROM = ["solid-lzma2", "solid-lzma2-blocks", "nonsolid", "small-solid", "bcj2", "aes-nonsolid",
+                "zstd-solid", "zstd-nonsolid"]
 CORRUPT_POINTS = [0.25, 0.50, 0.75]
 # archivi su cui iniettare errori nelle callback (annullamento, scrittura fallita)
 FAULT_FROM = ["solid-lzma2", "nonsolid", "small-solid", "bcj2"]
@@ -129,6 +132,12 @@ def create_archive(sz: str, data: Path, arc: Path, opts) -> None:
                        cwd=data, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     if p.returncode != 0 or sanitizer_report(p.stderr):
         raise RuntimeError(f"creazione di {arc.name} fallita (rc={p.returncode}):\n{p.stderr[-4000:]}")
+
+
+def has_encoder(sz: str, method_id: str) -> bool:
+    """True se 7zz ha l'encoder del metodo (colonna 'E' di '7zz i')."""
+    out = subprocess.run([sz, "i"], capture_output=True, text=True).stdout
+    return any(re.match(rf"^\s*E\S*\s+{method_id}\s", line) for line in out.splitlines())
 
 
 def corrupt_copy(src: Path, dst: Path, point: float) -> None:
@@ -230,7 +239,14 @@ def main() -> int:
         arcs = work / "arcs"
         arcs.mkdir()
 
+        zstd_encoder = has_encoder(sz, "4F71101")
+        if not zstd_encoder:
+            print("NOTA: encoder zstd non presente (SEVENZIP_ZSTD_ENCODER=OFF): profili zstd saltati")
+        skipped = set()
         for name, opts, enc in PROFILES:
+            if name.startswith("zstd") and not zstd_encoder:
+                skipped.add(name)
+                continue
             arc = arcs / f"{name}.7z"
             create_archive(sz, data, arc, opts)
             pw = [f"-p{PASSWORD}"] if enc else []
@@ -270,6 +286,8 @@ def main() -> int:
         cases.append(("unsupported-method/every3", dst, ["-i" + ",".join(str(i) for i in range(0, 40, 3))], False))
 
         for name in CORRUPT_FROM:
+            if name in skipped:
+                continue
             src = arcs / f"{name}.7z"
             pw = [f"-p{PASSWORD}"] if dict((p[0], p[2]) for p in PROFILES)[name] else []
             for pt in CORRUPT_POINTS:

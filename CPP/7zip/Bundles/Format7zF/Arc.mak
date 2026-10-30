@@ -241,6 +241,7 @@ COMPRESS_OBJS = \
   $O\ZlibEncoder.obj \
   $O\ZDecoder.obj \
   $O\ZstdDecoder.obj \
+  $O\ZstdCodecRegister.obj \
 
 CRYPTO_OBJS = \
   $O\7zAes.obj \

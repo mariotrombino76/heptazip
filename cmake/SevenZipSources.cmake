@@ -295,6 +295,7 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/Compress/ZlibEncoder.cpp
   CPP/7zip/Compress/ZDecoder.cpp
   CPP/7zip/Compress/ZstdDecoder.cpp
+  CPP/7zip/Compress/ZstdCodecRegister.cpp
   CPP/7zip/Compress/Rar1Decoder.cpp
   CPP/7zip/Compress/Rar2Decoder.cpp
   CPP/7zip/Compress/Rar3Decoder.cpp

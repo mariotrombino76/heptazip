@@ -23,6 +23,11 @@ require_bin() {
   [[ -x "$1" ]] || die "eseguibile non trovato: $1"
 }
 
+# true se il binario ha l'encoder del metodo con ID $2 (colonna "E" di "7zz i")
+has_encoder() {
+  "$1" i 2>/dev/null | grep -qE "^[[:space:]]*E[^[:space:]]*[[:space:]]+$2[[:space:]]"
+}
+
 require_dir() {
   [[ -d "$1" ]] || die "directory non trovata: $1 (generala con tools/bench/make-corpus.sh)"
 }
@@ -44,6 +49,8 @@ METHODS_DEFAULT=(
   "7z-bcj2|-t7z -mf=BCJ2 -mx5 -mmt=4"
   "7z-aes|-t7z -mx3 -mmt=4 -mhe=on -psegreto"
   "7z-nonsolid-aes|-t7z -mx3 -ms=off -mmt=4 -psegreto"
+  "7z-zstd|-t7z -m0=zstd -mx3 -mmt=4"
+  "7z-zstd-nonsolid|-t7z -m0=zstd -mx9 -ms=off -mmt=4"
   "zip-deflate|-tzip -mx5 -mmt=4"
   "xz|-txz -mx5 -mmt=4"
 )
