@@ -226,6 +226,103 @@ Z7_COM7F_IMF(CFolderOutStream::GetSubStreamSize(UInt64 subStream, UInt64 *value)
 */
 
 
+/* 7zip-modern: the planning of one extraction step and the handling of the
+   folder decoding result were moved out of CHandler::Extract() into the two
+   functions below, without behavior changes, so that the parallel folder
+   extraction (docs/design/0001-estrazione-parallela-folder-7z.md) can reuse
+   exactly the same logic. */
+
+/* One step of extraction: a run of consecutive requested items that belong to
+   the same folder (or one item without folder: empty file, dir, anti-item). */
+struct CExtractJob
+{
+  UInt32 NumItems;        // number of requested items processed by this step
+  UInt32 StartFileIndex;  // first file passed to CFolderOutStream::Init()
+  CNum FolderIndex;       // kNumNoIndex, if the item has no data stream
+  UInt64 UnpackSize;      // bytes to unpack: up to the end of the last requested file
+  UInt64 PackSize;
+};
+
+static void GetExtractJob(const CDbEx &db,
+    const UInt32 *indices, UInt32 numItems, bool allFilesMode,
+    UInt32 i, CExtractJob &job)
+{
+  job.UnpackSize = 0;
+  job.PackSize = 0;
+
+  UInt32 fileIndex = allFilesMode ? i : indices[i];
+  const CNum folderIndex = db.FileIndexToFolderIndexMap[fileIndex];
+
+  UInt32 numSolidFiles = 1;
+
+  if (folderIndex != kNumNoIndex)
+  {
+    job.PackSize = db.GetFolderFullPackSize(folderIndex);
+    UInt32 nextFile = fileIndex + 1;
+    fileIndex = db.FolderStartFileIndex[folderIndex];
+    UInt32 k;
+
+    for (k = i + 1; k < numItems; k++)
+    {
+      const UInt32 fileIndex2 = allFilesMode ? k : indices[k];
+      if (db.FileIndexToFolderIndexMap[fileIndex2] != folderIndex
+          || fileIndex2 < nextFile)
+        break;
+      nextFile = fileIndex2 + 1;
+    }
+
+    numSolidFiles = k - i;
+
+    for (k = fileIndex; k < nextFile; k++)
+      job.UnpackSize += db.Files[k].Size;
+  }
+
+  job.NumItems = numSolidFiles;
+  job.StartFileIndex = fileIndex;
+  job.FolderIndex = folderIndex;
+}
+
+/* Processes the result of CDecoder::Decode() for one folder.
+   Returns S_OK, if extraction must continue with the next step. */
+static HRESULT ProcessFolderDecodeResult(
+    CFolderOutStream *folderOutStream,
+    IArchiveExtractCallbackMessage2 *callbackMessage,
+    CNum folderIndex, HRESULT result, bool dataAfterEnd_Error)
+{
+  if (result == S_FALSE || result == E_NOTIMPL || dataAfterEnd_Error)
+  {
+    const bool wasFinished = folderOutStream->WasWritingFinished();
+
+    int resOp = NExtract::NOperationResult::kDataError;
+
+    if (result != S_FALSE)
+    {
+      if (result == E_NOTIMPL)
+        resOp = NExtract::NOperationResult::kUnsupportedMethod;
+      else if (wasFinished && dataAfterEnd_Error)
+        resOp = NExtract::NOperationResult::kDataAfterEnd;
+    }
+
+    RINOK(folderOutStream->FlushCorrupted(resOp))
+
+    if (wasFinished)
+    {
+      // we don't show error, if it's after required files
+      if (/* !folderOutStream->ExtraWriteWasCut && */ callbackMessage)
+      {
+        RINOK(callbackMessage->ReportExtractResult(NEventIndexType::kBlockIndex, folderIndex, resOp))
+      }
+    }
+    return S_OK;
+  }
+
+  if (result != S_OK)
+    return result;
+
+  return folderOutStream->FlushCorrupted(NExtract::NOperationResult::kDataError);
+}
+
+
 Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     Int32 testModeSpec, IArchiveExtractCallback *extractCallbackSpec))
 {
@@ -310,42 +407,18 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     if (i >= numItems)
       break;
 
-    curUnpacked = 0;
-    curPacked = 0;
-
-    UInt32 fileIndex = allFilesMode ? i : indices[i];
-    const CNum folderIndex = _db.FileIndexToFolderIndexMap[fileIndex];
-
-    UInt32 numSolidFiles = 1;
-
-    if (folderIndex != kNumNoIndex)
-    {
-      curPacked = _db.GetFolderFullPackSize(folderIndex);
-      UInt32 nextFile = fileIndex + 1;
-      fileIndex = _db.FolderStartFileIndex[folderIndex];
-      UInt32 k;
-
-      for (k = i + 1; k < numItems; k++)
-      {
-        const UInt32 fileIndex2 = allFilesMode ? k : indices[k];
-        if (_db.FileIndexToFolderIndexMap[fileIndex2] != folderIndex
-            || fileIndex2 < nextFile)
-          break;
-        nextFile = fileIndex2 + 1;
-      }
-      
-      numSolidFiles = k - i;
-      
-      for (k = fileIndex; k < nextFile; k++)
-        curUnpacked += _db.Files[k].Size;
-    }
+    CExtractJob job;
+    GetExtractJob(_db, indices, numItems, allFilesMode, i, job);
+    curUnpacked = job.UnpackSize;
+    curPacked = job.PackSize;
+    const CNum folderIndex = job.FolderIndex;
 
     {
-      const HRESULT result = folderOutStream->Init(fileIndex,
+      const HRESULT result = folderOutStream->Init(job.StartFileIndex,
           allFilesMode ? NULL : indices + i,
-          numSolidFiles);
+          job.NumItems);
 
-      i += numSolidFiles;
+      i += job.NumItems;
 
       RINOK(result)
     }
@@ -394,37 +467,8 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
           #endif
           );
 
-      if (result == S_FALSE || result == E_NOTIMPL || dataAfterEnd_Error)
-      {
-        const bool wasFinished = folderOutStream->WasWritingFinished();
-
-        int resOp = NExtract::NOperationResult::kDataError;
-        
-        if (result != S_FALSE)
-        {
-          if (result == E_NOTIMPL)
-            resOp = NExtract::NOperationResult::kUnsupportedMethod;
-          else if (wasFinished && dataAfterEnd_Error)
-            resOp = NExtract::NOperationResult::kDataAfterEnd;
-        }
-
-        RINOK(folderOutStream->FlushCorrupted(resOp))
-
-        if (wasFinished)
-        {
-          // we don't show error, if it's after required files
-          if (/* !folderOutStream->ExtraWriteWasCut && */ callbackMessage)
-          {
-            RINOK(callbackMessage->ReportExtractResult(NEventIndexType::kBlockIndex, folderIndex, resOp))
-          }
-        }
-        continue;
-      }
-      
-      if (result != S_OK)
-        return result;
-
-      RINOK(folderOutStream->FlushCorrupted(NExtract::NOperationResult::kDataError))
+      RINOK(ProcessFolderDecodeResult(folderOutStream, callbackMessage,
+          folderIndex, result, dataAfterEnd_Error))
       continue;
     }
     catch(...)
