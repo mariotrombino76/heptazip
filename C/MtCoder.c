@@ -347,10 +347,27 @@ static THREAD_FUNC_DECL ThreadFunc(void *pp)
       
       #ifndef MTCODER_USE_WRITE_THREAD
       {
-        const unsigned numFinished = (unsigned)InterlockedIncrement(&mtc->numFinishedThreads);
-        if (numFinished == mtc->numStartedThreads)
-          if (Event_Set(&mtc->finishedEvent) != 0)
-            return (THREAD_FUNC_RET_TYPE)SZ_ERROR_THREAD;
+        /* 7zip-modern: (numStartedThreads) is read in the read section (readEvent),
+           after (stopReading) is set: then no thread can start another one, so the
+           value is final for this MtCoder_Code() call. And it's read before the
+           increment of (numFinishedThreads): the read can't overlap with the next
+           MtCoder_Code() call, that starts after the last thread set finishedEvent.
+           The old code read it after the increment, without a lock: a data race
+           with the next call (reported by ThreadSanitizer), where a late thread
+           could compare with the new value and set finishedEvent of the new call. */
+        unsigned numStarted;
+        if (Event_Wait(&mtc->readEvent) != 0)
+          return (THREAD_FUNC_RET_TYPE)SZ_ERROR_THREAD;
+        mtc->stopReading = True;  // already set, if the thread was not stopped by an error
+        numStarted = mtc->numStartedThreads;
+        if (Event_Set(&mtc->readEvent) != 0)
+          return (THREAD_FUNC_RET_TYPE)SZ_ERROR_THREAD;
+        {
+          const unsigned numFinished = (unsigned)InterlockedIncrement(&mtc->numFinishedThreads);
+          if (numFinished == numStarted)
+            if (Event_Set(&mtc->finishedEvent) != 0)
+              return (THREAD_FUNC_RET_TYPE)SZ_ERROR_THREAD;
+        }
       }
       #endif
     }
