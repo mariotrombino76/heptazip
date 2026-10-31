@@ -165,10 +165,13 @@ static void MatchFinder_ReadBlock(CMatchFinder *p)
       #pragma GCC diagnostic ignored "-Wcast-qual"
     #endif
     */
-    p->result = ISeqInStream_Read(p->stream,
-        p->bufBase + (dest - p->bufBase), &size);
-    if (p->result != SZ_OK)
-      return;
+    {
+      const SRes res = ISeqInStream_Read(p->stream,
+          p->bufBase + (dest - p->bufBase), &size);
+      Z7_ATOMIC32_STORE_RELAXED(&p->result, res);
+      if (res != SZ_OK)
+        return;
+    }
     if (size == 0)
     {
       p->streamEndWasReached = 1;
@@ -568,7 +571,7 @@ void MatchFinder_Init_4(CMatchFinder *p)
         1; // it's smallest optimal value. do not change it
         // 0; // for debug
   }
-  p->result = SZ_OK;
+  Z7_ATOMIC32_STORE_RELAXED(&p->result, SZ_OK);
   p->streamEndWasReached = 0;
 }
 

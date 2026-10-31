@@ -1,11 +1,8 @@
-# Soppressioni ThreadSanitizer per race NOTE nel codice upstream (non del fork).
-# Ogni voce deve essere motivata e registrata in docs/upstream-patches.md.
+# Soppressioni ThreadSanitizer per race note e motivate.
+# Ogni voce deve essere spiegata qui e registrata in docs/upstream-patches.md.
+# Attenzione: una voce "race:<funzione>" sopprime ogni race con quella funzione
+# in uno dei due stack, non solo quella per cui e' stata scritta.
 #
-# C/LzFindMt.c: flag "stopWriting" (BoolInt non atomico) scritto da
-# MtSync_StopWriting() e letto da BtThreadFunc()/HashThreadFunc(). La lettura
-# significativa e' ordinata da Semaphore_Release1/Semaphore_Wait; TSan segnala la
-# lettura dell'iterazione precedente, concorrente alla scrittura (race formale C11,
-# benigna su x86). Solo encoder LZMA/LZMA2 multi-thread (compressione).
-race:MtSync_StopWriting
-race:BtThreadFunc
-race:HashThreadFunc
+# Nessuna voce attiva. Le race di C/LzFindMt.c ("stopWriting") e di C/LzFind.c
+# ("result" del match finder), prima soppresse qui, sono corrette con accessi
+# atomici (Z7_ATOMIC32_* in C/7zTypes.h).

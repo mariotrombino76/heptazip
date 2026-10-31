@@ -46,6 +46,13 @@ typedef struct
   Byte numHashBytes_Min;
   Byte numHashOutBits;
   Byte _pad2_[2];
+  /* 7zip-modern: with the multithreaded match finder (LzFindMt) the hash thread
+     writes (result) at each read of the input stream, while the encoder thread
+     can read it (CheckErrors() in LzmaEnc.c after each LZMA2 chunk). So it's
+     written with Z7_ATOMIC32_STORE_RELAXED, and read with Z7_ATOMIC32_LOAD_RELAXED
+     outside of the thread that reads the stream. Relaxed order is enough: an
+     error is stored before the hash thread reports the end of data, and that
+     report reaches the encoder thread through the semaphores of LzFindMt. */
   SRes result;
   UInt32 crc[256];
   size_t numRefs;

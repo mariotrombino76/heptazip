@@ -313,6 +313,29 @@ typedef int BoolInt;
 #endif //  _MSC_VER
 
 
+/* 7zip-modern: relaxed atomic load / store of a 32-bit integer object
+   (BoolInt, SRes, Int32, UInt32) that one thread writes while another thread
+   reads it. Without them such accesses are a data race: undefined behaviour in
+   C11 / C++11, reported by ThreadSanitizer.
+   The object keeps its plain type, so structures shared by C and C++ code keep
+   the same layout (C++20 has no <stdatomic.h>).
+   "Relaxed" gives atomicity, not ordering: use them only where the ordering that
+   matters comes from another synchronization (semaphore, event, mutex), and say
+   so at the declaration of the object. On x86 / ARM they compile to plain loads
+   and stores. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define Z7_ATOMIC32_LOAD_RELAXED(p)      __atomic_load_n(p, __ATOMIC_RELAXED)
+  #define Z7_ATOMIC32_STORE_RELAXED(p, v)  __atomic_store_n(p, v, __ATOMIC_RELAXED)
+#elif defined(_MSC_VER) && (_MSC_VER >= 1900)
+  #include <intrin.h>
+  #define Z7_ATOMIC32_LOAD_RELAXED(p)      __iso_volatile_load32((const volatile __int32 *)(const void *)(p))
+  #define Z7_ATOMIC32_STORE_RELAXED(p, v)  __iso_volatile_store32((volatile __int32 *)(void *)(p), (__int32)(v))
+#else
+  #define Z7_ATOMIC32_LOAD_RELAXED(p)      (*(const volatile Int32 *)(const void *)(p))
+  #define Z7_ATOMIC32_STORE_RELAXED(p, v)  (*(volatile Int32 *)(void *)(p) = (Int32)(v))
+#endif
+
+
 /* The following interfaces use first parameter as pointer to structure */
 
 // #define Z7_C_IFACE_CONST_QUAL

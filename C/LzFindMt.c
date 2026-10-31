@@ -88,6 +88,7 @@ static void MtSync_Construct(CMtSync *p)
   p->wasCreated = False;
   p->csWasInitialized = False;
   p->csWasEntered = False;
+  Z7_ATOMIC32_STORE_RELAXED(&p->stopWriting, False);
   Thread_CONSTRUCT(&p->thread)
   Event_Construct(&p->canStart);
   Event_Construct(&p->wasStopped);
@@ -127,7 +128,7 @@ static UInt32 MtSync_GetNextBlock(CMtSync *p)
     BUFFER_MUST_BE_UNLOCKED(p)
     p->numProcessedBlocks = 1;
     p->needStart = False;
-    p->stopWriting = False;
+    Z7_ATOMIC32_STORE_RELAXED(&p->stopWriting, False);
     p->exit = False;
     Event_Reset(&p->wasStopped);
     Event_Set(&p->canStart);
@@ -173,7 +174,7 @@ static void MtSync_StopWriting(CMtSync *p)
      so we can get fast thread stop.
   */
 
-  p->stopWriting = True;
+  Z7_ATOMIC32_STORE_RELAXED(&p->stopWriting, True);
   Semaphore_Release1(&p->freeSemaphore); // check semaphore count !!!
 
     PRF(printf("\nMtSync_StopWriting %p : Event_Wait(&p->wasStopped)\n", p));
@@ -493,7 +494,7 @@ static void HashThreadFunc(CMatchFinderMt *mt)
           return;
 
         // for faster stop : we check (p->stopWriting) after Wait(freeSemaphore)
-        if (p->stopWriting)
+        if (Z7_ATOMIC32_LOAD_RELAXED(&p->stopWriting))
           break;
 
         MatchFinder_ReadIfRequired(mf);
@@ -777,7 +778,7 @@ static void BtThreadFunc(CMatchFinderMt *mt)
       Semaphore_Wait(&p->freeSemaphore);
       
       // for faster stop : we check (p->stopWriting) after Wait(freeSemaphore)
-      if (p->stopWriting)
+      if (Z7_ATOMIC32_LOAD_RELAXED(&p->stopWriting))
         break;
 
       BtFillBlock(mt, blockIndex++);

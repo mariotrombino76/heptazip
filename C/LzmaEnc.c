@@ -2169,6 +2169,15 @@ static void WriteEndMarker(CLzmaEnc *p, unsigned posState)
 }
 
 
+/* 7zip-modern: atomic read of CMatchFinder::result (see LzFind.h). It's not
+   inlined: CheckErrors() is inlined into the hot LzmaEnc_CodeOneBlock(), and an
+   inlined __atomic load there changes the inlining and the register allocation
+   of the whole function (measured: 1.4% slower compression). */
+static Z7_NO_INLINE SRes MatchFinder_Load_result(const CMatchFinder *mf)
+{
+  return Z7_ATOMIC32_LOAD_RELAXED(&mf->result);
+}
+
 static SRes CheckErrors(CLzmaEnc *p)
 {
   if (p->result != SZ_OK)
@@ -2189,7 +2198,7 @@ static SRes CheckErrors(CLzmaEnc *p)
   }
   #endif
 
-  if (MFB.result != SZ_OK)
+  if (MatchFinder_Load_result(&MFB) != SZ_OK)
     p->result = SZ_ERROR_READ;
   
   if (p->result != SZ_OK)
