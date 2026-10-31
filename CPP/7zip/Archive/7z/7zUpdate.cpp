@@ -2106,6 +2106,9 @@ class CFolderEncodeTask: public CMtTask
   HRESULT Encode();
 public:
   CParallelFolderEncoder *Owner;
+  // indexes of the files in (updateItems): a copy, because the folder can be
+  // written after the end of the loop of its group in Update()
+  std::vector<UInt32> IndexStorage;
   const UInt32 *Indices;
   unsigned NumSubFiles;
   UInt64 ExpectedSize;
@@ -2148,8 +2151,13 @@ class CParallelFolderEncoder
   Z7_CLASS_NO_COPY(CParallelFolderEncoder)
 
   const CNewFolderContext &_ctx;
-  const CCompressionMethodMode &_method;
+  /* methods of the groups of filters, in the order of Update(): the folders of
+     several groups can be compressed at the same time (a copy of each method,
+     because the encoders of a group can work after the end of its loop). */
+  std::vector<std::unique_ptr<CCompressionMethodMode> > _methods;
+  unsigned _curGroup;   // group of the folders that are added now
   UInt32 _numThreads;
+  UInt64 _memLimit;
   UInt32 _threadsInUse;
   CMemoryBudget _budget;
 
@@ -2160,10 +2168,11 @@ class CParallelFolderEncoder
      bounds the real one, also with idle encoders. */
   struct CEncoderSlot
   {
-    std::unique_ptr<CEncoder> Encoder;
+    std::unique_ptr<CEncoder> Encoder; // for the method of (Group); NULL: not created
+    unsigned Group;
     UInt64 Memory;
     bool Busy;
-    CEncoderSlot(): Memory(0), Busy(false) {}
+    CEncoderSlot(): Group(0), Memory(0), Busy(false) {}
   };
   std::vector<CEncoderSlot> _slots;
 
@@ -2173,6 +2182,7 @@ class CParallelFolderEncoder
 
   int FindFreeSlot(UInt64 encoderMemory) const;
   bool ReleaseIdleSlots(unsigned except);
+  void ReleaseSlot(CEncoderSlot &slot);
   HRESULT ReadAhead(CFolderEncodeTask &task, bool &stoppedAtLimit);
   HRESULT Commit(CFolderEncodeTask &task);
   HRESULT ReportProgress();
@@ -2183,8 +2193,8 @@ public:
   NWindows::NSynchronization::CAutoResetEvent Wake; // a task finished or made progress
   std::atomic<bool> StopRequested;
 
-  CParallelFolderEncoder(const CNewFolderContext &ctx, const CCompressionMethodMode &method):
-      _ctx(ctx), _method(method), _numThreads(method.NumThreads), _threadsInUse(0),
+  CParallelFolderEncoder(const CNewFolderContext &ctx, UInt32 numThreads, UInt64 memLimit):
+      _ctx(ctx), _curGroup(0), _numThreads(numThreads), _memLimit(memLimit), _threadsInUse(0),
       StopRequested(false)
       {}
   ~CParallelFolderEncoder()
@@ -2199,12 +2209,21 @@ public:
 
   HRESULT Start();
 
+  /* The next folders are of a new group of filters, with (method). The folders
+     of the previous groups that are queued continue. */
+  void BeginGroup(const CCompressionMethodMode &method)
+  {
+    _methods.push_back(std::make_unique<CCompressionMethodMode>(method));
+    _curGroup = (unsigned)_methods.size() - 1;
+  }
+
   /* (done == true): the folder is queued (or was compressed) by this object.
      (done == false): the caller must compress it inline; all the queued folders
      were written before.
-     (isLastFolder): the last folder of the group: if no other folder is being
-     compressed, it's compressed inline (nothing to overlap with: it keeps the
-     streaming of the sequential loop, e.g. for an archive with one solid block). */
+     (isLastFolder): the last new folder of the operation: if no other folder is
+     being compressed, it's compressed inline (nothing to overlap with: it keeps
+     the streaming of the sequential loop, e.g. for an archive with one solid
+     block). (indices) is copied: the caller can free it after the call. */
   HRESULT AddFolder(const UInt32 *indices, unsigned numSubFiles, UInt64 expectedSize,
       bool isLastFolder, CEncoder &inlineEncoder, bool &done);
 
@@ -2293,26 +2312,34 @@ HRESULT CParallelFolderEncoder::Start()
     if (wres != 0)
       return HRESULT_FROM_WIN32(wres);
   }
-  _budget.Init(_method.MemoryUsageLimit);
-  // no more running tasks than threads: each task has a weight >= 1
+  _budget.Init(_memLimit);
+  // no more running tasks than threads: each task has a weight >= 1;
+  // the encoders are created for the group of their first folder
   _slots.resize(_numThreads);
-  for (CEncoderSlot &slot : _slots)
-    slot.Encoder = std::make_unique<CEncoder>(_method);
   return _pool.Start(_numThreads);
 }
 
 
-/* A free slot for a task with (encoderMemory): the smallest one with enough
-   reserved memory, else the largest one (the least memory to add). -1: none. */
+/* A free slot for a task of the current group with (encoderMemory). Among the
+   slots of the current group: the smallest one with enough reserved memory, else
+   the largest one (the least memory to add). Else a slot of another group (its
+   encoder will be replaced): the one with the least memory. -1: none. */
 int CParallelFolderEncoder::FindFreeSlot(UInt64 encoderMemory) const
 {
   int fit = -1;
   int largest = -1;
+  int other = -1;
   for (unsigned i = 0; i < _slots.size(); i++)
   {
     const CEncoderSlot &slot = _slots[i];
     if (slot.Busy)
       continue;
+    if (!slot.Encoder || slot.Group != _curGroup)
+    {
+      if (other < 0 || slot.Memory < _slots[(unsigned)other].Memory)
+        other = (int)i;
+      continue;
+    }
     if (slot.Memory >= encoderMemory)
     {
       if (fit < 0 || slot.Memory < _slots[(unsigned)fit].Memory)
@@ -2321,12 +2348,21 @@ int CParallelFolderEncoder::FindFreeSlot(UInt64 encoderMemory) const
     else if (largest < 0 || slot.Memory > _slots[(unsigned)largest].Memory)
       largest = (int)i;
   }
-  return fit >= 0 ? fit : largest;
+  return fit >= 0 ? fit : largest >= 0 ? largest : other;
 }
 
 
-/* Frees the memory of the idle encoders (but (except)): a new CEncoder creates
-   its coders again at the first folder. Returns false if nothing was freed. */
+/* Destroys the encoder of an idle slot: its memory is freed. */
+void CParallelFolderEncoder::ReleaseSlot(CEncoderSlot &slot)
+{
+  slot.Encoder.reset();
+  _budget.Release(slot.Memory);
+  slot.Memory = 0;
+}
+
+
+/* Frees the memory of the idle encoders (but (except)): the slot creates a new
+   CEncoder for its next folder. Returns false if nothing was freed. */
 bool CParallelFolderEncoder::ReleaseIdleSlots(unsigned except)
 {
   bool released = false;
@@ -2335,9 +2371,7 @@ bool CParallelFolderEncoder::ReleaseIdleSlots(unsigned except)
     CEncoderSlot &slot = _slots[i];
     if (slot.Busy || i == except || slot.Memory == 0)
       continue;
-    slot.Encoder = std::make_unique<CEncoder>(_method);
-    _budget.Release(slot.Memory);
-    slot.Memory = 0;
+    ReleaseSlot(slot);
     released = true;
   }
   return released;
@@ -2499,7 +2533,7 @@ HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSub
 
   CFolderEncodeCost cost;
   if (expectedSize > kMaxParallelEncodeFolderSize
-      || !EstimateFolderEncodeCost(_method, *_ctx.InSizeForReduce, expectedSize, cost)
+      || !EstimateFolderEncodeCost(*_methods[_curGroup], *_ctx.InSizeForReduce, expectedSize, cost)
       // the encoder alone uses all the threads (e.g. BZip2 blocks): nothing to gain
       || cost.NumThreads >= _numThreads)
     return Flush();
@@ -2509,7 +2543,8 @@ HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSub
 
   std::unique_ptr<CFolderEncodeTask> task = std::make_unique<CFolderEncodeTask>();
   task->Owner = this;
-  task->Indices = indices;
+  task->IndexStorage.assign(indices, indices + numSubFiles);
+  task->Indices = task->IndexStorage.data();
   task->NumSubFiles = numSubFiles;
   task->ExpectedSize = expectedSize;
   task->NumThreads = cost.NumThreads;
@@ -2572,6 +2607,8 @@ HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSub
       if (slotIndex >= 0)
       {
         CEncoderSlot &slot = _slots[(unsigned)slotIndex];
+        if (slot.Encoder && slot.Group != _curGroup)
+          ReleaseSlot(slot);  // the encoder of another group
         const UInt64 extra = slot.Memory >= task->EncoderMemory ? 0 :
             task->EncoderMemory - slot.Memory;
         // memory kept by idle encoders is freed before waiting for running tasks
@@ -2580,6 +2617,11 @@ HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSub
         // (_window.empty()): this folder alone; it's not a large job (checked above)
         if (extra == 0 || _budget.CanReserve(extra) || _window.empty())
         {
+          if (!slot.Encoder)
+          {
+            slot.Encoder = std::make_unique<CEncoder>(*_methods[_curGroup]);
+            slot.Group = _curGroup;
+          }
           _budget.Reserve(extra);
           slot.Memory += extra;
           slot.Busy = true;
@@ -3060,6 +3102,31 @@ HRESULT Update(
   newFolderCtx.LpsProgress = lps;
   newFolderCtx.Complexity = &complexity;
 
+  /* 7zip-modern: parallel compression of the new folders (design 0003). One
+     object for all the groups: the folders of a group are compressed while the
+     last folders of the previous group are still being compressed. */
+ #ifndef Z7_ST
+  std::unique_ptr<CParallelFolderEncoder> parallelEncoder;
+  int lastGroupWithNewFiles = -1;
+  {
+    unsigned numNewFiles = 0;
+    FOR_VECTOR (g, filters)
+    {
+      const unsigned n = groups[filters[g].GroupIndex].Indices.Size();
+      numNewFiles += n;
+      if (n != 0)
+        lastGroupWithNewFiles = (int)g;
+    }
+    if (options.ParallelFolderEncoding && options.Method->NumThreads > 1 && numNewFiles > 1)
+    {
+      parallelEncoder = std::make_unique<CParallelFolderEncoder>(newFolderCtx,
+          options.Method->NumThreads, options.Method->MemoryUsageLimit);
+      if (parallelEncoder->Start() != S_OK)
+        parallelEncoder.reset(); // threads can't be created: sequential compression
+    }
+  }
+ #endif
+
   for (unsigned groupIndex = 0; groupIndex < filters.Size(); groupIndex++)
   {
     const CFilterMode2 &filterMode = filters[groupIndex];
@@ -3100,6 +3167,18 @@ HRESULT Update(
     // ---------- Repack and copy old solid blocks ----------
 
     const CSolidGroup &group = groups[filterMode.GroupIndex];
+
+   #ifndef Z7_ST
+    if (parallelEncoder)
+    {
+      // the old folders are written directly to the archive: after the queued ones
+      if (!group.folderRefs.IsEmpty())
+      {
+        RINOK(parallelEncoder->Flush())
+      }
+      parallelEncoder->BeginGroup(method);
+    }
+   #endif
     
     FOR_VECTOR (folderRefIndex, group.folderRefs)
     {
@@ -3474,17 +3553,6 @@ HRESULT Update(
       */
     }
     
-   #ifndef Z7_ST
-    // 7zip-modern: parallel compression of the folders of this group (design 0003)
-    std::unique_ptr<CParallelFolderEncoder> parallelEncoder;
-    if (options.ParallelFolderEncoding && method.NumThreads > 1 && numFiles > 1)
-    {
-      parallelEncoder = std::make_unique<CParallelFolderEncoder>(newFolderCtx, method);
-      if (parallelEncoder->Start() != S_OK)
-        parallelEncoder.reset(); // threads can't be created: sequential compression
-    }
-   #endif
-
     for (i = 0; i < numFiles;)
     {
       UInt64 totalSize = 0;
@@ -3532,7 +3600,8 @@ HRESULT Update(
       {
         bool done;
         RINOK(parallelEncoder->AddFolder(&indices[i], numSubFiles, totalSize,
-            i + numSubFiles == numFiles, encoder, done))
+            i + numSubFiles == numFiles && (int)groupIndex == lastGroupWithNewFiles,
+            encoder, done))
         if (done)
         {
           i += numSubFiles;
@@ -3590,14 +3659,15 @@ HRESULT Update(
       }
       */
     }
-
-   #ifndef Z7_ST
-    if (parallelEncoder)
-    {
-      RINOK(parallelEncoder->Flush())
-    }
-   #endif
   }
+
+ #ifndef Z7_ST
+  if (parallelEncoder)
+  {
+    RINOK(parallelEncoder->Flush())
+    parallelEncoder.reset();
+  }
+ #endif
 
   RINOK(lps->SetCur())
 

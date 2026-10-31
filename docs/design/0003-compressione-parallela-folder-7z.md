@@ -399,8 +399,9 @@ Osservazioni:
   (circa 19 s) sia in sequenza sia in parallelo. Il resto dei folder si sovrappone a lui.
   Non si supera senza cambiare l'output (blocchi più piccoli: scelta dell'utente, `-m0=lzma2:c=`).
 - **Gruppi di filtri in sequenza.** Nel corpus il gruppo degli eseguibili (filtro BCJ:
-  `bin/nvdisasm`, 50 MiB, circa 3 s da solo) e quello dei testi sono compressi uno dopo
-  l'altro: la coda di un gruppo non si sovrappone al successivo (`-ms=e`: 1,16×).
+  `bin/nvdisasm`, 50 MiB, circa 3 s da solo) e quello dei testi erano compressi uno dopo
+  l'altro: la coda di un gruppo non si sovrapponeva al successivo. Risolto con la
+  pipeline tra gruppi (§10.2).
 - **BZip2** divide già il folder in blocchi da 900 KB: nessun guadagno, e grazie alla
   regola di §5.2 nessuna perdita.
 - **Solid di default**: stesso tempo e stessa memoria (§5.2, ultimo folder inline).
@@ -423,8 +424,29 @@ Osservazioni:
   (riserva della dimensione reale; oltre 128 MiB compressione inline del resto). Il
   replay con lo stream che continua è verificato dal test unitario.
 
-### 10.2 Possibili sviluppi
+### 10.2 Pipeline tra gruppi di filtri
 
-- **Pipeline tra gruppi di filtri**: comprimere i folder di un gruppo mentre finiscono
-  quelli del precedente (gli slot di encoder possono cambiare gruppo).
+Un solo `CParallelFolderEncoder` per tutta l'operazione: i folder di un gruppo (per esempio
+i testi) si comprimono mentre finiscono quelli del gruppo precedente (gli eseguibili, con
+il filtro BCJ). `BeginGroup()` registra una copia del metodo del gruppo; ogni slot di
+encoder ricorda il gruppo del suo encoder, e un job preferisce gli slot del proprio gruppo,
+altrimenti prende uno slot libero di un altro gruppo e ne ricrea l'encoder (rilasciando la
+memoria). I job copiano i propri indici dei file, perché il folder può essere scritto dopo
+la fine del ciclo del suo gruppo. Restano gli svuotamenti obbligati: prima dei folder
+esistenti di un gruppo (copiati o ricompressi direttamente nell'archivio) e prima di un
+folder inline. La regola dell'ultimo folder vale per l'ultimo folder nuovo dell'operazione.
+
+| Caso (20 thread) | Senza pipeline | Con pipeline |
+|---|---|---|
+| Corpus non solid | 1,67× | **1,90×** |
+| Corpus `-ms=8m` | 1,60× | **1,91×** |
+| Corpus `-ms=e` | 1,16× | 1,26× |
+| Corpus solid di default (2 folder: eseguibili + testi) | 1,00× | **1,37×** |
+
+Con `-ms=e` alcuni gruppi per estensione superano 64 MiB e vanno inline, svuotando la
+pipeline. La memoria cresce (corpus non solid: 654 → 1152 MB) restando nel limite.
+
+### 10.3 Possibili sviluppi
+
 - Ricompressione parallela dei folder esistenti durante un aggiornamento.
+- zstd: passare `kExpectedDataSize` come `ZSTD_c_srcSizeHint` (design 0002, §3).

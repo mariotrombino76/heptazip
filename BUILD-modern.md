@@ -105,8 +105,10 @@ nuovi sono compressi in parallelo, ognuno da un proprio encoder con le **stesse 
 l'archivio è **identico byte per byte** a quello della compressione sequenziale (stesso
 `-mmt`). Serve soprattutto con i metodi che da soli usano pochi thread (PPMd, Deflate,
 LZMA, LZMA2 con folder più piccoli di un blocco, zstd con blocchi solid piccoli).
-Risultati con 20 thread: Deflate 3,3×, PPMd 2,3×, Silesia non solid 2,1×, zstd
-`-ms=16m` 1,75×, corpus 1,6×; solid di default invariato (design 0003, §10). Usa al
+Risultati con 20 thread: Deflate 3,3×, PPMd 2,3×, Silesia non solid 2,1×, corpus
+non solid 1,9×, zstd `-ms=16m` 1,75×; un archivio solid di default con eseguibili e
+testi (due gruppi di filtri, compressi insieme) 1,37×; con un solo folder nessuna
+differenza (design 0003, §10). Usa al
 massimo `-mmt` thread e il limite di memoria di compressione (`-mmemuse`); i folder oltre
 64 MiB, BCJ2, Copy e quelli che l'encoder comprime già con tutti i thread vanno in linea.
 Opzione dell'handler 7z, come `-mpfd`.
