@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Piano, in attesa di conferma della direzione |
+| **Stato** | Banco di prova e oracolo fatti (§6): il candidato A non supera i criteri |
 | **Data** | 2026-10-31 |
 | **Fase** | 2: ottimizzazione delle prestazioni |
 | **Prerequisito** | design 0004 (bt4 al suo ottimo pratico con gli stessi match) |
@@ -62,3 +62,41 @@ livelli e corpus:
 Partire da 4.1 e 4.2 (banco di prova + oracolo, poco codice e decisivi), poi il
 candidato A per i livelli predefiniti. B in un secondo momento, solo se servono livelli
 LZMA veloci. C non prima di aver misurato A.
+
+## 6. Risultati del banco di prova e dell'oracolo (2026-10-31)
+
+### 6.1 Oracolo: quanto rapporto si guadagna con match esatti
+
+L'oracolo non richiede codice: bt4 con `mc=1000000` (`-m0=lzma2:mc=1000000`) esplora
+l'albero senza limite di passi e trova, per ogni lunghezza fino a `fb`, l'occorrenza più
+vicina nella finestra: esattamente ciò che chiede il parser. Silesia file per file, 1 thread:
+
+| | bt4 standard (byte) | Oracolo (byte) | Guadagno |
+|---|---|---|---|
+| Totale `-mx5` | 49 608 648 | 49 571 281 | **0,075%** |
+| Totale `-mx9` | 48 757 480 | 48 738 438 | **0,039%** |
+| File migliore | samba `-mx5` 0,29%, xml `-mx9` 0,31% | | |
+
+`mf_bench` sugli stessi dati (20 MB di Silesia): bt4 standard 2,837 coppie per posizione
+e match più lungo medio 7,835; oracolo 2,853 e 7,854, solo il 6-9% più lento. Il limite di
+passi di bt4 scatta raramente: **bt4 è già quasi esatto**. Un match finder nuovo non può
+migliorare il rapporto in modo apprezzabile: può vincere solo sulla velocità.
+
+### 6.2 Costo minimo del candidato A
+
+`tools/mfbench/sais_probe.c`: SA-IS diretto (verificato sull'ordinamento) costa 64 ns per
+byte su 4 MB e 76 ns per byte su 20 MB. Per trovare match in tutto il dizionario ogni
+blocco va ordinato con la finestra precedente (con blocchi grandi quanto il dizionario,
+ogni byte è ordinato circa due volte: ~150 ns per byte), più l'LCP (accessi casuali,
+10-20 ns per byte) e l'estrazione "per ogni lunghezza la distanza più vicina" (decine di ns,
+più sui dati ripetitivi). Stima: **220-300 ns per posizione, contro i 240 di bt4**.
+Un SA-IS molto ottimizzato (2-3 volte più veloce) porterebbe forse a 1,3-1,6 volte il
+match finder, cioè ~1,2-1,4 volte la compressione (il match finder è il 75% del tempo),
+con 3-4 volte la memoria di bt4 e un progetto di più settimane.
+
+### 6.3 Conclusione
+
+Con i criteri di §2 il candidato A **non conviene**: niente margine sul rapporto, e un
+guadagno di velocità incerto e piccolo rispetto al costo. Il banco (`mf_bench`) e l'oracolo
+restano disponibili per valutare altre idee. Le leve migliori restano il parallelismo e,
+per la velocità a parità di rapporto, la scelta del metodo (zstd per i livelli veloci).
