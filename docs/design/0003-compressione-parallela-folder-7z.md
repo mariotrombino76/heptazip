@@ -420,9 +420,12 @@ Osservazioni:
 - ASan+UBSan, TSan (GCC 13 e Clang 20): suite completa pulita. Il nuovo test ha fatto
   emergere una race del codice originale in `C/MtCoder.c` (corretta, commit separato).
 - Makefile originali: `Alone7z` e `Alone2` compilano e producono archivi identici.
-- Non coperti da test automatici: i rami per i file che crescono durante la lettura
-  (riserva della dimensione reale; oltre 128 MiB compressione inline del resto). Il
-  replay con lo stream che continua è verificato dal test unitario.
+- File che cambiano dimensione tra la scansione e la lettura: `tests/update_growing.cpp`
+  crea l'archivio con l'handler 7z e una callback che dichiara una dimensione e fornisce
+  dati di un'altra (cresciuto di poco, cresciuto da 1 a 140 MiB, accorciato).
+  `tests/update_growing.py` (CTest) verifica archivi identici con `pfc=off/on`, integrità e
+  dimensione reale nell'archivio. Una traccia temporanea ha confermato i due rami: riserva
+  della dimensione reale, e lettura anticipata fermata a 128 MiB con il resto inline.
 
 ### 10.2 Pipeline tra gruppi di filtri
 

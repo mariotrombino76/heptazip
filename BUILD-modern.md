@@ -170,6 +170,9 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   confronta console ed esito ed estrae l'archivio.
 - `tests/unit_7zupdate_mt`: test unitari di `7zUpdateMt` (stima di thread e memoria degli
   encoder per metodo, granularità di `CFolderReplayInStream`).
+- `tests/update_growing.{cpp,py}`: file che cambiano dimensione durante la compressione
+  (una callback dichiara una dimensione e fornisce dati di un'altra, fino a 140 MiB):
+  archivi identici con `-mpfc=off/on`, integri, con la dimensione reale.
 
 Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,
 `thread` per le race condition. Si usano in una directory di build separata:

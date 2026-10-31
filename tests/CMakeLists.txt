@@ -27,6 +27,16 @@ add_executable(unit_7zextract_mt
   ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
+# Archivio creato con una callback che dichiara per un file una dimensione diversa da
+# quella dei dati (file cresciuto/accorciato durante la compressione, design 0003).
+add_executable(update_growing
+  update_growing.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
+target_link_libraries(update_growing PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+
 # Test unitari del modulo di compressione parallela (7zUpdateMt, docs/design/0003).
 add_executable(unit_7zupdate_mt
   unit_7zupdate_mt.cpp
@@ -86,6 +96,12 @@ add_test(NAME update_equivalence_pfc
           --config-a=-mpfc=off
           --config-b=-mpfc=on)
 set_tests_properties(update_equivalence_pfc PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
+
+add_test(NAME update_growing
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/update_growing.py
+          --7zz $<TARGET_FILE:7zz>
+          --tool $<TARGET_FILE:update_growing>)
+set_tests_properties(update_growing PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
 
 # Estrazione parallela dei folder (-mpfd, docs/design/0001): la traccia deve essere
 # identica all'estrazione sequenziale. Varianti:
