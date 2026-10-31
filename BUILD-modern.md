@@ -23,7 +23,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_OPT_LEVEL` | `2` | livello `-O` per Release/RelWithDebInfo |
 | `SEVENZIP_NATIVE` | `OFF` | `-march=native` — il binario gira solo su CPU compatibili |
 | `SEVENZIP_LTO` | `OFF` | link-time optimization |
-| `SEVENZIP_ASM` | `OFF` | usa `Asm/x86/*.asm` (CRC, AES, SHA, LzFind, **LzmaDecOpt**); richiede `asmc`, `uasm` o `jwasm` |
+| `SEVENZIP_ASM` | `ON` se c'è un assembler | usa `Asm/x86/*.asm` (CRC, AES, SHA, Sort, **LzmaDecOpt**; `LzFindOpt` resta in C, più veloce); richiede `asmc`, `uasm` o `jwasm` (cercati anche in `~/.local/bin`); senza assembler la build è in C puro |
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
 | `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
@@ -53,8 +53,10 @@ dovuti alla devirtualizzazione speculativa (vedi `CMakeLists.txt`).
 
 ### Assembly x86-64 (consigliato)
 
-`SEVENZIP_ASM=ON` usa le routine assembly upstream: **+22% in decompressione LZMA**
-(`LzmaDecOpt.asm`) e qualche punto percentuale in compressione, con output identico.
+Con un assembler disponibile `SEVENZIP_ASM` è attivo di default: decompressione LZMA
+**1,4 volte più veloce** (`LzmaDecOpt.asm`; Silesia `-mx5`: 169 → 239 MB/s, `-mx1`
+649 → 985 MB/s), output identico. Il match finder resta in C (`LzFindOpt.c` con
+`LzFind_MatchEnd()`), più veloce della versione assembly di upstream (design 0004).
 Serve un assembler MASM-compatibile. UASM **v2.57r** compila su Linux, mentre
 `master` non compila (include `<direct.h>`):
 
@@ -64,8 +66,7 @@ cd ~/.local/src/UASM && git checkout v2.57r
 make -f Makefile-Linux-GCC-64.mak -j"$(nproc)" CFLAGS=-fcommon
 cp GccUnixR/uasm ~/.local/bin/
 
-cmake -S . -B build-asm -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON \
-      -DSEVENZIP_ASSEMBLER="$HOME/.local/bin/uasm"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # trova ~/.local/bin/uasm da solo
 ```
 
 ### Note di progetto

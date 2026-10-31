@@ -13,7 +13,7 @@ if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
   message(FATAL_ERROR "SEVENZIP_ASM e' supportato solo su x86_64 (CPU: ${CMAKE_SYSTEM_PROCESSOR})")
 endif()
 
-find_program(SEVENZIP_ASSEMBLER NAMES asmc uasm jwasm
+find_program(SEVENZIP_ASSEMBLER NAMES asmc uasm jwasm HINTS "$ENV{HOME}/.local/bin"
   DOC "Assembler MASM-compatibile per Asm/x86")
 if(NOT SEVENZIP_ASSEMBLER)
   message(FATAL_ERROR
@@ -24,14 +24,16 @@ endif()
 get_filename_component(_asm_name "${SEVENZIP_ASSEMBLER}" NAME)
 message(STATUS "Assembler: ${SEVENZIP_ASSEMBLER}")
 
-# File C sostituiti -> sorgente asm
+# File C sostituiti -> sorgente asm.
+# 7zip-modern: LzFindOpt resta in C. Con LzFind_MatchEnd() (design 0004) il C e' piu'
+# veloce di LzFindOpt.asm: compressione LZMA2 -mx5 con 20 thread 20,7 s contro 22,1 s,
+# LZMA -mmt=2 34,8 s contro 37,3 s (Silesia, misure alternate, archivi identici).
 set(_asm_replace
   7zCrcOpt
   XzCrc64Opt
   Sha1Opt
   Sha256Opt
-  Sort
-  LzFindOpt)
+  Sort)
 if(NOT _asm_name STREQUAL "jwasm")
   list(APPEND _asm_replace AesOpt)
 endif()
@@ -66,3 +68,7 @@ foreach(_name IN LISTS _asm_files)
 endforeach()
 set_source_files_properties(${SEVENZIP_ASM_OBJECTS} PROPERTIES
   EXTERNAL_OBJECT TRUE GENERATED TRUE)
+# Target che genera gli oggetti: chi li usa (7zz, eseguibili di tests/) deve dipendere
+# da questo target, altrimenti in una build parallela un target di un'altra directory
+# puo' cercare gli .o prima che esistano ("No rule to make target asm/...").
+add_custom_target(sevenzip_asm DEPENDS ${SEVENZIP_ASM_OBJECTS})

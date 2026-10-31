@@ -57,6 +57,13 @@ if(SEVENZIP_ZSTD_ENCODER)
   set_source_files_properties(unit_7zupdate_mt.cpp PROPERTIES COMPILE_DEFINITIONS Z7_ZSTD_LIB_ENCODER)
 endif()
 
+# Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
+if(TARGET sevenzip_asm)
+  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt)
+    add_dependencies(${_t} sevenzip_asm)
+  endforeach()
+endif()
+
 # Equivalenza delle callback tra configurazioni di estrazione.
 # Al passo 1 confronta -mmt=1 con -mmt=<tutti i core>: anche la decompressione
 # multi-thread di LZMA2 e il mixer MT devono produrre la stessa traccia.

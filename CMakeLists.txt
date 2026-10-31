@@ -47,7 +47,21 @@ set(SEVENZIP_OPT_LEVEL "2" CACHE STRING "Livello di ottimizzazione (-O<n>) per b
 set_property(CACHE SEVENZIP_OPT_LEVEL PROPERTY STRINGS 1 2 3 s fast)
 option(SEVENZIP_NATIVE "Compila con -march=native" OFF)
 option(SEVENZIP_LTO "Abilita link-time optimization" OFF)
-option(SEVENZIP_ASM "Usa le routine assembly di Asm/x86 (richiede asmc/uasm/jwasm)" OFF)
+# Assembly: attivo di default se la CPU e' x86-64 e c'e' un assembler MASM-compatibile
+# (asmc, uasm, jwasm, anche in ~/.local/bin). Decompressione LZMA ~1,4 volte piu' veloce
+# (LzmaDecOpt.asm): vedi docs/benchmark-mercato.md. Senza assembler: C puro, nessun errore.
+set(_asm_default OFF)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+  find_program(SEVENZIP_ASSEMBLER NAMES asmc uasm jwasm HINTS "$ENV{HOME}/.local/bin"
+    DOC "Assembler MASM-compatibile per Asm/x86")
+  if(SEVENZIP_ASSEMBLER)
+    set(_asm_default ON)
+  endif()
+endif()
+option(SEVENZIP_ASM "Usa le routine assembly di Asm/x86 (richiede asmc/uasm/jwasm)" ${_asm_default})
+if(NOT SEVENZIP_ASM AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND NOT SEVENZIP_ASSEMBLER)
+  message(STATUS "Nessun assembler (asmc/uasm/jwasm): build in C puro, decompressione LZMA piu' lenta")
+endif()
 option(SEVENZIP_WERROR "Tratta i warning come errori (come upstream)" ON)
 option(SEVENZIP_STRIP "Rimuove i simboli dal binario in Release (come upstream: -s)" ON)
 set(SEVENZIP_PGO "OFF" CACHE STRING "Profile-guided optimization: OFF, GEN, USE")
@@ -206,6 +220,9 @@ add_executable(7zz
   ${SEVENZIP_ASM_OBJECTS}
   ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(7zz PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+if(TARGET sevenzip_asm)
+  add_dependencies(7zz sevenzip_asm)
+endif()
 
 include(GNUInstallDirs)
 install(TARGETS 7zz RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

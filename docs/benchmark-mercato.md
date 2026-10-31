@@ -125,3 +125,18 @@ Ogni blocco riparte con il dizionario vuoto: blocchi più piccoli danno più par
 disponibile per l'utente: `-m0=lzma2:c=48m`. Proposta da decidere: blocchi da 3 volte il
 dizionario (la regola di xz) invece di 4, cioè +0,22% a `-mx5` per una decompressione 2
 volte più veloce sui file grandi.
+
+## Aggiornamento: decoder assembly attivo di default (2026-11-01)
+
+Con `SEVENZIP_ASM` attivo quando c'è un assembler (e `LzFindOpt` in C) la decompressione
+LZMA del fork migliora del ~40%, a parità di archivi:
+
+| Input | Profilo | dec MB/s prima | dec MB/s ora | xz 5.8.4 (stesso livello) |
+|---|---|---|---|---|
+| Silesia | `-mx1` | 651 | **985** | 946 (`-1`) |
+| Silesia | `-mx5` | 169 | **239** | 658 (`-6`, blocchi più piccoli) |
+| Silesia | `-mx9` | 110 | **156** | 160 (`-9`) |
+| Corpus | `-mx5` | 379 | **428** | 706 (`-6`) |
+
+Il divario residuo a `-mx5` dipende dalla dimensione dei blocchi LZMA2 (sezione
+precedente, decisione aperta).
