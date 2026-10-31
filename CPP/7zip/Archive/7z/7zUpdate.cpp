@@ -1887,6 +1887,113 @@ static void GetFile(const CDatabase &inDb, unsigned index, CFileItem &file, CFil
   // file2.IsAux = inDb.IsItemAux(index);
 }
 
+/* 7zip-modern: the part of the compression of a new folder that follows
+   CEncoder::Encode1() / Encode_Post(): it adds to (newDatabase) the files of the
+   folder, with the sizes, CRCs, times and attributes collected by (inStream),
+   and the number of unpack streams of the folder; it updates the progress
+   counters. The folder itself (Folders, PackSizes from startPackIndex,
+   CoderUnpackSizes) must already be in (newDatabase).
+   Common to the sequential loop in Update() and to the parallel compression
+   of folders (design 0003): both produce the same database. */
+static HRESULT AddNewFolderFiles(
+    const CDbEx *db,
+    const CObjectVector<CUpdateItem> &updateItems,
+    const UInt32 *indices, unsigned numSubFiles,
+    const CFolderInStream &inStream,
+    UInt64 curFolderUnpackSize,
+    unsigned startPackIndex,
+    CArchiveDatabaseOut &newDatabase,
+    CLocalProgress *lps,
+    IArchiveUpdateCallback *updateCallback,
+    UInt64 &complexity)
+{
+  UInt64 packSize = 0;
+  for (; startPackIndex < newDatabase.PackSizes.Size(); startPackIndex++)
+    packSize += newDatabase.PackSizes[startPackIndex];
+  lps->OutSize += packSize;
+
+  CNum numUnpackStreams = 0;
+  UInt64 skippedSize = 0;
+  UInt64 procSize = 0;
+
+  for (unsigned subIndex = 0; subIndex < numSubFiles; subIndex++)
+  {
+    const CUpdateItem &ui = updateItems[indices[subIndex]];
+    CFileItem file;
+    CFileItem2 file2;
+    UString name;
+    if (ui.NewProps)
+    {
+      UpdateItem_To_FileItem(ui, file, file2);
+      name = ui.Name;
+    }
+    else
+    {
+      GetFile(*db, (unsigned)ui.IndexInArchive, file, file2);
+      db->GetPath((unsigned)ui.IndexInArchive, name);
+    }
+    if (file2.IsAnti || file.IsDir)
+      return E_FAIL;
+
+    if (!inStream.Processed[subIndex])
+    {
+      // the file was not opened (locked or deleted): we don't add it
+      skippedSize += ui.Size;
+      continue;
+    }
+
+    file.Crc = inStream.CRCs[subIndex];
+    file.Size = inStream.Sizes[subIndex];
+    procSize += file.Size;
+    if (file.Size != 0)
+    {
+      file.CrcDefined = true;
+      file.HasStream = true;
+      numUnpackStreams++;
+    }
+    else
+    {
+      file.CrcDefined = false;
+      file.HasStream = false;
+    }
+
+    if (inStream.TimesDefined[subIndex])
+    {
+      if (inStream.Need_CTime)
+        { file2.CTimeDefined = true;  file2.CTime = inStream.CTimes[subIndex]; }
+      if (inStream.Need_ATime)
+        { file2.ATimeDefined = true;  file2.ATime = inStream.ATimes[subIndex]; }
+      if (inStream.Need_MTime)
+        { file2.MTimeDefined = true;  file2.MTime = inStream.MTimes[subIndex]; }
+      if (inStream.Need_Attrib)
+      {
+        file2.AttribDefined = true;
+        file2.Attrib = inStream.Attribs[subIndex];
+      }
+    }
+
+    newDatabase.AddFile(file, file2, name);
+  }
+
+  // it's optional check to ensure that sizes are correct
+  if (procSize != curFolderUnpackSize)
+    return E_FAIL;
+
+  lps->InSize += procSize;
+
+  // numUnpackStreams = 0 is very bad case for locked files
+  // v3.13 doesn't understand it.
+  newDatabase.NumUnpackStreamsVector.Add(numUnpackStreams);
+
+  if (skippedSize != 0 && complexity >= skippedSize)
+  {
+    complexity -= skippedSize;
+    RINOK(updateCallback->SetTotal(complexity))
+  }
+  return S_OK;
+}
+
+
 HRESULT Update(
     DECL_EXTERNAL_CODECS_LOC_VARS
     IInStream *inStream,
@@ -2818,177 +2925,10 @@ HRESULT Update(
       const UInt64 curFolderUnpackSize = inStreamSpec->Get_TotalSize_for_Coder();
       encoder.Encode_Post(curFolderUnpackSize, newDatabase.CoderUnpackSizes);
 
-      UInt64 packSize = 0;
-      // const UInt32 numStreams = newDatabase.PackSizes.Size() - startPackIndex;
-      for (; startPackIndex < newDatabase.PackSizes.Size(); startPackIndex++)
-        packSize += newDatabase.PackSizes[startPackIndex];
-      lps->OutSize += packSize;
-
-      // for ()
-      // newDatabase.PackCRCsDefined.Add(false);
-      // newDatabase.PackCRCs.Add(0);
-
-      CNum numUnpackStreams = 0;
-      UInt64 skippedSize = 0;
-      UInt64 procSize = 0;
-      // unsigned numProcessedFiles = 0;
-
-      for (unsigned subIndex = 0; subIndex < numSubFiles; subIndex++)
-      {
-        const CUpdateItem &ui = updateItems[indices[i + subIndex]];
-        CFileItem file;
-        CFileItem2 file2;
-        UString name;
-        if (ui.NewProps)
-        {
-          UpdateItem_To_FileItem(ui, file, file2);
-          name = ui.Name;
-        }
-        else
-        {
-          GetFile(*db, (unsigned)ui.IndexInArchive, file, file2);
-          db->GetPath((unsigned)ui.IndexInArchive, name);
-        }
-        if (file2.IsAnti || file.IsDir)
-          return E_FAIL;
-        
-        /*
-        CFileItem &file = newDatabase.Files[
-              startFileIndexInDatabase + i + subIndex];
-        */
-        if (!inStreamSpec->Processed[subIndex])
-        {
-          // we don't add file here
-          skippedSize += ui.Size;
-          continue; // comment it for debug
-          // name += ".locked"; // for debug
-        }
-
-        // if (inStreamSpec->Need_Crc)
-        file.Crc = inStreamSpec->CRCs[subIndex];
-        file.Size = inStreamSpec->Sizes[subIndex];
-        
-        procSize += file.Size;
-        // if (file.Size >= 0) // for debug: test purposes
-        if (file.Size != 0)
-        {
-          file.CrcDefined = true; // inStreamSpec->Need_Crc;
-          file.HasStream = true;
-          numUnpackStreams++;
-        }
-        else
-        {
-          file.CrcDefined = false;
-          file.HasStream = false;
-        }
-
-        if (inStreamSpec->TimesDefined[subIndex])
-        {
-          if (inStreamSpec->Need_CTime)
-            { file2.CTimeDefined = true;  file2.CTime = inStreamSpec->CTimes[subIndex]; }
-          if (inStreamSpec->Need_ATime
-              // && !ui.ATime_WasReadByAnalysis
-              )
-            { file2.ATimeDefined = true;  file2.ATime = inStreamSpec->ATimes[subIndex]; }
-          if (inStreamSpec->Need_MTime)
-            { file2.MTimeDefined = true;  file2.MTime = inStreamSpec->MTimes[subIndex]; }
-          if (inStreamSpec->Need_Attrib)
-          {
-            file2.AttribDefined = true;
-            file2.Attrib = inStreamSpec->Attribs[subIndex];
-          }
-        }
-
-        /*
-        file.Parent = ui.ParentFolderIndex;
-        if (ui.TreeFolderIndex >= 0)
-          treeFolderToArcIndex[ui.TreeFolderIndex] = newDatabase.Files.Size();
-        if (totalSecureDataSize != 0)
-          newDatabase.SecureIDs.Add(ui.SecureIndex);
-        */
-        /*
-        if (reportArcProp)
-        {
-          RINOK(ReportItemProps(reportArcProp, ui.IndexInClient, file.Size,
-              file.CrcDefined ? &file.Crc : NULL))
-        }
-        */
-
-        // numProcessedFiles++;
-        newDatabase.AddFile(file, file2, name);
-      }
-
-      /*
-      // for debug:
-      // we can write crc to folders area, if folder contains only one file
-      if (numUnpackStreams == 1 && numSubFiles == 1)
-      {
-        const CFileItem &file = newDatabase.Files.Back();
-        if (file.CrcDefined)
-          newDatabase.FolderUnpackCRCs.SetItem(folderIndex_New, true, file.Crc);
-      }
-      */
-
-      /*
-      // it's optional check to ensure that sizes are correct
-      if (inStreamSpec->TotalSize_for_Coder != curFolderUnpackSize)
-        return E_FAIL;
-      */
-      // if (inStreamSpec->AlignLog == 0)
-      {
-        if (procSize != curFolderUnpackSize)
-          return E_FAIL;
-      }
-      // else
-      {
-        /*
-        {
-          const CFolder &old = newDatabase.Folders.Back();
-          CFolder &folder = newDatabase.Folders.AddNew();
-          {
-            const unsigned numBonds = old.Bonds.Size();
-            folder.Bonds.SetSize(numBonds + 1);
-            for (unsigned k = 0; k < numBonds; k++)
-              folder.Bonds[k] = old.Bonds[k];
-            CBond &bond = folder.Bonds[numBonds];
-            bond.PackIndex = 0;
-            bond.UnpackIndex = 0;
-          }
-          {
-            const unsigned numCoders = old.Coders.Size();
-            folder.Coders.SetSize(numCoders + 1);
-            for (unsigned k = 0; k < numCoders; k++)
-              folder.Coders[k] = old.Coders[k];
-            CCoderInfo &cod = folder.Coders[numCoders];
-            cod.Props.Alloc(1);
-            cod.Props[0] = (Byte)inStreamSpec->AlignLog;
-            cod.NumStreams = 1;
-          }
-          {
-            const unsigned numPackStreams = old.Coders.Size();
-            folder.Coders.SetSize(numPackStreams);
-            for (unsigned k = 0; k < numPackStreams; k++)
-              folder.PackStreams[k] = old.PackStreams[k];
-          }
-        }
-        newDatabase.Folders.Delete(newDatabase.Folders.Size() - 2);
-        */
-      }
-
-
-      lps->InSize += procSize;
-      // lps->InSize += curFolderUnpackSize;
-
-      // numUnpackStreams = 0 is very bad case for locked files
-      // v3.13 doesn't understand it.
-      newDatabase.NumUnpackStreamsVector.Add(numUnpackStreams);
+      RINOK(AddNewFolderFiles(db, updateItems, &indices[i], numSubFiles,
+          *inStreamSpec.ClsPtr(), curFolderUnpackSize, startPackIndex,
+          newDatabase, lps.ClsPtr(), updateCallback, complexity))
       i += numSubFiles;
-
-      if (skippedSize != 0 && complexity >= skippedSize)
-      {
-        complexity -= skippedSize;
-        RINOK(updateCallback->SetTotal(complexity))
-      }
 
       /*
       if (reportArcProp)
