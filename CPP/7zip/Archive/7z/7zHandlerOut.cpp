@@ -803,6 +803,7 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
   // options.VolumeMode = _volumeMode;
 
   options.MultiThreadMixer = _useMultiThreadMixer;
+  options.ParallelFolderEncoding = _parallelFolderEncoding;
 
   /*
   if (secureBlocks.Sorted.Size() > 1)
@@ -866,6 +867,7 @@ void COutHandler::InitProps7z()
 
   _useMultiThreadMixer = true;
   _parallelFolderDecoding = k_ParallelFolderDecoding_Default;
+  _parallelFolderEncoding = k_ParallelFolderEncoding_Default;
 
   // _volumeMode = false;
 
@@ -1043,6 +1045,8 @@ HRESULT COutHandler::SetProperty(const wchar_t *nameSpec, const PROPVARIANT &val
     if (name.IsEqualTo("mtf")) return PROPVARIANT_to_bool(value, _useMultiThreadMixer);
     // 7zip-modern: parallel extraction of folders (docs/design/0001)
     if (name.IsEqualTo("pfd")) return PROPVARIANT_to_bool(value, _parallelFolderDecoding);
+    // 7zip-modern: parallel compression of folders (docs/design/0003)
+    if (name.IsEqualTo("pfc")) return PROPVARIANT_to_bool(value, _parallelFolderEncoding);
 
     if (name.IsEqualTo("qs")) return PROPVARIANT_to_bool(value, _useTypeSorting);
 

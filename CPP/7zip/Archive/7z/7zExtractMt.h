@@ -69,7 +69,9 @@ public:
 
   bool IsLargeJob(UInt64 cost) const { return cost > _limit / kLargeJobDivisor; }
   static bool IsBigFolder(UInt64 unpackSize) { return unpackSize > kMaxParallelFolderUnpackSize; }
-  bool CanReserve(UInt64 cost) const { return cost <= _limit - _used; }
+  // (_used > _limit) is possible: Reserve() doesn't check the limit (the
+  // compression reserves the real size of a folder that grew while it was read)
+  bool CanReserve(UInt64 cost) const { return _used <= _limit && cost <= _limit - _used; }
   void Reserve(UInt64 cost) { _used += cost; }
   void Release(UInt64 cost) { _used -= cost; }
 };

@@ -203,6 +203,7 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/Archive/7z/7zProperties.cpp
   CPP/7zip/Archive/7z/7zSpecStream.cpp
   CPP/7zip/Archive/7z/7zUpdate.cpp
+  CPP/7zip/Archive/7z/7zUpdateMt.cpp
   CPP/7zip/Archive/7z/7zRegister.cpp
   # CPP/7zip/Archive/Cab
   CPP/7zip/Archive/Cab/CabBlockInStream.cpp

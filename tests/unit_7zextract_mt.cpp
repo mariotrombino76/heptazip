@@ -120,6 +120,14 @@ static void Test_MemoryBudget()
   CHECK(b.CanReserve(600));
   // nessun overflow con valori enormi
   CHECK(!b.CanReserve((UInt64)(Int64)-1));
+  // Reserve() oltre il limite (la compressione riserva la dimensione reale di un
+  // folder cresciuto): CanReserve() resta falso, senza underflow di (limit - used)
+  b.Reserve(700);
+  CHECK(b.GetUsed() == 1100);
+  CHECK(!b.CanReserve(0));
+  CHECK(!b.CanReserve(1));
+  b.Release(700);
+  CHECK(b.CanReserve(600));
   b.Init(0);
   CHECK(!b.CanReserve(1));
   CHECK(b.IsLargeJob(1));

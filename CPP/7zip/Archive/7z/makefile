@@ -22,6 +22,7 @@ AR_OBJS = \
   $O\7zProperties.obj \
   $O\7zSpecStream.obj \
   $O\7zUpdate.obj \
+  $O\7zUpdateMt.obj \
   $O\7zRegister.obj \
 
 COMMON_OBJS = \

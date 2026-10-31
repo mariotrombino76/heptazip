@@ -24,8 +24,8 @@
 | Decoder | Quello di 7-Zip, registrato per `.7z`: l'estrazione non dipende da librerie esterne ed è presente anche nelle build con i makefile originali | Decoder di libzstd: dipendenza anche per estrarre |
 | Encoder | libzstd 1.5.7 (riferimento) inclusa in `third_party/zstd` (solo `common` e `compress`), compilata con `ZSTD_MULTITHREAD` | Pacchetto di sistema: richiedeva `sudo` (utente non disponibile) e lega il binario alla libreria del sistema |
 | Nomi | `NCompress::NZstdLib`, `ZstdLib*`, `ZstdCodecRegister`: distinti da `NCompress::NZstd`, così un futuro encoder upstream può convivere | — |
-| Frame | Dimensione del contenuto sempre dichiarata (`setPledgedSrcSize`), nessun checksum del frame (7z ha già il CRC per file) | — |
-| API di libzstd | Solo API stabile (`ZSTD_cParam_getBounds` invece delle costanti sperimentali) | `ZSTD_STATIC_LINKING_ONLY` |
+| Frame | Nessun checksum del frame (7z ha già il CRC per file). La dimensione del contenuto è dichiarata (`setPledgedSrcSize`) solo se il chiamante passa `inSize`: nei `.7z` non succede (la dimensione di un folder non è nota prima della compressione), quindi i frame non la contengono e usano la finestra del livello. *Correzione del 2026-10-31: la prima versione di questo documento diceva "sempre dichiarata", ma non era vero.* | Dichiarare la dimensione attesa: se un file cambia durante la compressione, libzstd fallisce (`srcSize_wrong`) |
+| API di libzstd | L'encoder usa solo l'API stabile (`ZSTD_cParam_getBounds` invece delle costanti sperimentali). Solo la stima di memoria e dimensione dei job per la compressione parallela (design 0003, `NZstdLib::EstimateEncoder`) usa l'API sperimentale (`ZSTD_getCParams`, `ZSTD_estimateCStreamSize_usingCParams`), che non ha equivalenti stabili; la libreria è inclusa a versione fissa | `ZSTD_STATIC_LINKING_ONLY` per tutto l'encoder |
 
 Opzioni: `-m0=zstd`, livello `-mx1`…`-mx22` (o `-m0=zstd:x=N`), finestra `-md=`, thread `-mmt`.
 
@@ -33,9 +33,14 @@ Opzioni: `-m0=zstd`, livello `-mx1`…`-mx22` (o `-m0=zstd:x=N`), finestra `-md=
 
 `EstimateCoderDecodeMemory` stima 128 MiB per un decoder zstd: è la finestra massima dei
 livelli standard. Il decoder di 7-Zip alloca il minimo tra dimensione del contenuto e
-finestra; l'encoder del fork dichiara sempre la dimensione del contenuto. Limite noto: frame
-di altri programmi senza dimensione del contenuto e con finestra > 128 MiB (modalità
-"long") possono usare più memoria della stima.
+finestra. I frame dell'encoder del fork non contengono la dimensione del contenuto (§2) e
+usano la finestra del livello, al massimo 128 MiB (livello 22): la stima è rispettata, ma per
+un file piccolo compresso a un livello alto il decoder alloca comunque l'intera finestra.
+Miglioramento possibile: passare a libzstd la dimensione attesa del folder
+(`kExpectedDataSize`) come `ZSTD_c_srcSizeHint`, che adatta finestra e tabelle senza
+scrivere la dimensione e senza fallire se cambia. Limite noto: frame di altri programmi
+senza dimensione del contenuto e con finestra > 128 MiB (modalità "long") possono usare più
+memoria della stima.
 
 ## 4. Blocchi solid: default invariato, misurato
 

@@ -3,6 +3,12 @@
 
 #include "StdAfx.h"
 
+/* ZSTD_STATIC_LINKING_ONLY: only for EstimateEncoder() (ZSTD_getCParams(),
+   ZSTD_estimateCStreamSize_usingCParams()), that has no equivalent in the stable
+   API. The library is vendored at a fixed version (third_party/zstd): a change
+   of this experimental API shows up when the library is updated. The encoder
+   itself uses only the stable API. */
+#define ZSTD_STATIC_LINKING_ONLY
 #include "../../../third_party/zstd/lib/zstd.h"
 
 #include "../../../C/Alloc.h"
@@ -16,6 +22,50 @@ namespace NZstdLib {
 
 static const int kDefaultLevel = 3; // ZSTD_CLEVEL_DEFAULT
 static const UInt32 kNumThreadsMax = 256;
+
+/* level property (kLevel) -> zstd level.
+   -mx0 is mapped to the Copy method by the 7z handler; here 0 means default. */
+static int LevelFromProp(UInt32 v)
+{
+  if (v == 0)
+    return kDefaultLevel;
+  const UInt32 maxLevel = (UInt32)ZSTD_maxCLevel();
+  return (int)(v > maxLevel ? maxLevel : v);
+}
+
+/* window size property (kDictionarySize) -> windowLog: rounded up to a power
+   of 2, in the range supported by zstd (stable API: ZSTD_WINDOWLOG_MIN/MAX are
+   in the experimental section) */
+static bool WindowLogFromSize(UInt64 v, unsigned &windowLog)
+{
+  const ZSTD_bounds bounds = ZSTD_cParam_getBounds(ZSTD_c_windowLog);
+  if (ZSTD_isError(bounds.error))
+    return false;
+  unsigned log = (unsigned)bounds.lowerBound;
+  while ((int)log < bounds.upperBound && ((UInt64)1 << log) < v)
+    log++;
+  windowLog = log;
+  return true;
+}
+
+
+void EstimateEncoder(int levelProp, UInt64 windowSizeProp, CEncoderEstimate &e)
+{
+  const int level = levelProp < 0 ? kDefaultLevel : LevelFromProp((UInt32)levelProp);
+  // 0: the source size is not known (CEncoder::Code() pledges it only with inSize)
+  ZSTD_compressionParameters cp = ZSTD_getCParams(level, 0, 0);
+  unsigned windowLog;
+  if (windowSizeProp != 0 && WindowLogFromSize(windowSizeProp, windowLog))
+  {
+    cp.windowLog = windowLog;
+    cp = ZSTD_adjustCParams(cp, 0, 0);
+  }
+  // streaming context: also the window and the input/output buffers
+  e.CCtxMemory = ZSTD_estimateCStreamSize_usingCParams(cp);
+  // job size of ZSTDMT without long distance matching (ZSTDMT_computeTargetJobLog)
+  e.JobSize = (UInt64)1 << (cp.windowLog + 2 > 20 ? cp.windowLog + 2 : 20);
+}
+
 
 CEncoder::CEncoder():
     _level(kDefaultLevel),
@@ -56,30 +106,12 @@ Z7_COM7F_IMF(CEncoder::SetCoderProperties(const PROPID *propIDs, const PROPVARIA
     switch (propID)
     {
       case NCoderPropID::kLevel:
-      {
-        // -mx0 is mapped to the Copy method by the 7z handler; here 0 means default
-        if (v == 0)
-          level = kDefaultLevel;
-        else
-        {
-          const UInt32 maxLevel = (UInt32)ZSTD_maxCLevel();
-          level = (int)(v > maxLevel ? maxLevel : v);
-        }
+        level = LevelFromProp(v);
         break;
-      }
       case NCoderPropID::kDictionarySize:
-      {
-        // window size: rounded up to a power of 2, in the range supported by zstd
-        // (stable API: ZSTD_WINDOWLOG_MIN/MAX are in the experimental section)
-        const ZSTD_bounds bounds = ZSTD_cParam_getBounds(ZSTD_c_windowLog);
-        if (ZSTD_isError(bounds.error))
+        if (!WindowLogFromSize(v, windowLog))
           return E_FAIL;
-        unsigned log = (unsigned)bounds.lowerBound;
-        while ((int)log < bounds.upperBound && ((UInt64)1 << log) < v)
-          log++;
-        windowLog = log;
         break;
-      }
       case NCoderPropID::kNumThreads:
       {
         #ifndef Z7_ST

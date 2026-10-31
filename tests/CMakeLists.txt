@@ -27,6 +27,19 @@ add_executable(unit_7zextract_mt
   ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
+# Test unitari del modulo di compressione parallela (7zUpdateMt, docs/design/0003).
+add_executable(unit_7zupdate_mt
+  unit_7zupdate_mt.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
+target_link_libraries(unit_7zupdate_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+if(SEVENZIP_ZSTD_ENCODER)
+  # i controlli sulla stima dell'encoder zstd
+  set_source_files_properties(unit_7zupdate_mt.cpp PROPERTIES COMPILE_DEFINITIONS Z7_ZSTD_LIB_ENCODER)
+endif()
+
 # Equivalenza delle callback tra configurazioni di estrazione.
 # Al passo 1 confronta -mmt=1 con -mmt=<tutti i core>: anche la decompressione
 # multi-thread di LZMA2 e il mixer MT devono produrre la stessa traccia.
@@ -61,6 +74,18 @@ set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT 
 
 add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zextract_mt>)
 set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+add_test(NAME unit_7zupdate_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zupdate_mt>)
+set_tests_properties(unit_7zupdate_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+# Compressione parallela dei folder (-mpfc, docs/design/0003): archivi identici byte
+# per byte, stessa console e stesso codice di uscita della compressione sequenziale.
+add_test(NAME update_equivalence_pfc
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/update_equivalence.py
+          --7zz $<TARGET_FILE:7zz>
+          --config-a=-mpfc=off
+          --config-b=-mpfc=on)
+set_tests_properties(update_equivalence_pfc PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
 
 # Estrazione parallela dei folder (-mpfd, docs/design/0001): la traccia deve essere
 # identica all'estrazione sequenziale. Varianti:

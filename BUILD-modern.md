@@ -93,6 +93,24 @@ sono decompressi in linea con tutti i thread (il decoder LZMA2 a blocchi è più
 così). Risultati: da 1,15× a 2,9× sugli archivi con più folder (design 0001, §10). È un'opzione dell'handler 7z: come
 `-mtf`, non è accettata da altri formati (zip, xz…).
 
+## Compressione parallela dei folder `.7z` (`-mpfc`)
+
+```sh
+7zz a -ms=off archivio.7z dati/      # attiva di default: folder diversi compressi in parallelo
+7zz a -mpfc=off archivio.7z dati/    # compressione sequenziale (comportamento upstream)
+```
+
+Quando l'archivio ha più folder (non solid `-ms=off`, `-ms=e`, `-ms=<dim>`), i folder
+nuovi sono compressi in parallelo, ognuno da un proprio encoder con le **stesse opzioni**:
+l'archivio è **identico byte per byte** a quello della compressione sequenziale (stesso
+`-mmt`). Serve soprattutto con i metodi che da soli usano pochi thread (PPMd, Deflate,
+LZMA, LZMA2 con folder più piccoli di un blocco, zstd con blocchi solid piccoli).
+Risultati con 20 thread: Deflate 3,3×, PPMd 2,3×, Silesia non solid 2,1×, zstd
+`-ms=16m` 1,75×, corpus 1,6×; solid di default invariato (design 0003, §10). Usa al
+massimo `-mmt` thread e il limite di memoria di compressione (`-mmemuse`); i folder oltre
+64 MiB, BCJ2, Copy e quelli che l'encoder comprime già con tutti i thread vanno in linea.
+Opzione dell'handler 7z, come `-mpfd`.
+
 ## Zstandard nei `.7z` (`-m0=zstd`)
 
 ```sh
@@ -140,6 +158,16 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 
 - `tests/unit_7zextract_mt`: test unitari di `7zExtractMt` e del pool `Common/MtTaskPool` (stima della memoria
   dei decoder, budget, stream su buffer, cache della password, pool di thread con stress).
+- `tests/update_equivalence.py`: crea ogni archivio con due configurazioni
+  (`--config-a/-b`, in CTest `-mpfc=off` contro `-mpfc=on`) e verifica che siano
+  **identici byte per byte**, con la stessa console (`-bb3`) e lo stesso codice di uscita.
+  58 casi: 23 profili (LZMA2, LZMA, zstd, PPMd, BZip2, Deflate, Deflate64, Copy, BCJ2,
+  filtri, `-ms=off/e/<dim>`, `-mqs`, AES, memoria ridotta) con più valori di `-mmt`, un
+  folder > 64 MiB tra folder piccoli, file illeggibili, aggiornamento di un archivio
+  (aggiunta, sostituzione con ricompressione). Per gli archivi cifrati (IV casuali)
+  confronta console ed esito ed estrae l'archivio.
+- `tests/unit_7zupdate_mt`: test unitari di `7zUpdateMt` (stima di thread e memoria degli
+  encoder per metodo, granularità di `CFolderReplayInStream`).
 
 Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,
 `thread` per le race condition. Si usano in una directory di build separata:

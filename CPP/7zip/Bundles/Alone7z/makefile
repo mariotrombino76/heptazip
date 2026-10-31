@@ -103,6 +103,7 @@ AR_COMMON_OBJS = \
   $O\7zRegister.obj \
   $O\7zSpecStream.obj \
   $O\7zUpdate.obj \
+  $O\7zUpdateMt.obj \
 
 COMPRESS_OBJS = \
   $O\Bcj2Coder.obj \

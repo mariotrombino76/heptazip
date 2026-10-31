@@ -174,6 +174,7 @@ AR_COMMON_OBJS = \
   $O/7zProperties.o \
   $O/7zSpecStream.o \
   $O/7zUpdate.o \
+  $O/7zUpdateMt.o \
   $O/7zRegister.o \
 
 CAB_OBJS = \

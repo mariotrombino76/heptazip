@@ -32,6 +32,9 @@ namespace N7z {
 
 // 7zip-modern: default of property "pfd" (parallel extraction of folders)
 const bool k_ParallelFolderDecoding_Default = true;
+// 7zip-modern: default of property "pfc" (parallel compression of folders):
+// on, because the archive is the same as with sequential compression.
+const bool k_ParallelFolderEncoding_Default = true;
 
 
 #ifndef Z7_EXTRACT_ONLY
@@ -59,6 +62,8 @@ public:
   bool _useMultiThreadMixer;
   // 7zip-modern: parallel extraction of folders, property "pfd" (docs/design/0001)
   bool _parallelFolderDecoding;
+  // 7zip-modern: parallel compression of folders, property "pfc" (docs/design/0003)
+  bool _parallelFolderEncoding;
   bool _removeSfxBlock;
   // bool _volumeMode;
 

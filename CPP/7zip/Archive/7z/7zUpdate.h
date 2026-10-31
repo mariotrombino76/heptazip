@@ -102,6 +102,8 @@ struct CUpdateOptions
   
   bool RemoveSfxBlock;
   bool MultiThreadMixer;
+  // 7zip-modern: compress new folders in parallel (docs/design/0003)
+  bool ParallelFolderEncoding;
 
   bool Need_CTime;
   bool Need_ATime;
@@ -142,6 +144,7 @@ struct CUpdateOptions
       UseTypeSorting(true),
       RemoveSfxBlock(false),
       MultiThreadMixer(true),
+      ParallelFolderEncoding(false),
       Need_CTime(false),
       Need_ATime(false),
       Need_MTime(false),

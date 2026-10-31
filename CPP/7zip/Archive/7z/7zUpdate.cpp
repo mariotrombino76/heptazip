@@ -8,9 +8,21 @@
 #include "../../../Common/StringToInt.h"
 #include "../../../Common/Wildcard.h"
 
+#ifndef Z7_ST
+#include <atomic>
+#include <deque>
+#include <memory>
+#include <vector>
+#endif
+
 #include "../../Common/CreateCoder.h"
 #include "../../Common/LimitedStreams.h"
 #include "../../Common/ProgressUtils.h"
+#include "../../Common/StreamObjects.h"
+#include "../../Common/StreamUtils.h"
+#ifndef Z7_ST
+#include "../../Common/MtTaskPool.h"
+#endif
 
 #include "../../Compress/CopyCoder.h"
 
@@ -22,6 +34,10 @@
 #include "7zHandler.h"
 #include "7zOut.h"
 #include "7zUpdate.h"
+#include "7zUpdateMt.h"
+#ifndef Z7_ST
+#include "7zExtractMt.h" // CMemoryBudget
+#endif
 
 namespace NArchive {
 namespace N7z {
@@ -1994,6 +2010,607 @@ static HRESULT AddNewFolderFiles(
 }
 
 
+/* 7zip-modern: what the compression of a new folder needs, besides the encoder
+   and the files. Common to EncodeNewFolderInline() and CParallelFolderEncoder. */
+struct CNewFolderContext
+{
+  DECL_EXTERNAL_CODECS_LOC_VARS_DECL
+  const CDbEx *Db;
+  const CObjectVector<CUpdateItem> *UpdateItems;
+  IArchiveUpdateCallback *UpdateCallback;
+  const CUpdateOptions *Options;
+  const UInt64 *InSizeForReduce;
+  CArchiveDatabaseOut *NewDatabase;
+  ISequentialOutStream *ArcStream;
+  CLocalProgress *Lps;
+  ICompressProgressInfo *LpsProgress; // (Lps) as interface for the coders
+  UInt64 *Complexity;
+};
+
+static void SetFolderInStreamOptions(CFolderInStream &s, const CUpdateOptions &options)
+{
+  s.Need_CTime = options.Need_CTime;
+  s.Need_ATime = options.Need_ATime;
+  s.Need_MTime = options.Need_MTime;
+  s.Need_Attrib = options.Need_Attrib;
+}
+
+
+/* 7zip-modern: compresses a new folder in the calling thread and adds it to
+   the database: the body of the "Compress files to new solid blocks" loop of
+   upstream. (inStream) provides the data of the files: (folderInStream) itself,
+   or a stream that ends with it (CFolderReplayInStream after a read ahead). */
+static HRESULT EncodeNewFolderInline(const CNewFolderContext &ctx, CEncoder &encoder,
+    ISequentialInStream *inStream, const CFolderInStream &folderInStream,
+    const UInt32 *indices, unsigned numSubFiles, UInt64 expectedDataSize)
+{
+ #ifdef Z7_EXTERNAL_CODECS
+  const CExternalCodecs *_externalCodecs = ctx._externalCodecs;
+ #endif
+  CArchiveDatabaseOut &newDatabase = *ctx.NewDatabase;
+  const unsigned startPackIndex = newDatabase.PackSizes.Size();
+
+  RINOK(encoder.Encode1(
+      EXTERNAL_CODECS_LOC_VARS
+      inStream,
+      ctx.InSizeForReduce,
+      expectedDataSize, // expected size
+      newDatabase.Folders.AddNew(),
+      ctx.ArcStream, newDatabase.PackSizes, ctx.LpsProgress))
+
+  if (!folderInStream.WasFinished())
+    return E_FAIL;
+
+  const UInt64 curFolderUnpackSize = folderInStream.Get_TotalSize_for_Coder();
+  encoder.Encode_Post(curFolderUnpackSize, newDatabase.CoderUnpackSizes);
+
+  return AddNewFolderFiles(ctx.Db, *ctx.UpdateItems, indices, numSubFiles,
+      folderInStream, curFolderUnpackSize, startPackIndex,
+      newDatabase, ctx.Lps, ctx.UpdateCallback, *ctx.Complexity);
+}
+
+
+#ifndef Z7_ST
+
+// ---------------------------------------------------------------------------
+// 7zip-modern: parallel compression of new folders (docs/design/0003)
+//
+// The main thread reads the files of a folder into memory (CFolderInStream,
+// so the callbacks are called in the same order as in the sequential loop),
+// a worker thread compresses the folder from memory into memory with its own
+// CEncoder (same options: same output), and the main thread writes the
+// folders to the archive and to the database in the original order.
+// ---------------------------------------------------------------------------
+
+class CParallelFolderEncoder;
+
+/* Progress of the coders of one folder. Written by the worker thread, read by
+   the main thread, that reports it: the callbacks of the user interface are
+   called only by the main thread. */
+Z7_CLASS_IMP_COM_1(
+  CFolderEncodeProgress
+  , ICompressProgressInfo
+)
+  UInt64 _wakeInSize; // used only by the worker thread
+public:
+  std::atomic<UInt64> InSize;
+  std::atomic<UInt64> OutSize;
+  CParallelFolderEncoder *Owner;
+  CFolderEncodeProgress(): _wakeInSize(0), InSize(0), OutSize(0), Owner(NULL) {}
+};
+
+
+class CFolderEncodeTask: public CMtTask
+{
+  Z7_CLASS_NO_COPY(CFolderEncodeTask)
+  HRESULT Encode();
+public:
+  CParallelFolderEncoder *Owner;
+  const UInt32 *Indices;
+  unsigned NumSubFiles;
+  UInt64 ExpectedSize;
+
+  UInt32 NumThreads;     // in the thread budget of the owner while the task runs
+  UInt64 EncoderMemory;  // estimate for the encoder (kept by the encoder slot)
+  unsigned Slot;         // encoder slot of the owner
+  // in the memory budget of the owner:
+  UInt64 InMemory;       // released when the task finished
+  UInt64 OutMemory;      // released when the folder was written
+
+  // read ahead by the main thread
+  CMyComPtr2_Create<ISequentialInStream, CFolderInStream> InStream; // sizes, CRCs, times
+  CByteDynBuffer InData;
+  size_t InDataSize;
+
+  // results of the worker thread
+  CMyComPtr2_Create<ISequentialOutStream, CDynBufSeqOutStream> OutData;
+  CMyComPtr2_Create<ICompressProgressInfo, CFolderEncodeProgress> Progress;
+  CFolder Folder;
+  CRecordVector<UInt64> PackSizes;
+  CRecordVector<UInt64> CoderUnpackSizes;
+  HRESULT Result;
+  std::atomic<bool> Finished; // set by Run() after the last access to the input
+
+  bool Accounted; // main thread: threads and input memory were released
+
+  CFolderEncodeTask():
+      Owner(NULL), Indices(NULL), NumSubFiles(0), ExpectedSize(0),
+      NumThreads(1), EncoderMemory(0), Slot(0), InMemory(0), OutMemory(0),
+      InDataSize(0), Result(S_OK), Finished(false), Accounted(false)
+      {}
+
+  void Run(unsigned workerIndex) Z7_override;
+};
+
+
+class CParallelFolderEncoder
+{
+  Z7_CLASS_NO_COPY(CParallelFolderEncoder)
+
+  const CNewFolderContext &_ctx;
+  const CCompressionMethodMode &_method;
+  UInt32 _numThreads;
+  UInt32 _threadsInUse;
+  CMemoryBudget _budget;
+
+  /* Encoders, reused for the next folders as in the sequential loop. An encoder
+     keeps its memory (match finder, buffers) after a folder: that memory stays
+     reserved in (_budget) for the slot, as the largest estimate of the folders
+     the slot compressed, until the slot is released. So the reserved memory
+     bounds the real one, also with idle encoders. */
+  struct CEncoderSlot
+  {
+    std::unique_ptr<CEncoder> Encoder;
+    UInt64 Memory;
+    bool Busy;
+    CEncoderSlot(): Memory(0), Busy(false) {}
+  };
+  std::vector<CEncoderSlot> _slots;
+
+  // submitted folders, in the order of the archive
+  std::deque<std::unique_ptr<CFolderEncodeTask> > _window;
+  CMtTaskPool _pool;
+
+  int FindFreeSlot(UInt64 encoderMemory) const;
+  bool ReleaseIdleSlots(unsigned except);
+  HRESULT ReadAhead(CFolderEncodeTask &task, bool &stoppedAtLimit);
+  HRESULT Commit(CFolderEncodeTask &task);
+  HRESULT ReportProgress();
+  HRESULT Poll(bool &progress);
+  HRESULT WaitAndCommit();
+
+public:
+  NWindows::NSynchronization::CAutoResetEvent Wake; // a task finished or made progress
+  std::atomic<bool> StopRequested;
+
+  CParallelFolderEncoder(const CNewFolderContext &ctx, const CCompressionMethodMode &method):
+      _ctx(ctx), _method(method), _numThreads(method.NumThreads), _threadsInUse(0),
+      StopRequested(false)
+      {}
+  ~CParallelFolderEncoder()
+  {
+    // the running tasks stop at the next progress call; they use (Wake)
+    StopRequested = true;
+    _pool.Stop();
+  }
+
+  const CNewFolderContext &Ctx() const { return _ctx; }
+  CEncoder &GetEncoder(unsigned slot) { return *_slots[slot].Encoder; }
+
+  HRESULT Start();
+
+  /* (done == true): the folder is queued (or was compressed) by this object.
+     (done == false): the caller must compress it inline; all the queued folders
+     were written before.
+     (isLastFolder): the last folder of the group: if no other folder is being
+     compressed, it's compressed inline (nothing to overlap with: it keeps the
+     streaming of the sequential loop, e.g. for an archive with one solid block). */
+  HRESULT AddFolder(const UInt32 *indices, unsigned numSubFiles, UInt64 expectedSize,
+      bool isLastFolder, CEncoder &inlineEncoder, bool &done);
+
+  /* Waits for the queued folders and writes them. */
+  HRESULT Flush();
+};
+
+
+Z7_COM7F_IMF(CFolderEncodeProgress::SetRatioInfo(const UInt64 *inSize, const UInt64 *outSize))
+{
+  if (Owner->StopRequested.load(std::memory_order_relaxed))
+    return E_ABORT;
+  if (outSize)
+    OutSize.store(*outSize, std::memory_order_relaxed);
+  if (inSize)
+  {
+    InSize.store(*inSize, std::memory_order_relaxed);
+    // wake the main thread up to report the progress, at most once per MiB
+    if (*inSize - _wakeInSize >= ((UInt32)1 << 20))
+    {
+      _wakeInSize = *inSize;
+      Owner->Wake.Set();
+    }
+  }
+  return S_OK;
+}
+
+
+HRESULT CFolderEncodeTask::Encode()
+{
+  const CNewFolderContext &ctx = Owner->Ctx();
+ #ifdef Z7_EXTERNAL_CODECS
+  const CExternalCodecs *_externalCodecs = ctx._externalCodecs;
+ #endif
+  const CFolderInStream &folderInStream = *InStream.ClsPtr();
+
+  CMyComPtr2_Create<ISequentialInStream, CFolderReplayInStream> replay;
+  replay->Init(InData, InDataSize,
+      folderInStream.Sizes.ConstData(), folderInStream.Sizes.Size(), NULL);
+
+  OutData->Init();
+  if (!OutData->GetBufPtrForWriting((size_t)OutMemory))
+    return E_OUTOFMEMORY;
+  Progress->Owner = Owner;
+
+  CEncoder &encoder = Owner->GetEncoder(Slot);
+  RINOK(encoder.Encode1(
+      EXTERNAL_CODECS_LOC_VARS
+      replay,
+      ctx.InSizeForReduce,
+      ExpectedSize,
+      Folder,
+      OutData, PackSizes, Progress))
+
+  encoder.Encode_Post(folderInStream.Get_TotalSize_for_Coder(), CoderUnpackSizes);
+  return S_OK;
+}
+
+
+void CFolderEncodeTask::Run(unsigned /* workerIndex */)
+{
+  try
+  {
+    Result = Encode();
+  }
+  catch (const CNewException &)
+  {
+    Result = E_OUTOFMEMORY;
+  }
+  catch (...)
+  {
+    Result = E_FAIL;
+  }
+  // the main thread can free the input and reuse the threads after this point
+  Finished.store(true, std::memory_order_release);
+  Owner->Wake.Set();
+}
+
+
+HRESULT CParallelFolderEncoder::Start()
+{
+  if (_numThreads < 2)
+    return E_FAIL;
+  {
+    const WRes wres = Wake.CreateIfNotCreated_Reset();
+    if (wres != 0)
+      return HRESULT_FROM_WIN32(wres);
+  }
+  _budget.Init(_method.MemoryUsageLimit);
+  // no more running tasks than threads: each task has a weight >= 1
+  _slots.resize(_numThreads);
+  for (CEncoderSlot &slot : _slots)
+    slot.Encoder = std::make_unique<CEncoder>(_method);
+  return _pool.Start(_numThreads);
+}
+
+
+/* A free slot for a task with (encoderMemory): the smallest one with enough
+   reserved memory, else the largest one (the least memory to add). -1: none. */
+int CParallelFolderEncoder::FindFreeSlot(UInt64 encoderMemory) const
+{
+  int fit = -1;
+  int largest = -1;
+  for (unsigned i = 0; i < _slots.size(); i++)
+  {
+    const CEncoderSlot &slot = _slots[i];
+    if (slot.Busy)
+      continue;
+    if (slot.Memory >= encoderMemory)
+    {
+      if (fit < 0 || slot.Memory < _slots[(unsigned)fit].Memory)
+        fit = (int)i;
+    }
+    else if (largest < 0 || slot.Memory > _slots[(unsigned)largest].Memory)
+      largest = (int)i;
+  }
+  return fit >= 0 ? fit : largest;
+}
+
+
+/* Frees the memory of the idle encoders (but (except)): a new CEncoder creates
+   its coders again at the first folder. Returns false if nothing was freed. */
+bool CParallelFolderEncoder::ReleaseIdleSlots(unsigned except)
+{
+  bool released = false;
+  for (unsigned i = 0; i < _slots.size(); i++)
+  {
+    CEncoderSlot &slot = _slots[i];
+    if (slot.Busy || i == except || slot.Memory == 0)
+      continue;
+    slot.Encoder = std::make_unique<CEncoder>(_method);
+    _budget.Release(slot.Memory);
+    slot.Memory = 0;
+    released = true;
+  }
+  return released;
+}
+
+
+HRESULT CParallelFolderEncoder::ReadAhead(CFolderEncodeTask &task, bool &stoppedAtLimit)
+{
+  stoppedAtLimit = false;
+  CFolderInStream &folderInStream = *task.InStream.ClsPtr();
+  SetFolderInStreamOptions(folderInStream, *_ctx.Options);
+  folderInStream.Init(_ctx.UpdateCallback, task.Indices, task.NumSubFiles);
+
+  const UInt32 kChunk = (UInt32)1 << 20;
+  if (!task.InData.EnsureCapacity((size_t)task.ExpectedSize + kChunk))
+    return E_OUTOFMEMORY;
+  size_t size = 0;
+  for (;;)
+  {
+    if (!task.InData.EnsureCapacity(size + kChunk))
+      return E_OUTOFMEMORY;
+    UInt32 processed = 0;
+    RINOK(task.InStream.Interface()->Read((Byte *)task.InData + size, kChunk, &processed))
+    if (processed == 0)
+      break;
+    size += processed;
+    if (size >= kMaxParallelEncodeReadSize)
+    {
+      stoppedAtLimit = true;
+      break;
+    }
+  }
+  task.InDataSize = size;
+  if (!stoppedAtLimit && !folderInStream.WasFinished())
+    return E_FAIL;
+  return S_OK;
+}
+
+
+static void CopyFolder(const CFolder &src, CFolder &dest)
+{
+  unsigned i;
+  dest.Coders.SetSize(src.Coders.Size());
+  for (i = 0; i < src.Coders.Size(); i++)
+    dest.Coders[i] = src.Coders[i];
+  dest.Bonds.SetSize(src.Bonds.Size());
+  for (i = 0; i < src.Bonds.Size(); i++)
+    dest.Bonds[i] = src.Bonds[i];
+  dest.PackStreams.SetSize(src.PackStreams.Size());
+  for (i = 0; i < src.PackStreams.Size(); i++)
+    dest.PackStreams[i] = src.PackStreams[i];
+}
+
+
+HRESULT CParallelFolderEncoder::Commit(CFolderEncodeTask &task)
+{
+  // the worker thread doesn't use the task after (Done)
+  RINOK_WRes(task.Done.Lock())
+  if (task.ExceptionWasCaught)
+    return E_FAIL;
+  RINOK(task.Result)
+
+  RINOK(WriteStream(_ctx.ArcStream, task.OutData->GetBuffer(), task.OutData->GetSize()))
+
+  // the same entries as EncodeNewFolderInline()
+  CArchiveDatabaseOut &newDatabase = *_ctx.NewDatabase;
+  CopyFolder(task.Folder, newDatabase.Folders.AddNew());
+  const unsigned startPackIndex = newDatabase.PackSizes.Size();
+  FOR_VECTOR (i, task.PackSizes)
+    newDatabase.PackSizes.Add(task.PackSizes[i]);
+  FOR_VECTOR (k, task.CoderUnpackSizes)
+    newDatabase.CoderUnpackSizes.Add(task.CoderUnpackSizes[k]);
+
+  const CFolderInStream &folderInStream = *task.InStream.ClsPtr();
+  RINOK(AddNewFolderFiles(_ctx.Db, *_ctx.UpdateItems, task.Indices, task.NumSubFiles,
+      folderInStream, folderInStream.Get_TotalSize_for_Coder(), startPackIndex,
+      newDatabase, _ctx.Lps, _ctx.UpdateCallback, *_ctx.Complexity))
+
+  _budget.Release(task.OutMemory);
+  task.OutMemory = 0;
+  return S_OK;
+}
+
+
+HRESULT CParallelFolderEncoder::ReportProgress()
+{
+  UInt64 inSize = 0;
+  UInt64 outSize = 0;
+  for (const auto &task : _window)
+  {
+    inSize += task->Progress->InSize.load(std::memory_order_relaxed);
+    outSize += task->Progress->OutSize.load(std::memory_order_relaxed);
+  }
+  return _ctx.LpsProgress->SetRatioInfo(&inSize, &outSize);
+}
+
+
+HRESULT CParallelFolderEncoder::Poll(bool &progress)
+{
+  progress = false;
+  for (const auto &task : _window)
+  {
+    if (task->Accounted || !task->Finished.load(std::memory_order_acquire))
+      continue;
+    task->Accounted = true;
+    _threadsInUse -= task->NumThreads;
+    _slots[task->Slot].Busy = false;
+    _budget.Release(task->InMemory);
+    task->InMemory = 0;
+    task->InData.Free();
+    progress = true;
+  }
+  while (!_window.empty() && _window.front()->Accounted)
+  {
+    RINOK(Commit(*_window.front()))
+    _window.pop_front();
+    progress = true;
+  }
+  return S_OK;
+}
+
+
+HRESULT CParallelFolderEncoder::WaitAndCommit()
+{
+  for (;;)
+  {
+    bool progress;
+    RINOK(Poll(progress))
+    if (progress || _window.empty())
+      return S_OK;
+    RINOK(ReportProgress())
+    RINOK_WRes(Wake.Lock())
+  }
+}
+
+
+HRESULT CParallelFolderEncoder::Flush()
+{
+  while (!_window.empty())
+  {
+    RINOK(WaitAndCommit())
+  }
+  return S_OK;
+}
+
+
+HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSubFiles,
+    UInt64 expectedSize, bool isLastFolder, CEncoder &inlineEncoder, bool &done)
+{
+  done = false;
+
+  if (isLastFolder)
+  {
+    bool progress;
+    RINOK(Poll(progress))
+    if (_window.empty())
+      return S_OK;
+  }
+
+  CFolderEncodeCost cost;
+  if (expectedSize > kMaxParallelEncodeFolderSize
+      || !EstimateFolderEncodeCost(_method, *_ctx.InSizeForReduce, expectedSize, cost)
+      // the encoder alone uses all the threads (e.g. BZip2 blocks): nothing to gain
+      || cost.NumThreads >= _numThreads)
+    return Flush();
+  const UInt64 outMemory = EstimateFolderEncodeOutSize(expectedSize);
+  if (_budget.IsLargeJob(expectedSize + outMemory + cost.EncoderMemory))
+    return Flush();
+
+  std::unique_ptr<CFolderEncodeTask> task = std::make_unique<CFolderEncodeTask>();
+  task->Owner = this;
+  task->Indices = indices;
+  task->NumSubFiles = numSubFiles;
+  task->ExpectedSize = expectedSize;
+  task->NumThreads = cost.NumThreads;
+  task->EncoderMemory = cost.EncoderMemory;
+  task->InMemory = expectedSize;
+  task->OutMemory = outMemory;
+
+  // buffers of this folder; then the read ahead, while the workers compress
+  {
+    const UInt64 total = task->InMemory + task->OutMemory;
+    while (!_window.empty() && !_budget.CanReserve(total))
+    {
+      RINOK(WaitAndCommit())
+    }
+    _budget.Reserve(total);
+  }
+  bool stoppedAtLimit;
+  {
+    const HRESULT res = ReadAhead(*task, stoppedAtLimit);
+    if (res != S_OK)
+    {
+      _budget.Release(task->InMemory + task->OutMemory);
+      return res;
+    }
+  }
+
+  if (stoppedAtLimit)
+  {
+    // files grew after the planning: the rest of the folder is compressed inline
+    _budget.Release(task->InMemory + task->OutMemory);
+    RINOK(Flush())
+    const CFolderInStream &folderInStream = *task->InStream.ClsPtr();
+    CMyComPtr2_Create<ISequentialInStream, CFolderReplayInStream> replay;
+    replay->Init(task->InData, task->InDataSize,
+        folderInStream.Sizes.ConstData(), folderInStream.Sizes.Size(), task->InStream);
+    RINOK(EncodeNewFolderInline(_ctx, inlineEncoder, replay, folderInStream,
+        indices, numSubFiles, expectedSize))
+    done = true;
+    return S_OK;
+  }
+
+  if (task->InDataSize > task->InMemory)
+  {
+    // files grew a little: we reserve the real size
+    const UInt64 extra = task->InDataSize - task->InMemory;
+    while (!_window.empty() && !_budget.CanReserve(extra))
+    {
+      RINOK(WaitAndCommit())
+    }
+    _budget.Reserve(extra);
+    task->InMemory = task->InDataSize;
+  }
+
+  // threads, and an encoder slot with memory for the encoder
+  for (;;)
+  {
+    if (_threadsInUse == 0 || _threadsInUse + task->NumThreads <= _numThreads)
+    {
+      const int slotIndex = FindFreeSlot(task->EncoderMemory);
+      if (slotIndex >= 0)
+      {
+        CEncoderSlot &slot = _slots[(unsigned)slotIndex];
+        const UInt64 extra = slot.Memory >= task->EncoderMemory ? 0 :
+            task->EncoderMemory - slot.Memory;
+        // memory kept by idle encoders is freed before waiting for running tasks
+        if (extra != 0 && !_budget.CanReserve(extra) && ReleaseIdleSlots((unsigned)slotIndex))
+          continue;
+        // (_window.empty()): this folder alone; it's not a large job (checked above)
+        if (extra == 0 || _budget.CanReserve(extra) || _window.empty())
+        {
+          _budget.Reserve(extra);
+          slot.Memory += extra;
+          slot.Busy = true;
+          task->Slot = (unsigned)slotIndex;
+          break;
+        }
+      }
+    }
+    RINOK(WaitAndCommit())
+  }
+
+  {
+    const HRESULT res = _pool.Submit(task.get());
+    if (res != S_OK)
+    {
+      _slots[task->Slot].Busy = false;
+      _budget.Release(task->InMemory + task->OutMemory);
+      return res;
+    }
+  }
+  _threadsInUse += task->NumThreads;
+  _window.push_back(std::move(task));
+  done = true;
+
+  bool progress;
+  return Poll(progress);
+}
+
+#endif // Z7_ST
+
+
 HRESULT Update(
     DECL_EXTERNAL_CODECS_LOC_VARS
     IInStream *inStream,
@@ -2428,6 +3045,21 @@ HRESULT Update(
     filters.Sort2();
   }
 
+  CNewFolderContext newFolderCtx;
+ #ifdef Z7_EXTERNAL_CODECS
+  newFolderCtx._externalCodecs = _externalCodecs;
+ #endif
+  newFolderCtx.Db = db;
+  newFolderCtx.UpdateItems = &updateItems;
+  newFolderCtx.UpdateCallback = updateCallback;
+  newFolderCtx.Options = &options;
+  newFolderCtx.InSizeForReduce = &inSizeForReduce;
+  newFolderCtx.NewDatabase = &newDatabase;
+  newFolderCtx.ArcStream = archive.SeqStream;
+  newFolderCtx.Lps = lps.ClsPtr();
+  newFolderCtx.LpsProgress = lps;
+  newFolderCtx.Complexity = &complexity;
+
   for (unsigned groupIndex = 0; groupIndex < filters.Size(); groupIndex++)
   {
     const CFilterMode2 &filterMode = filters[groupIndex];
@@ -2842,6 +3474,17 @@ HRESULT Update(
       */
     }
     
+   #ifndef Z7_ST
+    // 7zip-modern: parallel compression of the folders of this group (design 0003)
+    std::unique_ptr<CParallelFolderEncoder> parallelEncoder;
+    if (options.ParallelFolderEncoding && method.NumThreads > 1 && numFiles > 1)
+    {
+      parallelEncoder = std::make_unique<CParallelFolderEncoder>(newFolderCtx, method);
+      if (parallelEncoder->Start() != S_OK)
+        parallelEncoder.reset(); // threads can't be created: sequential compression
+    }
+   #endif
+
     for (i = 0; i < numFiles;)
     {
       UInt64 totalSize = 0;
@@ -2884,50 +3527,29 @@ HRESULT Update(
       */
 
 
-      CMyComPtr2_Create<ISequentialInStream, CFolderInStream> inStreamSpec; // solidInStream;
+     #ifndef Z7_ST
+      if (parallelEncoder)
+      {
+        bool done;
+        RINOK(parallelEncoder->AddFolder(&indices[i], numSubFiles, totalSize,
+            i + numSubFiles == numFiles, encoder, done))
+        if (done)
+        {
+          i += numSubFiles;
+          continue;
+        }
+        // not a folder for the parallel path: the previous folders were written
+      }
+     #endif
 
-      // inStreamSpec->_reportArcProp = reportArcProp;
-      
-      inStreamSpec->Need_CTime = options.Need_CTime;
-      inStreamSpec->Need_ATime = options.Need_ATime;
-      inStreamSpec->Need_MTime = options.Need_MTime;
-      inStreamSpec->Need_Attrib = options.Need_Attrib;
-      // inStreamSpec->Need_Crc = options.Need_Crc;
-
-      inStreamSpec->Init(updateCallback, &indices[i], numSubFiles);
-      
-      unsigned startPackIndex = newDatabase.PackSizes.Size();
-      // UInt64 curFolderUnpackSize = totalSize;
-      // curFolderUnpackSize = (UInt64)(Int64)-1; // for debug
-      const UInt64 expectedDataSize = totalSize;
-
-      // const unsigned folderIndex_New = newDatabase.Folders.Size();
-      
-      RINOK(encoder.Encode1(
-          EXTERNAL_CODECS_LOC_VARS
-          inStreamSpec,
-          // NULL,
-          &inSizeForReduce,
-          expectedDataSize, // expected size
-          newDatabase.Folders.AddNew(),
-          // newDatabase.CoderUnpackSizes, curFolderUnpackSize,
-          archive.SeqStream, newDatabase.PackSizes, lps))
-
-      if (!inStreamSpec->WasFinished())
-        return E_FAIL;
-
-      /*
-      if (inStreamSpec->Need_FolderCrc)
-        newDatabase.FolderUnpackCRCs.SetItem(folderIndex_New,
-            true, inStreamSpec->GetFolderCrc());
-      */
-
-      const UInt64 curFolderUnpackSize = inStreamSpec->Get_TotalSize_for_Coder();
-      encoder.Encode_Post(curFolderUnpackSize, newDatabase.CoderUnpackSizes);
-
-      RINOK(AddNewFolderFiles(db, updateItems, &indices[i], numSubFiles,
-          *inStreamSpec.ClsPtr(), curFolderUnpackSize, startPackIndex,
-          newDatabase, lps.ClsPtr(), updateCallback, complexity))
+      {
+        CMyComPtr2_Create<ISequentialInStream, CFolderInStream> inStreamSpec; // solidInStream;
+        SetFolderInStreamOptions(*inStreamSpec.ClsPtr(), options);
+        inStreamSpec->Init(updateCallback, &indices[i], numSubFiles);
+        RINOK(EncodeNewFolderInline(newFolderCtx, encoder,
+            inStreamSpec, *inStreamSpec.ClsPtr(),
+            &indices[i], numSubFiles, totalSize))
+      }
       i += numSubFiles;
 
       /*
@@ -2968,6 +3590,13 @@ HRESULT Update(
       }
       */
     }
+
+   #ifndef Z7_ST
+    if (parallelEncoder)
+    {
+      RINOK(parallelEncoder->Flush())
+    }
+   #endif
   }
 
   RINOK(lps->SetCur())

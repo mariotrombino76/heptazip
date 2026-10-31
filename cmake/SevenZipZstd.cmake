@@ -46,4 +46,5 @@ list(INSERT SEVENZIP_CPP_SOURCES ${_enc_pos} "CPP/7zip/Compress/ZstdLibEncoder.c
 set_source_files_properties(
   CPP/7zip/Compress/ZstdCodecRegister.cpp
   CPP/7zip/Compress/ZstdLibEncoder.cpp
+  CPP/7zip/Archive/7z/7zUpdateMt.cpp  # stima dell'encoder zstd (design 0003)
   PROPERTIES COMPILE_DEFINITIONS Z7_ZSTD_LIB_ENCODER)

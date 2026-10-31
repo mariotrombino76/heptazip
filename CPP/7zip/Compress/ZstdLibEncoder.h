@@ -21,6 +21,19 @@ namespace NZstdLib {
 
 const unsigned kPropsSize = 5;
 
+/* Memory of one compression context and size of a ZSTDMT job of the encoder
+   with these properties (levelProp: kLevel, -1 if not set; windowSizeProp:
+   kDictionarySize, 0 if not set), as CEncoder sets them in a 7z archive, where
+   the size of the data is not known. With N > 1 threads, each zstd worker that
+   compresses a job has its own context and job buffers.
+   Used to schedule the parallel compression of 7z folders (design 0003). */
+struct CEncoderEstimate
+{
+  UInt64 CCtxMemory;
+  UInt64 JobSize;
+};
+void EstimateEncoder(int levelProp, UInt64 windowSizeProp, CEncoderEstimate &e);
+
 class CEncoder Z7_final:
   public ICompressCoder,
   public ICompressSetCoderProperties,

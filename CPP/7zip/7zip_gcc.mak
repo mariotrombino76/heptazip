@@ -630,6 +630,8 @@ $O/7zSpecStream.o: ../../Archive/7z/7zSpecStream.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/7zUpdate.o: ../../Archive/7z/7zUpdate.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/7zUpdateMt.o: ../../Archive/7z/7zUpdateMt.cpp
+	$(CXX) $(CXXFLAGS) $<
 
 
 $O/CabBlockInStream.o: ../../Archive/Cab/CabBlockInStream.cpp

@@ -31,9 +31,10 @@ static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 strea
    The 7-Zip decoder (C/ZstdDec.c) allocates MIN(content size, window size) of the
    frame. The properties don't contain the window: we use the largest window of
    the standard levels (2^27, level 22). Frames with bigger windows (long mode,
-   custom window) and without content size can use more memory than estimated;
-   the 7-Zip-modern encoder always stores the content size. */
-static const UInt32 k_ZSTD_7zZstd = 0x4F71101;
+   custom window) and without content size can use more memory than estimated.
+   The 7-Zip-modern encoder doesn't store the content size in 7z archives (the
+   size of a folder is not known before it's compressed): its frames use the
+   window of the level, at most 2^27. */
 static const UInt64 kMem_Zstd = (UInt64)1 << 27;
 
 // LZMA_LIT_SIZE and LZMA probability model size (C/LzmaDec.c), with 16-bit probs
