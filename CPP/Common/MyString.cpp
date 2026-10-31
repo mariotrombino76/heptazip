@@ -385,7 +385,8 @@ void AString::ReAlloc(unsigned newLimit)
   _limit = newLimit;
 }
 
-#define THROW_STRING_ALLOC_EXCEPTION  { throw 20130220; }
+// 7zip-modern: allocation impossible: CNewException (E_OUTOFMEMORY), see ComTry.h
+#define THROW_STRING_ALLOC_EXCEPTION  { throw CNewException(); }
 
 #define CHECK_STRING_ALLOC_LEN(len) \
   { if ((len) > k_Alloc_Len_Limit) THROW_STRING_ALLOC_EXCEPTION }

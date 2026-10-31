@@ -24,7 +24,7 @@ CEncoder::CEncoder()
   _encoder = NULL;
   _encoder = Lzma2Enc_Create(&g_AlignedAlloc, &g_BigAlloc);
   if (!_encoder)
-    throw 1;
+    throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
 }
 
 CEncoder::~CEncoder()

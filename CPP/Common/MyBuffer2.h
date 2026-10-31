@@ -6,6 +6,7 @@
 #include "../../C/Alloc.h"
 
 #include "MyTypes.h"
+#include "NewHandler.h"
 
 class CMidBuffer
 {
@@ -73,7 +74,7 @@ public:
     _data = NULL;
     _data = (Byte *)z7_AlignedAlloc(size);
     if (!_data)
-      throw 1;
+      throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
   }
 
   operator       Byte *()       { return _data; }
@@ -101,7 +102,7 @@ public:
     _data = NULL;
     _data = (Byte *)z7_AlignedAlloc(size);
     if (!_data)
-      throw 1;
+      throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
     _size = size;
   }
   */

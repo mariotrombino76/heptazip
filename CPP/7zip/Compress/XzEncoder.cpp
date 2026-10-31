@@ -31,7 +31,7 @@ CEncoder::CEncoder()
   _encoder = NULL;
   _encoder = XzEnc_Create(&g_Alloc, &g_BigAlloc);
   if (!_encoder)
-    throw 1;
+    throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
 }
 
 CEncoder::~CEncoder()

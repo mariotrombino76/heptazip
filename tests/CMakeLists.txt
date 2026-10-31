@@ -57,9 +57,18 @@ if(SEVENZIP_ZSTD_ENCODER)
   set_source_files_properties(unit_7zupdate_mt.cpp PROPERTIES COMPILE_DEFINITIONS Z7_ZSTD_LIB_ENCODER)
 endif()
 
+# COM_TRY_END: E_OUTOFMEMORY solo per i fallimenti di allocazione (CPP/Common/ComTry.h).
+add_executable(unit_com_try
+  unit_com_try.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
+target_link_libraries(unit_com_try PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+
 # Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
 if(TARGET sevenzip_asm)
-  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt)
+  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt unit_com_try)
     add_dependencies(${_t} sevenzip_asm)
   endforeach()
 endif()
@@ -98,6 +107,9 @@ set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT 
 
 add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zextract_mt>)
 set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+add_test(NAME unit_com_try COMMAND ${_test_launcher} $<TARGET_FILE:unit_com_try>)
+set_tests_properties(unit_com_try PROPERTIES TIMEOUT 60 ENVIRONMENT "${_test_env}")
 
 add_test(NAME unit_7zupdate_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zupdate_mt>)
 set_tests_properties(unit_7zupdate_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "MyTypes.h"
+#include "NewHandler.h"
 
 template <class T> class CDynamicBuffer
 {
@@ -26,7 +27,7 @@ template <class T> class CDynamicBuffer
     {
       newCap = _size + size;
       if (newCap < size)
-        throw 20120116;
+        throw CNewException();  // 7zip-modern: size overflow, allocation impossible
     }
 
     T *newBuffer = new T[newCap];
