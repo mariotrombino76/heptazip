@@ -138,7 +138,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
   essere identiche.
 
-- `tests/unit_7zextract_mt`: test unitari del modulo `7zExtractMt` (stima della memoria
+- `tests/unit_7zextract_mt`: test unitari di `7zExtractMt` e del pool `Common/MtTaskPool` (stima della memoria
   dei decoder, budget, stream su buffer, cache della password, pool di thread con stress).
 
 Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,

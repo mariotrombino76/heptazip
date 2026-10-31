@@ -87,6 +87,7 @@ WIN_OBJS = \
   $O/LockedStream.o \
   $O/MethodId.o \
   $O/MethodProps.o \
+  $O/MtTaskPool.o \
   $O/OffsetStream.o \
   $O/OutBuffer.o \
   $O/ProgressUtils.o \

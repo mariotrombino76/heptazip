@@ -470,6 +470,8 @@ $O/MethodId.o: ../../Common/MethodId.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/MethodProps.o: ../../Common/MethodProps.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/MtTaskPool.o: ../../Common/MtTaskPool.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/MultiOutStream.o: ../../Common/MultiOutStream.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/OffsetStream.o: ../../Common/OffsetStream.cpp

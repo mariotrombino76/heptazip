@@ -158,6 +158,7 @@ WIN_OBJS = \
   $O/LimitedStreams.o \
   $O/MethodId.o \
   $O/MethodProps.o \
+  $O/MtTaskPool.o \
   $O/MultiOutStream.o \
   $O/OffsetStream.o \
   $O/OutBuffer.o \

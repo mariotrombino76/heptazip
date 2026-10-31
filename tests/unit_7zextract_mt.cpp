@@ -1,6 +1,6 @@
 // unit_7zextract_mt.cpp
 //
-// Test unitari di CPP/7zip/Archive/7z/7zExtractMt.{h,cpp}
+// Test unitari di CPP/7zip/Archive/7z/7zExtractMt.{h,cpp} e CPP/7zip/Common/MtTaskPool.{h,cpp}
 // (docs/design/0001, passo 3). Harness minimale senza dipendenze esterne:
 // ogni CHECK fallito viene stampato e il programma termina con exit code 1.
 

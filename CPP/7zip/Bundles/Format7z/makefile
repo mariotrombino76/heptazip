@@ -36,6 +36,7 @@ WIN_OBJS = \
   $O\LimitedStreams.obj \
   $O\MethodId.obj \
   $O\MethodProps.obj \
+  $O\MtTaskPool.obj \
   $O\OutBuffer.obj \
   $O\ProgressUtils.obj \
   $O\PropId.obj \

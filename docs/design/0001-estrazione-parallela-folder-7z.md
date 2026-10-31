@@ -6,7 +6,7 @@
 | **Data** | 2026-10-29 |
 | **Fase** | 2: parallelizzazione della decompressione |
 | **Riferimento upstream** | 7-Zip 26.05 (`b88c6bc`) |
-| **File coinvolti** | `CPP/7zip/Archive/7z/7zExtract.cpp`, `7zHandler.{h,cpp}`, `7zHandlerOut.cpp`, nuovi `7zExtractMt.{h,cpp}` |
+| **File coinvolti** | `CPP/7zip/Archive/7z/7zExtract.cpp`, `7zHandler.{h,cpp}`, `7zHandlerOut.cpp`, nuovi `7zExtractMt.{h,cpp}`; il pool di thread è stato poi spostato in `CPP/7zip/Common/MtTaskPool.{h,cpp}` (design 0003) |
 
 ---
 

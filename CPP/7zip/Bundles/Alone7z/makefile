@@ -59,6 +59,7 @@ WIN_OBJS = \
   $O\LimitedStreams.obj \
   $O\MethodId.obj \
   $O\MethodProps.obj \
+  $O\MtTaskPool.obj \
   $O\MultiOutStream.obj \
   $O\OffsetStream.obj \
   $O\OutBuffer.obj \

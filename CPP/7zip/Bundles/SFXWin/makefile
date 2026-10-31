@@ -64,6 +64,7 @@ WIN_CTRL_OBJS = \
   $O\InBuffer.obj \
   $O\FilterCoder.obj \
   $O\LimitedStreams.obj \
+  $O\MtTaskPool.obj \
   $O\OutBuffer.obj \
   $O\ProgressUtils.obj \
   $O\PropId.obj \

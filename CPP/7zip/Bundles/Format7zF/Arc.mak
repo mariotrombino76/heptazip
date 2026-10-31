@@ -46,6 +46,7 @@ WIN_OBJS = \
   $O\MemBlocks.obj \
   $O\MethodId.obj \
   $O\MethodProps.obj \
+  $O\MtTaskPool.obj \
   $O\OffsetStream.obj \
   $O\OutBuffer.obj \
   $O\OutMemStream.obj \

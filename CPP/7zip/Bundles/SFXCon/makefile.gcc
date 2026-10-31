@@ -117,6 +117,7 @@ WIN_OBJS = \
   $O/InBuffer.o \
   $O/FilterCoder.o \
   $O/LimitedStreams.o \
+  $O/MtTaskPool.o \
   $O/OutBuffer.o \
   $O/ProgressUtils.o \
   $O/PropId.o \

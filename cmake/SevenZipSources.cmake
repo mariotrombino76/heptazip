@@ -193,6 +193,7 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/Archive/7z/7zEncode.cpp
   CPP/7zip/Archive/7z/7zExtract.cpp
   CPP/7zip/Archive/7z/7zExtractMt.cpp
+  CPP/7zip/Common/MtTaskPool.cpp
   CPP/7zip/Archive/7z/7zFolderInStream.cpp
   CPP/7zip/Archive/7z/7zHandler.cpp
   CPP/7zip/Archive/7z/7zHandlerOut.cpp
