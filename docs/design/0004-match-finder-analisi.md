@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Opzione 1 implementata (§7); opzione 2 in esplorazione |
+| **Stato** | Opzione 1 implementata (§7); altre idee con lo stesso output scartate (§8); algoritmo nuovo: design 0005 |
 | **Data** | 2026-10-31 |
 | **Fase** | 2: ottimizzazione delle prestazioni (match finder vettorializzati, CLAUDE.md) |
 | **File analizzati** | `C/LzFind.c` (`GetMatchesSpec1`, `Hc_GetMatchesSpec`, `SkipMatchesSpec`), `C/LzFindOpt.c` (`GetMatchesSpecN_2`, percorso multi-thread), `C/LzFindMt.c`, `C/Alloc.c` |
@@ -118,3 +118,17 @@ Misure alternate (Silesia, 60 MB o intera; mediana di 3-6 esecuzioni):
 
 Il percorso multi-thread (`GetMatchesSpecN_2`, il default con più thread) guadagna di più
 del single-thread: nel thread del match finder il ciclo a byte pesava di più.
+
+## 8. Altre idee con lo stesso output: provate e scartate
+
+Prototipi sul percorso bt (archivi identici in tutti i casi), misure alternate su Silesia
+60 MB, rispetto alla versione con §7:
+
+| Idea | Risultato | Perché |
+|---|---|---|
+| Chiave di 8 byte nel nodo (nodo da 16 byte: sinistro, destro, primi 8 byte dei dati della posizione): il 50-67% dei passi si chiude senza leggere i dati del candidato | **+11 … +14%** (`-mx5`/`-mx9`, Silesia e sorgenti) | I nodi raddoppiano: metà nodi per riga di cache. I nodi di posizioni vicine, inserite una dopo l'altra, condividono le righe e il cammino sfrutta questa località; i dati del candidato invece sono spesso già in cache |
+| Prefetch della radice e dei dati della ricerca K posizioni avanti (match finder multi-thread: il thread hash fornisce in anticipo i `delta` del blocco), K = 8 e 16 | −1,5% … +0,5% (rumore) | Le radici sono posizioni recenti, già in cache |
+| Discesa nell'albero senza salti condizionali (selezioni `cmov` di figlio, puntatori e lunghezze) | **+27%** | Con un salto previsto la CPU anticipa il caricamento del nodo successivo; senza, aspetta il confronto: la previsione (anche al 50%) vale più degli errori |
+
+Il bt4 è al suo ottimo pratico: le idee che non cambiano i match danno al massimo il
+guadagno di §7. Il passo successivo è un algoritmo diverso (design 0005).
