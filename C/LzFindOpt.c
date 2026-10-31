@@ -5,6 +5,7 @@
 
 #include "CpuArch.h"
 #include "LzFind.h"
+#include "LzFindMatchLen.h"
 
 // #include "LzFindMt.h"
 
@@ -90,12 +91,7 @@ else
       if (len[diff] == len[0])
       {
         if (++len != lenLimit && len[diff] == len[0])
-          while (++len != lenLimit)
-          {
-            LOG_ITER(g_NumIters_Bytes++);
-            if (len[diff] != len[0])
-              break;
-          }
+          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // 7zip-modern (same result)
         if (maxLen < len)
         {
           maxLen = len;
@@ -291,12 +287,7 @@ else
       if (len[diff] == len[0])
       {
         if (++len != lenLimit && len[diff] == len[0])
-          while (++len != lenLimit)
-          {
-            LOG_ITER(g_NumIters_Bytes++);
-            if (len[diff] != len[0])
-              break;
-          }
+          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // 7zip-modern (same result)
         if (maxLen < len)
         {
           maxLen = len;

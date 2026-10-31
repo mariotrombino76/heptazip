@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Analisi conclusa; in attesa di decisione |
+| **Stato** | Opzione 1 implementata (§7); opzione 2 in esplorazione |
 | **Data** | 2026-10-31 |
 | **Fase** | 2: ottimizzazione delle prestazioni (match finder vettorializzati, CLAUDE.md) |
 | **File analizzati** | `C/LzFind.c` (`GetMatchesSpec1`, `Hc_GetMatchesSpec`, `SkipMatchesSpec`), `C/LzFindOpt.c` (`GetMatchesSpecN_2`, percorso multi-thread), `C/LzFindMt.c`, `C/Alloc.c` |
@@ -87,3 +87,34 @@ non migliorerebbe: il 92% dei passi estende meno di 8 byte.
    ricerca: va prima valutato con prototipi e misure (velocità e rapporto) su più corpus.
 3. **Nessuna delle due**: il parallelismo (blocchi LZMA2, folder in parallelo) resta la
    leva principale per la velocità su macchine con molti core.
+
+## 7. Opzione 1: estensione a parole (implementata)
+
+`C/LzFindMatchLen.h` (header interno): `LzFind_MatchEnd(p, lim, diff)` restituisce la
+prima posizione in `[p, lim)` dove `p[i] != p[i + diff]`, confrontando 8 byte per volta
+(XOR di due load a 64 bit, `ctz` / 8) finché restano 8 byte prima di `lim`, poi byte per
+byte. Stesso risultato del ciclo di upstream; non legge mai a `lim` od oltre (a differenza
+del ciclo a byte può leggere fino a 7 byte dopo la prima differenza, sempre prima di `lim`,
+nella zona già garantita valida dal match finder). Su CPU non little endian o compilatori senza `ctz` resta il ciclo a byte.
+
+Sostituisce i cicli di estensione in `GetMatchesSpec1` (bt, single-thread),
+`SkipMatchesSpec`, `Hc_GetMatchesSpec` (hash chain), `UPDATE_maxLen` (hash 2/3) e
+`GetMatchesSpecN_1/_2` (`LzFindOpt.c`, thread del match finder multi-thread).
+
+Verifica: archivi identici byte per byte alla build precedente con tutti i match finder
+(bt2, bt3, bt4, bt5, hc4, hc5, con 1 e 2 thread), LZMA2 `-mx9` a 4 thread, `fb=273`,
+Deflate e Deflate64 in zip, e i profili di `compare-archives.sh`.
+
+Misure alternate (Silesia, 60 MB o intera; mediana di 3-6 esecuzioni):
+
+| Modalità | Variazione del tempo |
+|---|---|
+| LZMA2 `-mx1` (hc5), 1 thread | −2,3% |
+| LZMA2 `-mx3`, 1 thread | +0,9% (rumore ±5% in quella serie) |
+| LZMA2 `-mx5`, 1 thread | −2,6% |
+| LZMA2 `-mx9`, 1 thread | −4,0% |
+| LZMA `-mx5 -mmt=2` (match finder MT) | −5,0% |
+| LZMA2 `-mx5 -mmt=20` | **−7,7%** |
+
+Il percorso multi-thread (`GetMatchesSpecN_2`, il default con più thread) guadagna di più
+del single-thread: nel thread del match finder il ciclo a byte pesava di più.

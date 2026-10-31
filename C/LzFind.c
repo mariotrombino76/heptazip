@@ -8,6 +8,7 @@
 
 #include "CpuArch.h"
 #include "LzFind.h"
+#include "LzFindMatchLen.h"
 #include "LzHash.h"
 
 #define kBlockMoveAlign       (1 << 7)    // alignment for memmove()
@@ -896,10 +897,8 @@ static UInt32 * Hc_GetMatchesSpec(size_t lenLimit, UInt32 curMatch, UInt32 pos, 
       curMatch = son[_cyclicBufferPos - delta + (_cyclicBufferPos < delta ? _cyclicBufferSize : 0)];
       if (pb[maxLen] == cur[maxLen] && *pb == *cur)
       {
-        UInt32 len = 0;
-        while (++len != lenLimit)
-          if (pb[len] != cur[len])
-            break;
+        // 7zip-modern: LzFind_MatchEnd() instead of a byte loop (same result)
+        const UInt32 len = (UInt32)(LzFind_MatchEnd(cur + 1, cur + lenLimit, -(ptrdiff_t)delta) - cur);
         if (maxLen < len)
         {
           maxLen = len;
@@ -990,9 +989,7 @@ UInt32 * GetMatchesSpec1(UInt32 lenLimit, UInt32 curMatch, UInt32 pos, const Byt
       if (pb[len] == cur[len])
       {
         if (++len != lenLimit && pb[len] == cur[len])
-          while (++len != lenLimit)
-            if (pb[len] != cur[len])
-              break;
+          len = (unsigned)(LzFind_MatchEnd(cur + len + 1, cur + lenLimit, -(ptrdiff_t)delta) - cur);
         if (maxLen < len)
         {
           maxLen = (UInt32)len;
@@ -1056,9 +1053,7 @@ static void SkipMatchesSpec(UInt32 lenLimit, UInt32 curMatch, UInt32 pos, const 
       unsigned len = (len0 < len1 ? len0 : len1);
       if (pb[len] == cur[len])
       {
-        while (++len != lenLimit)
-          if (pb[len] != cur[len])
-            break;
+        len = (unsigned)(LzFind_MatchEnd(cur + len + 1, cur + lenLimit, -(ptrdiff_t)delta) - cur);
         {
           if (len == lenLimit)
           {
@@ -1146,10 +1141,7 @@ static void MatchFinder_MovePos(CMatchFinder *p)
 
 #define UPDATE_maxLen { \
     const ptrdiff_t diff = (ptrdiff_t)0 - (ptrdiff_t)d2; \
-    const Byte *c = cur + maxLen; \
-    const Byte *lim = cur + lenLimit; \
-    for (; c != lim; c++) if (*(c + diff) != *c) break; \
-    maxLen = (unsigned)(c - cur); }
+    maxLen = (unsigned)(LzFind_MatchEnd(cur + maxLen, cur + lenLimit, diff) - cur); }
 
 static UInt32* Bt2_MatchFinder_GetMatches(void *_p, UInt32 *distances)
 {
