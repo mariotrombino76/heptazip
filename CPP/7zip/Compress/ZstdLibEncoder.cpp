@@ -52,7 +52,9 @@ static bool WindowLogFromSize(UInt64 v, unsigned &windowLog)
 void EstimateEncoder(int levelProp, UInt64 windowSizeProp, CEncoderEstimate &e)
 {
   const int level = levelProp < 0 ? kDefaultLevel : LevelFromProp((UInt32)levelProp);
-  // 0: the source size is not known (CEncoder::Code() pledges it only with inSize)
+  // 0: the source size is not known (CEncoder::Code() pledges it only with inSize).
+  // Folders up to the input buffer (128 KiB) are compressed in one call, and zstd
+  // selects smaller parameters for them: then the estimate is larger than needed.
   ZSTD_compressionParameters cp = ZSTD_getCParams(level, 0, 0);
   unsigned windowLog;
   if (windowSizeProp != 0 && WindowLogFromSize(windowSizeProp, windowLog))

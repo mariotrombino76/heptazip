@@ -449,4 +449,3 @@ pipeline. La memoria cresce (corpus non solid: 654 → 1152 MB) restando nel lim
 ### 10.3 Possibili sviluppi
 
 - Ricompressione parallela dei folder esistenti durante un aggiornamento.
-- zstd: passare `kExpectedDataSize` come `ZSTD_c_srcSizeHint` (design 0002, §3).

@@ -24,7 +24,7 @@
 | Decoder | Quello di 7-Zip, registrato per `.7z`: l'estrazione non dipende da librerie esterne ed è presente anche nelle build con i makefile originali | Decoder di libzstd: dipendenza anche per estrarre |
 | Encoder | libzstd 1.5.7 (riferimento) inclusa in `third_party/zstd` (solo `common` e `compress`), compilata con `ZSTD_MULTITHREAD` | Pacchetto di sistema: richiedeva `sudo` (utente non disponibile) e lega il binario alla libreria del sistema |
 | Nomi | `NCompress::NZstdLib`, `ZstdLib*`, `ZstdCodecRegister`: distinti da `NCompress::NZstd`, così un futuro encoder upstream può convivere | — |
-| Frame | Nessun checksum del frame (7z ha già il CRC per file). La dimensione del contenuto è dichiarata (`setPledgedSrcSize`) solo se il chiamante passa `inSize`: nei `.7z` non succede (la dimensione di un folder non è nota prima della compressione), quindi i frame non la contengono e usano la finestra del livello. *Correzione del 2026-10-31: la prima versione di questo documento diceva "sempre dichiarata", ma non era vero.* | Dichiarare la dimensione attesa: se un file cambia durante la compressione, libzstd fallisce (`srcSize_wrong`) |
+| Frame | Nessun checksum del frame (7z ha già il CRC per file). La dimensione del contenuto è dichiarata (`setPledgedSrcSize`) solo se il chiamante passa `inSize`, e nei `.7z` non succede (la dimensione di un folder non è nota prima della compressione). Un folder fino a 128 KiB (il buffer di input dell'encoder) arriva a libzstd in una sola chiamata con `ZSTD_e_end`, e libzstd ne ricava la dimensione: quei frame la contengono (*single segment*). I folder più grandi no, e usano la finestra del livello. *Correzione del 2026-10-31: la prima versione di questo documento diceva "sempre dichiarata", ma non era vero.* | Dichiarare la dimensione attesa: se un file cambia durante la compressione, libzstd fallisce (`srcSize_wrong`) |
 | API di libzstd | L'encoder usa solo l'API stabile (`ZSTD_cParam_getBounds` invece delle costanti sperimentali). Solo la stima di memoria e dimensione dei job per la compressione parallela (design 0003, `NZstdLib::EstimateEncoder`) usa l'API sperimentale (`ZSTD_getCParams`, `ZSTD_estimateCStreamSize_usingCParams`), che non ha equivalenti stabili; la libreria è inclusa a versione fissa | `ZSTD_STATIC_LINKING_ONLY` per tutto l'encoder |
 
 Opzioni: `-m0=zstd`, livello `-mx1`…`-mx22` (o `-m0=zstd:x=N`), finestra `-md=`, thread `-mmt`.
@@ -34,11 +34,17 @@ Opzioni: `-m0=zstd`, livello `-mx1`…`-mx22` (o `-m0=zstd:x=N`), finestra `-md=
 `EstimateCoderDecodeMemory` stima 128 MiB per un decoder zstd: è la finestra massima dei
 livelli standard. Il decoder di 7-Zip alloca il minimo tra dimensione del contenuto e
 finestra. I frame dell'encoder del fork non contengono la dimensione del contenuto (§2) e
-usano la finestra del livello, al massimo 128 MiB (livello 22): la stima è rispettata, ma per
-un file piccolo compresso a un livello alto il decoder alloca comunque l'intera finestra.
-Miglioramento possibile: passare a libzstd la dimensione attesa del folder
-(`kExpectedDataSize`) come `ZSTD_c_srcSizeHint`, che adatta finestra e tabelle senza
-scrivere la dimensione e senza fallire se cambia. Limite noto: frame di altri programmi
+sopra i 128 KiB usano la finestra del livello, al massimo 128 MiB (livello 22): la stima è
+rispettata. Il decoder riserva la finestra ma tocca solo le pagine che scrive: estraendo un
+file da 10 MiB compresso a `-mx22` (finestra 128 MiB) la memoria residente è 16 MiB.
+
+**Valutato e scartato (2026-10-31):** passare a libzstd la dimensione attesa del folder
+(`kExpectedDataSize`) come `ZSTD_c_srcSizeHint` (API sperimentale), che adatta finestra e
+tabelle senza scriverla nel frame. Funziona (un folder di 2-3 MiB a `-mx19` passa da
+finestra 8 MiB a 2 MiB), ma non dà differenze misurabili: stessa velocità e dimensione
+(±0,0003%) con corpus non solid e Silesia `-ms=4m/16m`/solid da `-mx3` a `-mx22`, stessa
+memoria residente in estrazione. I file piccoli hanno già la dimensione esatta (sopra),
+per i folder grandi la finestra del livello è comunque minore del folder. Limite noto: frame di altri programmi
 senza dimensione del contenuto e con finestra > 128 MiB (modalità "long") possono usare più
 memoria della stima.
 
