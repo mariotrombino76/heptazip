@@ -37,6 +37,13 @@ add_executable(update_growing
   ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(update_growing PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
+# Banco di prova dei match finder (strumento, non test: docs/design/0005).
+add_executable(mf_bench
+  ${CMAKE_SOURCE_DIR}/tools/mfbench/mf_bench.c
+  $<TARGET_OBJECTS:sevenzip_c>
+  ${SEVENZIP_ASM_OBJECTS})
+target_link_libraries(mf_bench PRIVATE sevenzip_flags Threads::Threads)
+
 # Test unitari del modulo di compressione parallela (7zUpdateMt, docs/design/0003).
 add_executable(unit_7zupdate_mt
   unit_7zupdate_mt.cpp
