@@ -102,3 +102,26 @@ load 1m alla fine: 2.43
 
 Priorità che ne seguono: politica dei blocchi LZMA2 per file grandi (punto 1), poi una
 valutazione di un metodo BWT per i testi (punto 2).
+
+## Blocchi LZMA2: compromesso misurato (decisione aperta)
+
+`tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione:
+
+| `-mx5` (dizionario 16 MiB) | auto (64 MiB) | 48 MiB | 32 MiB | 24 MiB | 16 MiB |
+|---|---|---|---|---|---|
+| Dimensione | 0 | +0,22% | +0,72% | +0,93% | +1,43% |
+| Decompressione 20 thread (MiB/s) | 160 | 316 | 380 | 435 | 486 |
+| Compressione (MiB/s) | 9,6 | 12,6 | 16,8 | 19,9 | 22,4 |
+
+| `-mx9` (dizionario 64 MiB) | auto (256 MiB) | 48 MiB | 32 MiB | 24 MiB | 16 MiB |
+|---|---|---|---|---|---|
+| Dimensione | 0 | +0,41% | +0,97% | +1,22% | +1,73% |
+| Decompressione 20 thread (MiB/s) | 101 | 313 | 385 | 402 | 511 |
+| Compressione (MiB/s) | 4,9 | 11,4 | 15,0 | 18,3 | 19,9 |
+
+Ogni blocco riparte con il dizionario vuoto: blocchi più piccoli danno più parallelismo
+(compressione e decompressione di un file grande) a scapito del rapporto. Il default non
+è cambiato: CLAUDE.md chiede di mantenere o migliorare il rapporto. Opzione già
+disponibile per l'utente: `-m0=lzma2:c=48m`. Proposta da decidere: blocchi da 3 volte il
+dizionario (la regola di xz) invece di 4, cioè +0,22% a `-mx5` per una decompressione 2
+volte più veloce sui file grandi.
