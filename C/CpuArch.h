@@ -482,17 +482,46 @@ problem-4 : performace:
 #endif
 
 
-#ifdef MY_CPU_LE_UNALIGN
+/* 7zip-modern: native-endian loads and stores of 16/32/64-bit values at any address.
+   They copy the bytes with memcpy instead of dereferencing a cast pointer:
+   a misaligned access or an access to a Byte buffer through a UInt32 pointer
+   is undefined behaviour in C/C++ (alignment and strict aliasing rules).
+   GCC, Clang and MSVC compile these fixed-size copies to one load/store
+   instruction, so the generated code is the same as with a pointer cast.
+   Z7_LoadNative / Z7_StoreNative are used by the Get / Set macros below. */
 
-#define GetUi16(p) (*(const UInt16 *)(const void *)(p))
-#define GetUi32(p) (*(const UInt32 *)(const void *)(p))
-#ifdef MY_CPU_LE_UNALIGN_64
-#define GetUi64(p) (*(const UInt64 *)(const void *)(p))
-#define SetUi64(p, v) { *(UInt64 *)(void *)(p) = (v); }
+#if defined(__GNUC__) || defined(__clang__)
+  #define Z7_MEMCPY_FIXED(d, s, n)  __builtin_memcpy(d, s, n)
+#else
+  #include <string.h>
+  #define Z7_MEMCPY_FIXED(d, s, n)  memcpy(d, s, n)
 #endif
 
-#define SetUi16(p, v) { *(UInt16 *)(void *)(p) = (v); }
-#define SetUi32(p, v) { *(UInt32 *)(void *)(p) = (v); }
+static Z7_FORCE_INLINE UInt16 Z7_LoadNative16(const void *p)
+  { UInt16 v;  Z7_MEMCPY_FIXED(&v, p, sizeof(v));  return v; }
+static Z7_FORCE_INLINE UInt32 Z7_LoadNative32(const void *p)
+  { UInt32 v;  Z7_MEMCPY_FIXED(&v, p, sizeof(v));  return v; }
+static Z7_FORCE_INLINE UInt64 Z7_LoadNative64(const void *p)
+  { UInt64 v;  Z7_MEMCPY_FIXED(&v, p, sizeof(v));  return v; }
+static Z7_FORCE_INLINE void Z7_StoreNative16(void *p, UInt16 v)
+  { Z7_MEMCPY_FIXED(p, &v, sizeof(v)); }
+static Z7_FORCE_INLINE void Z7_StoreNative32(void *p, UInt32 v)
+  { Z7_MEMCPY_FIXED(p, &v, sizeof(v)); }
+static Z7_FORCE_INLINE void Z7_StoreNative64(void *p, UInt64 v)
+  { Z7_MEMCPY_FIXED(p, &v, sizeof(v)); }
+
+
+#ifdef MY_CPU_LE_UNALIGN
+
+#define GetUi16(p)  Z7_LoadNative16(p)
+#define GetUi32(p)  Z7_LoadNative32(p)
+#ifdef MY_CPU_LE_UNALIGN_64
+#define GetUi64(p)  Z7_LoadNative64(p)
+#define SetUi64(p, v) { Z7_StoreNative64(p, (UInt64)(v)); }
+#endif
+
+#define SetUi16(p, v) { Z7_StoreNative16(p, (UInt16)(v)); }
+#define SetUi32(p, v) { Z7_StoreNative32(p, (UInt32)(v)); }
 
 #else
 
@@ -534,17 +563,17 @@ problem-4 : performace:
 
 #if 0
 // Z7_BSWAP16 can be slow for x86-msvc
-#define GetBe16_to32(p)  (Z7_BSWAP16 (*(const UInt16 *)(const void *)(p)))
+#define GetBe16_to32(p)  (Z7_BSWAP16 (Z7_LoadNative16(p)))
 #else
-#define GetBe16_to32(p)  (Z7_BSWAP32 (*(const UInt16 *)(const void *)(p)) >> 16)
+#define GetBe16_to32(p)  (Z7_BSWAP32 (Z7_LoadNative16(p)) >> 16)
 #endif
 
-#define GetBe32(p)  Z7_BSWAP32 (*(const UInt32 *)(const void *)(p))
-#define SetBe32(p, v) { (*(UInt32 *)(void *)(p)) = Z7_BSWAP32(v); }
+#define GetBe32(p)  Z7_BSWAP32 (Z7_LoadNative32(p))
+#define SetBe32(p, v) { Z7_StoreNative32(p, Z7_BSWAP32(v)); }
 
 #if defined(MY_CPU_LE_UNALIGN_64)
-#define GetBe64(p)  Z7_BSWAP64 (*(const UInt64 *)(const void *)(p))
-#define SetBe64(p, v) { (*(UInt64 *)(void *)(p)) = Z7_BSWAP64(v); }
+#define GetBe64(p)  Z7_BSWAP64 (Z7_LoadNative64(p))
+#define SetBe64(p, v) { Z7_StoreNative64(p, Z7_BSWAP64(v)); }
 #endif
 
 #else
@@ -611,22 +640,22 @@ problem-4 : performace:
 
 #if defined(MY_CPU_BE)
 
-#define GetBe64a(p)      (*(const UInt64 *)(const void *)(p))
-#define GetBe32a(p)      (*(const UInt32 *)(const void *)(p))
-#define GetBe16a(p)      (*(const UInt16 *)(const void *)(p))
-#define SetBe32a(p, v)   { *(UInt32 *)(void *)(p) = (v); }
-#define SetBe16a(p, v)   { *(UInt16 *)(void *)(p) = (v); }
+#define GetBe64a(p)      Z7_LoadNative64(p)
+#define GetBe32a(p)      Z7_LoadNative32(p)
+#define GetBe16a(p)      Z7_LoadNative16(p)
+#define SetBe32a(p, v)   { Z7_StoreNative32(p, (UInt32)(v)); }
+#define SetBe16a(p, v)   { Z7_StoreNative16(p, (UInt16)(v)); }
 
 // gcc and clang for powerpc can transform load byte access to load reverse word access.
 // sp we can use byte access instead of word access. Z7_BSWAP64 cab be slow
 #if 1 && defined(Z7_CPU_FAST_BSWAP_SUPPORTED) && defined(MY_CPU_64BIT)
-#define GetUi64a(p)   Z7_BSWAP64 (*(const UInt64 *)(const void *)(p))
+#define GetUi64a(p)   Z7_BSWAP64 (Z7_LoadNative64(p))
 #else
 #define GetUi64a(p)      GetUi64(p)
 #endif
 
 #if 1 && defined(Z7_CPU_FAST_BSWAP_SUPPORTED)
-#define GetUi32a(p)   Z7_BSWAP32 (*(const UInt32 *)(const void *)(p))
+#define GetUi32a(p)   Z7_BSWAP32 (Z7_LoadNative32(p))
 #else
 #define GetUi32a(p)      GetUi32(p)
 #endif
@@ -637,11 +666,11 @@ problem-4 : performace:
 
 #elif defined(MY_CPU_LE)
 
-#define GetUi64a(p)      (*(const UInt64 *)(const void *)(p))
-#define GetUi32a(p)      (*(const UInt32 *)(const void *)(p))
-#define GetUi16a(p)      (*(const UInt16 *)(const void *)(p))
-#define SetUi32a(p, v)   { *(UInt32 *)(void *)(p) = (v); }
-#define SetUi16a(p, v)   { *(UInt16 *)(void *)(p) = (v); }
+#define GetUi64a(p)      Z7_LoadNative64(p)
+#define GetUi32a(p)      Z7_LoadNative32(p)
+#define GetUi16a(p)      Z7_LoadNative16(p)
+#define SetUi32a(p, v)   { Z7_StoreNative32(p, (UInt32)(v)); }
+#define SetUi16a(p, v)   { Z7_StoreNative16(p, (UInt16)(v)); }
 
 #define GetBe64a(p)      GetBe64(p)
 #define GetBe32a(p)      GetBe32(p)

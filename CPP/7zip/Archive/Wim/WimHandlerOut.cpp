@@ -412,7 +412,7 @@ static size_t WriteItem(const CStreamInfo *streams, const CMetaItem &item, Byte 
     Set16(p + 0x62, (UInt16)shortNameLen)
     Set16(p + 0x64, (UInt16)fileNameLen)
     {
-      const Byte *dest = p + kDirRecordSize;
+      Byte *dest = p + kDirRecordSize;
       unsigned i;
       const wchar_t *src = item.Name;
       fileNameLen2 /= 2;
@@ -481,7 +481,7 @@ static size_t WriteItem(const CStreamInfo *streams, const CMetaItem &item, Byte 
       if (ss.HashIndex >= 0)
         memcpy(p + 0x10, streams[ss.HashIndex].Hash, kHashSize);
       Set16(p + 0x24, (UInt16)fileNameLen)
-      const Byte *dest = p + 0x26;
+      Byte *dest = p + 0x26;
       const wchar_t *src = ss.Name;
       fileNameLen /= 2;
       for (unsigned i = 0; i < fileNameLen; src++, dest += 2, i++)

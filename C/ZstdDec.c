@@ -1414,10 +1414,12 @@ static void ZstdDec1_Init(CZstdDec1 *p)
 
   #define COPY_CHUNK_SIZE 16
 
+    /* 7zip-modern: unaligned copies through Z7_LoadNative / Z7_StoreNative
+       (CpuArch.h) instead of dereferencing cast pointers (undefined behaviour) */
     #define COPY_CHUNK_4_2(dest, src) \
     { \
-      ((UInt32 *)(void *)dest)[0] = ((const UInt32 *)(const void *)src)[0]; \
-      ((UInt32 *)(void *)dest)[1] = ((const UInt32 *)(const void *)src)[1]; \
+      Z7_StoreNative32(dest,     Z7_LoadNative32(src)); \
+      Z7_StoreNative32(dest + 4, Z7_LoadNative32(src + 4)); \
       src += 4 * 2; \
       dest += 4 * 2; \
     }
@@ -1477,8 +1479,8 @@ static void ZstdDec1_Init(CZstdDec1 *p)
 
     #define COPY_CHUNK(dest, src) \
     { \
-      ((UInt64 *)(void *)dest)[0] = ((const UInt64 *)(const void *)src)[0]; \
-      ((UInt64 *)(void *)dest)[1] = ((const UInt64 *)(const void *)src)[1]; \
+      Z7_StoreNative64(dest,     Z7_LoadNative64(src)); \
+      Z7_StoreNative64(dest + 8, Z7_LoadNative64(src + 8)); \
       src += 8 * 2; \
       dest += 8 * 2; \
     }
@@ -1666,8 +1668,8 @@ void CopyMatch(size_t offset, size_t len,
           Z7_PRAGMA_OPT_DISABLE_LOOP_UNROLL_VECTORIZE
           do
           {
-            ((UInt64 *)(void *)dest)[0] = v64;
-            ((UInt64 *)(void *)dest)[1] = v64;
+            Z7_StoreNative64(dest,     v64);
+            Z7_StoreNative64(dest + 8, v64);
             dest += 16;
           }
           while (len -= 16);
@@ -1679,12 +1681,11 @@ void CopyMatch(size_t offset, size_t len,
           v |= v << 16;
           do
           {
-            ((UInt32 *)(void *)dest)[0] = v;
-            ((UInt32 *)(void *)dest)[1] = v;
-            dest += 8;
-            ((UInt32 *)(void *)dest)[0] = v;
-            ((UInt32 *)(void *)dest)[1] = v;
-            dest += 8;
+            Z7_StoreNative32(dest,      v);
+            Z7_StoreNative32(dest + 4,  v);
+            Z7_StoreNative32(dest + 8,  v);
+            Z7_StoreNative32(dest + 12, v);
+            dest += 16;
           }
           while (len -= 16);
         }

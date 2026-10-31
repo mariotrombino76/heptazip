@@ -450,14 +450,16 @@ void CResource::Parse(const Byte *p)
 #define kLongPath "[LONG_PATH]" STRING_PATH_SEPARATOR "[LONG_PATH_ITEM]"
 
 // (data) is aligned for 2-bytes
-static bool CheckName_and_Fix_in_Meta(const Byte *data, unsigned numBytes)
+// 7zip-modern: (data) is not const: the function fixes the name in place (it was
+// written through a const pointer, hidden by a (void *) cast in SetUi16a).
+static bool CheckName_and_Fix_in_Meta(Byte *data, unsigned numBytes)
 {
-  const Byte * const start = data;
+  Byte * const start = data;
   numBytes /= 2;
   if (numBytes)
     do
     {
-      if (*(const UInt16 *)(const void *)data == 0)
+      if (GetUi16a(data) == 0)
       {
         SetUi16a(start - 2, (UInt16)(data - start))  // we fix name length in meta
         return false;
@@ -465,9 +467,9 @@ static bool CheckName_and_Fix_in_Meta(const Byte *data, unsigned numBytes)
       data += 2;
     }
     while (--numBytes);
-  if (*(const UInt16 *)(const void *)data)
+  if (GetUi16a(data))
   {
-    *(UInt16 *)(void *)data = 0;  // we fix null terminator in meta
+    SetUi16a(data, 0)  // we fix null terminator in meta
     return false;
   }
   return true;
@@ -642,7 +644,7 @@ HRESULT CDatabase::ParseDirItem(size_t pos, const int parent, const unsigned dir
     const size_t rem = DirSize - pos;
     if (pos < DirStartOffset || pos > DirSize || rem < 8 /* || DirSize - DirProcessed < 8 */ )
       return S_FALSE;
-    const Byte *p = DirData + pos;
+    Byte *p = DirData + pos;  // not const: CheckName_and_Fix_in_Meta() fixes names in place
     const UInt64 len64 = Get64(p);
     if (rem < len64 /* || DirSize - DirProcessed < len64 */ )
       return S_FALSE;
@@ -723,16 +725,16 @@ HRESULT CDatabase::ParseDirItem(size_t pos, const int parent, const unsigned dir
          if (fileNameLen == 0 && shortNameLen != 0)
             then fileName and shortName are at same address.
          We clear shortName: */
-      *(UInt16 *)(void *)(p - 4) = 0; // clear shortNameLen
+      SetUi16a(p - 4, 0)  // clear shortNameLen
       fileNameLen = Get16(p - 2); // reload fileNameLen after file name correction
     }
     else if (shortNameLen)
     {
-      Byte * const data = (Byte *)(void *)(p + fileNameLen2);
+      Byte * const data = p + fileNameLen2;
       size_t i = 0;
       for (;;)
       {
-        if (*(const UInt16 *)(const void *)(data + i) == 0)
+        if (GetUi16a(data + i) == 0)
         {
           // return S_FALSE;
           SetUi16a(p - 4, (UInt16)i)  // we fix shortNameLen in meta
@@ -742,10 +744,10 @@ HRESULT CDatabase::ParseDirItem(size_t pos, const int parent, const unsigned dir
         i += 2;
         if (i >= shortNameLen)
         {
-          if (*(const UInt16 *)(const void *)(data + i))
+          if (GetUi16a(data + i))
           {
             // return S_FALSE;
-            *(UInt16 *)(void *)(data + i) = 0;
+            SetUi16a(data + i, 0)
             HeadersError = true;
           }
           break;
@@ -768,7 +770,7 @@ HRESULT CDatabase::ParseDirItem(size_t pos, const int parent, const unsigned dir
       const size_t rem2 = DirSize - pos;
       if (rem2 < 8)
         return S_FALSE;
-      const Byte * const p2 = DirData + pos;
+      Byte * const p2 = DirData + pos;
       const UInt64 len2_64 = Get64(p2);
       if (rem2 < len2_64 /* || DirSize - DirProcessed < len2_64 */ )
         return S_FALSE;

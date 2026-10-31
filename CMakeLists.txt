@@ -150,11 +150,6 @@ if(SEVENZIP_SANITIZE)
   endif()
   set(_san -fsanitize=${SEVENZIP_SANITIZE} -fno-omit-frame-pointer)
   if(SEVENZIP_SANITIZE MATCHES "undefined")
-    # alignment escluso: su x86 upstream definisce MY_CPU_LE_UNALIGN (C/CpuArch.h) e
-    # usa volutamente accessi non allineati tramite cast (GetUi32/SetUi32). E' UB per
-    # lo standard ma voluto; UBSan lo segnalerebbe ovunque. Correzione futura:
-    # accessi tramite memcpy (conformi, stesso codice macchina).
-    list(APPEND _san -fno-sanitize=alignment)
     if(NOT SEVENZIP_SANITIZE_RECOVER)
       list(APPEND _san -fno-sanitize-recover=undefined)
     endif()
