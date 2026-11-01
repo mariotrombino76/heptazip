@@ -280,6 +280,10 @@ int main(void)
     return 2;
   FloatPlaneZstd_Construct(&g_Zstd);
 
+  /* tutti i round-trip con il decoder scalare e con quello SIMD (se la CPU lo ha) */
+  FloatPlane_SetSimd(False);
+  Test_RoundTrips();
+  FloatPlane_SetSimd(True);
   Test_RoundTrips();
   printf("scelta di tipo e fase, blocco da 1 MiB:\n");
   Test_Choice(kBf16, 0, 0, 0.70);

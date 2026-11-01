@@ -6,7 +6,7 @@
 | **Data** | 2026-11-01 |
 | **Codice** | `C/FloatPlane.{h,c}` (formato a blocchi), `C/FloatPlaneLz.{h,c}` (zstd per i blocchi non float), `CPP/7zip/Compress/FloatCoder.{h,cpp}`, `FloatRegister.cpp`, analisi in `7zUpdate.cpp` |
 | **ID del metodo** | `3F 70 7F 5E 72 8B 00 01` (`0x3F707F5E728B0001`), nome `FLOAT` |
-| **Uso** | automatico per `.safetensors` e `.gguf` F16/BF16/F32 (§3.4); esplicito `-m0=FLOAT` (opzionale `:c=4m`, blocchi da 64 KiB a 4 MiB); `-mf=off` disattiva la scelta automatica |
+| **Uso** | automatico per `.safetensors` e `.gguf` F16/BF16/F32 (§3.5); esplicito `-m0=FLOAT` (opzionale `:c=4m`, blocchi da 64 KiB a 4 MiB); `-mf=off` disattiva la scelta automatica |
 
 ---
 
@@ -148,7 +148,30 @@ Su dati FP16 gaussiani l'encoder sceglie spesso la separazione BF16 (bit 7-14:
 esponente e 3 bit di mantissa, senza segno), che costa quanto quella FP16. È la scelta per
 costo misurato, non un errore.
 
-### 3.4 Scelta automatica
+### 3.4 Decoder
+
+Due fasi per gruppi di 2048 elementi:
+
+1. **simboli**: i 4 flussi di Huffman in un buffer da 4 KB (cache L1). È scalare per
+   natura (ogni simbolo dipende dallo shift del precedente nel suo flusso); i 4 flussi
+   vanno in parallelo. Da sola: ~2300 MB/s di pesi BF16 su un core.
+2. **ricomposizione**: elementi dai simboli e dal piano r impacchettato. Con AVX2 (scelto a
+   runtime con `CPU_IsSupported_AVX2()`) 16 elementi per iterazione:
+   - un load da 32 byte dei simboli e uno da 16 byte dei 16 campi di r, copiato nelle due
+     metà;
+   - `vpshufb` porta in ogni lane i 2 byte del suo campo, e lo shift diverso per lane
+     (AVX2 non ha `vpsrlvw`) è una moltiplicazione per 2^(8 - sh) seguita da uno shift di 8;
+   - JOIN con shift costanti e uno store da 32 byte.
+
+   Senza AVX2 (e per FP32) c'è un ciclo scalare per ogni (tipo, k).
+
+La versione con un solo ciclo per elemento era a ~1360 MB/s con GCC: l'estrazione scalare
+dei campi impacchettati pesava il 42% del tempo. Con le due fasi e AVX2 il nucleo
+decodifica a ~1980 MB/s, oltre i 1900 del formato senza k. `FloatPlane_SetSimd()` spegne
+il SIMD per i test: il test unitario prova entrambi i percorsi, e il fuzzer confronta SIMD
+e scalare su ogni input (stesso esito, stessi byte).
+
+### 3.5 Scelta automatica
 
 L'analisi dei file del 7z (che sceglie già BCJ/ARM64 per gli eseguibili e Delta per i
 WAV) legge i primi 16 KiB dei file `.safetensors` e `.gguf`:
@@ -196,13 +219,13 @@ Velocità nell'archivio (CRC compreso), Qwen BF16:
 | | 1 thread | 20 thread |
 |---|---|---|
 | compressione | 475 MB/s | 1500 MB/s |
-| decompressione | 1105 MB/s | 1900 MB/s |
+| decompressione | 1616 MB/s | 2150 MB/s |
 
 Con 7 MB di memoria a thread singolo; con N thread l'archivio è identico byte per byte.
-Storia del decoder a un thread: 750 MB/s con un flusso di Huffman, 1460 con 4 flussi,
-1105 con i bit di mantissa nel simbolo (k): il −0,30% di dimensione costa l'estrazione
-dei campi impacchettati di r. Con clang lo stesso codice decodifica il nucleo a ~1650 MB/s
-contro ~1360 di GCC (generazione del codice dei cicli specializzati).
+Storia del decoder a un thread nell'archivio: 750 MB/s con un flusso di Huffman, 1460 con
+4 flussi, 1105 con i bit di mantissa nel simbolo (k, −0,30% di dimensione: costava
+l'estrazione dei campi impacchettati di r), **1616** con le due fasi e AVX2 (§3.4).
+pythia FP16 1785 MB/s, gpt2 FP32 1827 MB/s.
 
 **ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
 perdita: la decompressione restituisce dati diversi dall'originale con ogni
@@ -232,7 +255,7 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Decoder con SIMD (AVX2) per estrarre r e ricomporre gli elementi (recuperare il costo
-  di k), e capire perché GCC genera cicli più lenti di clang.
+- AVX2 anche per FP32; NEON per ARM64; la fase dei simboli resta il limite (~2300 MB/s
+  per core).
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.
