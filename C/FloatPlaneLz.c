@@ -1,5 +1,5 @@
 /* FloatPlaneLz.c -- zstd for the blocks of the FLOAT method that are not floats (mode 2)
-7zip-modern (design 0008) : Public domain */
+Tensor7 (design 0008) : Public domain */
 
 #include "Precomp.h"
 

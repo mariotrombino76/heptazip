@@ -1,5 +1,5 @@
 /* FloatQuant.h -- context model for the quantized structs of GGUF files (FLOAT mode 4)
-7zip-modern (design 0008) : Public domain
+Tensor7 (design 0008) : Public domain
 Internal interface of FloatPlane.c: the block format is described in FloatPlane.h. */
 
 #ifndef ZIP7_INC_FLOAT_QUANT_H

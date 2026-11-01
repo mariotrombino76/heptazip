@@ -41,7 +41,7 @@ public:
     if (_size != _capacity)
       return;
     if (_capacity >= k_VectorSizeMax)
-      throw CNewException();  // 7zip-modern: allocation of more than k_VectorSizeMax items
+      throw CNewException();  // Tensor7: allocation of more than k_VectorSizeMax items
     const unsigned rem = k_VectorSizeMax - _capacity;
     unsigned add = (_capacity >> 2) + 1;
     if (add > rem)
@@ -54,7 +54,7 @@ public:
     const unsigned size = Size();
     const unsigned rem = k_VectorSizeMax - size;
     if (size > k_VectorSizeMax || addSize > rem)
-      throw CNewException();  // 7zip-modern: allocation of more than k_VectorSizeMax items
+      throw CNewException();  // Tensor7: allocation of more than k_VectorSizeMax items
     if (size + addSize > _capacity)
     {
       unsigned extra = size >> 2;
@@ -99,7 +99,7 @@ public:
     if (newCapacity > _capacity)
     {
       if (newCapacity > k_VectorSizeMax)
-        throw CNewException();  // 7zip-modern: allocation of more than k_VectorSizeMax items
+        throw CNewException();  // Tensor7: allocation of more than k_VectorSizeMax items
       ReAllocForNewCapacity(newCapacity);
     }
   }
@@ -115,7 +115,7 @@ public:
     if (newSize > _capacity)
     {
       if (newSize > k_VectorSizeMax)
-        throw CNewException();  // 7zip-modern: allocation of more than k_VectorSizeMax items
+        throw CNewException();  // Tensor7: allocation of more than k_VectorSizeMax items
       const unsigned rem = k_VectorSizeMax - newSize;
       unsigned add = newSize >> 2;
       if (add > rem)
@@ -131,7 +131,7 @@ public:
     if (newCapacity > _capacity)
     {
       if (newCapacity > k_VectorSizeMax)
-        throw CNewException();  // 7zip-modern: allocation of more than k_VectorSizeMax items
+        throw CNewException();  // Tensor7: allocation of more than k_VectorSizeMax items
       delete []_items;
       _items = NULL;
       _capacity = 0;

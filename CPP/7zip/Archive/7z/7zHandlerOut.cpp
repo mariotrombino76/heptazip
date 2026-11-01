@@ -200,7 +200,7 @@ HRESULT CHandler::SetMainMethod(CCompressionMethodMode &methodMode)
     */
     if (methodFull.Id == k_LZMA2)
     {
-      /* 7zip-modern: the solid block size stays as in upstream: 64 x (4 x dictionary),
+      /* Tensor7: the solid block size stays as in upstream: 64 x (4 x dictionary),
          a ratio decision independent of the LZMA2 block size (2 x dictionary now,
          C/Lzma2Enc.h). Upstream comment:
          he we calculate default chunk Size for LZMA2 as defined in LZMA2 encoder code
@@ -1045,9 +1045,9 @@ HRESULT COutHandler::SetProperty(const wchar_t *nameSpec, const PROPVARIANT &val
     if (name.IsEqualTo("tr")) return PROPVARIANT_to_BoolPair(value, Write_Attrib);
     
     if (name.IsEqualTo("mtf")) return PROPVARIANT_to_bool(value, _useMultiThreadMixer);
-    // 7zip-modern: parallel extraction of folders (docs/design/0001)
+    // Tensor7: parallel extraction of folders (docs/design/0001)
     if (name.IsEqualTo("pfd")) return PROPVARIANT_to_bool(value, _parallelFolderDecoding);
-    // 7zip-modern: parallel compression of folders (docs/design/0003)
+    // Tensor7: parallel compression of folders (docs/design/0003)
     if (name.IsEqualTo("pfc")) return PROPVARIANT_to_bool(value, _parallelFolderEncoding);
 
     if (name.IsEqualTo("qs")) return PROPVARIANT_to_bool(value, _useTypeSorting);

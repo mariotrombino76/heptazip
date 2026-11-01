@@ -1,5 +1,5 @@
 // ZstdCodecRegister.cpp
-// 7zip-modern: registers Zstandard as a codec for the 7z format.
+// Tensor7: registers Zstandard as a codec for the 7z format.
 //
 // Method ID 0x4F71101 and name "ZSTD", as in 7-Zip-zstd, so archives are
 // compatible in both directions.

@@ -1,5 +1,5 @@
 /* FloatPlane.c -- lossless coder for arrays of floating-point numbers (AI model weights)
-7zip-modern (design 0008) : Public domain
+Tensor7 (design 0008) : Public domain
 The block format is described in FloatPlane.h. */
 
 #include "Precomp.h"

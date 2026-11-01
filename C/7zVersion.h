@@ -4,6 +4,11 @@
 #define MY_VERSION_NUMBERS "26.05"
 #define MY_VERSION MY_VERSION_NUMBERS
 
+/* Tensor7: the fork of 7-Zip (branch modern), version = upstream base + "-m" release */
+#define T7_NAME     "Tensor7"
+#define T7_RELEASE  1
+#define T7_VERSION  MY_VERSION_NUMBERS "-m1"
+
 #ifdef MY_CPU_NAME
   #define MY_VERSION_CPU MY_VERSION " (" MY_CPU_NAME ")"
 #else

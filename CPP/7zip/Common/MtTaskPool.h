@@ -1,5 +1,5 @@
 // MtTaskPool.h
-// 7zip-modern: pool of worker threads that run tasks in FIFO order.
+// Tensor7: pool of worker threads that run tasks in FIFO order.
 // Used by the parallel extraction (design 0001) and compression (design 0003)
 // of 7z folders.
 

@@ -1,5 +1,5 @@
 /* LzFindMatchLen.h -- length of a match for the match finders
-   7zip-modern: internal header of LzFind.c and LzFindOpt.c (docs/design/0004). */
+   Tensor7: internal header of LzFind.c and LzFindOpt.c (docs/design/0004). */
 
 #ifndef ZIP7_INC_LZ_FIND_MATCH_LEN_H
 #define ZIP7_INC_LZ_FIND_MATCH_LEN_H

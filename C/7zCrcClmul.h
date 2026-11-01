@@ -1,5 +1,5 @@
 /* 7zCrcClmul.h -- CRC32 with PCLMULQDQ folding (x86-64)
-7zip-modern.
+Tensor7.
 
 Implementation header: it's included by 7zCrc.c only (all functions are
 static), so no build file of 7-Zip needs changes. tests/unit_crc_clmul.c

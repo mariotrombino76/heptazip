@@ -1,5 +1,5 @@
 // 7zExtractMt.h
-// 7zip-modern: building blocks for parallel extraction of 7z folders.
+// Tensor7: building blocks for parallel extraction of 7z folders.
 // See docs/design/0001-estrazione-parallela-folder-7z.md
 
 #ifndef ZIP7_INC_7Z_EXTRACT_MT_H

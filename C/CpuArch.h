@@ -482,7 +482,7 @@ problem-4 : performace:
 #endif
 
 
-/* 7zip-modern: native-endian loads and stores of 16/32/64-bit values at any address.
+/* Tensor7: native-endian loads and stores of 16/32/64-bit values at any address.
    They copy the bytes with memcpy instead of dereferencing a cast pointer:
    a misaligned access or an access to a Byte buffer through a UInt32 pointer
    is undefined behaviour in C/C++ (alignment and strict aliasing rules).

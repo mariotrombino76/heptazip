@@ -303,7 +303,7 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
   else
   {
     if (p->blockSize == LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO)
-      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);  // 7zip-modern
+      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);  // Tensor7
     
     if (t2 > 1 && fileSize != (UInt64)(Int64)-1)
     {

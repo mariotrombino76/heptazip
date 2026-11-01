@@ -1,2 +1,42 @@
-# 7-Zip on GitHub
-7-Zip website: [7-zip.org](https://7-zip.org)
+# Tensor7
+
+Tensor7 è un fork di [7-Zip](https://7-zip.org) 26.05 (Igor Pavlov) per Linux e
+compilatori moderni: più veloce in compressione e decompressione, parallelo dove 7-Zip
+non lo è, e con un metodo nuovo per i modelli di intelligenza artificiale. Il programma
+resta `7zz`, con gli stessi comandi e opzioni; gli archivi `.7z` con i metodi standard
+si aprono con qualunque 7-Zip.
+
+## Cosa aggiunge
+
+- **Metodo FLOAT** per i pesi dei modelli AI, senza perdita e scelto in automatico per
+  `.safetensors` e `.gguf`: BF16/FP16/FP32 con l'esponente in Huffman, GGUF quantizzati
+  (Q2_K … Q8_0) con un modello a contesti e rANS. Esempi (`7zz a` senza opzioni):
+  Qwen3-0.6B BF16 al 66,3% (LZMA2 70,2%) in 1 s invece di 90; DeepHat-7B Q4_K_M al
+  93,2% (LZMA2 97,8%) 18 volte più veloce.
+- **zstd** nel formato 7z, per profili "ultra-veloci".
+- **Estrazione e compressione parallele** dei folder 7z (`-mpfd`, `-mpfc`), con archivi
+  identici byte per byte a quelli a un thread.
+- **Più velocità**: assembly attivo di default (LZMA 1,4x in decompressione), CRC32 con
+  PCLMULQDQ, match finder ottimizzato, decoder SIMD (AVX2, NEON).
+- **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,
+  sanitizer, fuzzing (libFuzzer) e build ARM64.
+
+Gli archivi con FLOAT si estraggono solo con Tensor7: per la compatibilità con 7-Zip
+basta `-mf=off`.
+
+## Documentazione
+
+- [BUILD-modern.md](BUILD-modern.md): compilare, testare, usare le opzioni nuove.
+- [docs/design](docs/design): una nota per ogni scelta (formati, misure, alternative).
+- [docs/benchmark-mercato.md](docs/benchmark-mercato.md): confronto con zstd, xz,
+  brotli, pigz e altri.
+
+## Versioni
+
+`26.05-m1`: la base 7-Zip (26.05) e il rilascio di Tensor7 su quella base.
+
+## Licenza e crediti
+
+7-Zip è di Igor Pavlov: il codice originale mantiene le sue licenze (GNU LGPL, con la
+restrizione unRAR per il codice RAR, e le parti BSD; vedi `DOC/License.txt`). zstd è
+distribuito con licenza BSD. Tensor7 non è un prodotto ufficiale di 7-Zip.

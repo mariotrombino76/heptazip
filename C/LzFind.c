@@ -897,7 +897,7 @@ static UInt32 * Hc_GetMatchesSpec(size_t lenLimit, UInt32 curMatch, UInt32 pos, 
       curMatch = son[_cyclicBufferPos - delta + (_cyclicBufferPos < delta ? _cyclicBufferSize : 0)];
       if (pb[maxLen] == cur[maxLen] && *pb == *cur)
       {
-        // 7zip-modern: LzFind_MatchEnd() instead of a byte loop (same result)
+        // Tensor7: LzFind_MatchEnd() instead of a byte loop (same result)
         const UInt32 len = (UInt32)(LzFind_MatchEnd(cur + 1, cur + lenLimit, -(ptrdiff_t)delta) - cur);
         if (maxLen < len)
         {

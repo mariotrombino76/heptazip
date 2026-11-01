@@ -23,7 +23,7 @@ typedef struct
   BoolInt csWasEntered;
 
   BoolInt exit;
-  /* 7zip-modern: (stopWriting) is written by the thread that calls the match
+  /* Tensor7: (stopWriting) is written by the thread that calls the match
      finder and read by the worker thread without a lock: it's accessed only with
      Z7_ATOMIC32_LOAD_RELAXED / Z7_ATOMIC32_STORE_RELAXED. Relaxed order is enough:
      the read that must see (True) follows Semaphore_Wait(freeSemaphore), and the

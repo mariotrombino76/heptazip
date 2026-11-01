@@ -1,5 +1,5 @@
 // MtTaskPool.cpp
-// 7zip-modern: see MtTaskPool.h
+// Tensor7: see MtTaskPool.h
 
 #include "StdAfx.h"
 

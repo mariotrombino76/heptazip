@@ -31,7 +31,7 @@ CEncoder::CEncoder()
   _encoder = NULL;
   _encoder = XzEnc_Create(&g_Alloc, &g_BigAlloc);
   if (!_encoder)
-    throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
+    throw CNewException();  // Tensor7: allocation failed (E_OUTOFMEMORY)
 }
 
 CEncoder::~CEncoder()

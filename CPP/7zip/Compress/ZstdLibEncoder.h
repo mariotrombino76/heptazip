@@ -1,5 +1,5 @@
 // ZstdLibEncoder.h
-// 7zip-modern: Zstandard encoder based on the reference library (third_party/zstd).
+// Tensor7: Zstandard encoder based on the reference library (third_party/zstd).
 //
 // It creates standard zstd frames for the 7z method 0x4F71101, the method ID
 // and coder properties used by 7-Zip-zstd (5 bytes: major, minor version of

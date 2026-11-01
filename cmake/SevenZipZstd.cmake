@@ -1,5 +1,5 @@
 # Encoder Zstandard (metodo 7z 0x4F71101) con la libreria di riferimento inclusa in
-# third_party/zstd (vedi third_party/zstd/README-7zip-modern.md).
+# third_party/zstd (vedi third_party/zstd/README-Tensor7.md).
 #
 # Il decoder e' sempre quello di 7-Zip (C/ZstdDec.c, registrato da
 # CPP/7zip/Compress/ZstdCodecRegister.cpp): l'estrazione non dipende da questa opzione.

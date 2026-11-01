@@ -1,5 +1,5 @@
 // ListJson.cpp
-// 7zip-modern: JSON output of the "l" (list) command, switch -json.
+// Tensor7: JSON output of the "l" (list) command, switch -json.
 // See docs/json-output.md.
 
 #include "StdAfx.h"

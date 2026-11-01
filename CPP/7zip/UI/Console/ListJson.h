@@ -1,5 +1,5 @@
 // ListJson.h
-// 7zip-modern: JSON output of the "l" (list) command, switch -json.
+// Tensor7: JSON output of the "l" (list) command, switch -json.
 
 #ifndef ZIP7_INC_LIST_JSON_H
 #define ZIP7_INC_LIST_JSON_H

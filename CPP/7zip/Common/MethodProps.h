@@ -234,7 +234,7 @@ public:
       if (maxSize != 0)
         return maxSize;
     }
-    // 7zip-modern: the rule of the LZMA2 encoder (C/Lzma2Enc.h)
+    // Tensor7: the rule of the LZMA2 encoder (C/Lzma2Enc.h)
     return Lzma2Enc_GetAutoBlockSize(Get_Lzma_DicSize());
   }
 

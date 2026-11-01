@@ -1,5 +1,5 @@
 // ZstdLibEncoder.cpp
-// 7zip-modern: Zstandard encoder based on the reference library (third_party/zstd).
+// Tensor7: Zstandard encoder based on the reference library (third_party/zstd).
 
 #include "StdAfx.h"
 

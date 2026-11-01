@@ -1,5 +1,5 @@
 // FloatCoder.cpp
-// 7zip-modern: "FLOAT" method of 7z (design 0008).
+// Tensor7: "FLOAT" method of 7z (design 0008).
 
 #include "StdAfx.h"
 

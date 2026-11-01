@@ -125,9 +125,9 @@ const UInt32 k_SPARC = 0x3030805;
 const UInt32 k_AES   = 0x6F10701;
 
 // const UInt32 k_ZSTD = 0x4015D; // winzip zstd
-// 7zip-modern: Zstandard with the ID and properties of 7-Zip-zstd (design 0002)
+// Tensor7: Zstandard with the ID and properties of 7-Zip-zstd (design 0002)
 const UInt32 k_ZSTD_7zZstd = 0x4F71101;
-// 7zip-modern: FLOAT, lossless coder for float arrays (design 0008); 64-bit random ID
+// Tensor7: FLOAT, lossless coder for float arrays (design 0008); 64-bit random ID
 const UInt64 k_FLOAT = 0x3F707F5E728B0001;
 
 inline bool IsFilterMethod(UInt64 m)

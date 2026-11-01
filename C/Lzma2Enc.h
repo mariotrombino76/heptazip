@@ -11,7 +11,7 @@ EXTERN_C_BEGIN
 #define LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO   0
 #define LZMA2_ENC_PROPS_BLOCK_SIZE_SOLID  ((UInt64)(Int64)-1)
 
-/* 7zip-modern: size of the independent LZMA2 blocks for LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO
+/* Tensor7: size of the independent LZMA2 blocks for LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO
    (with more than one block thread): LZMA2_ENC_AUTO_BLOCK_DICT_MULT x dictionary,
    from 1 to 256 MiB, not smaller than the dictionary, aligned to 1 MiB.
    Upstream used 4 x dictionary. Each block starts with an empty dictionary: smaller

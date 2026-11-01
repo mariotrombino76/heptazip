@@ -124,10 +124,17 @@ DECLARE_AND_SET_CLIENT_VERSION_VAR
 #endif
 
 
-static const char * const kCopyrightString = "\n7-Zip"
+/* Tensor7: the name and version of the fork, then the 7-Zip version it is based on */
+#ifdef MY_CPU_NAME
+  #define T7_VERSION_CPU  T7_VERSION " (" MY_CPU_NAME ")"
+#else
+  #define T7_VERSION_CPU  T7_VERSION
+#endif
+
+static const char * const kCopyrightString = "\n" T7_NAME
   PROG_POSTFIX_2
-  " " MY_VERSION_CPU
-  " : " MY_COPYRIGHT_DATE "\n";
+  " " T7_VERSION_CPU
+  " : based on 7-Zip " MY_VERSION " : " MY_COPYRIGHT_DATE "\n";
 
 static const char * const kHelpString =
     "Usage: 7z"
@@ -1525,7 +1532,7 @@ int Main2(
       lo.ExcludeFileItems = options.Censor.ExcludeFileItems;
       lo.DisablePercents = options.DisablePercents;
 
-      if (options.JsonOutput) // 7zip-modern: -json
+      if (options.JsonOutput) // Tensor7: -json
         hresultMain = ListArchives_Json(
           lo,
           codecs,

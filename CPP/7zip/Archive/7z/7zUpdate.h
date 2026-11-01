@@ -102,7 +102,7 @@ struct CUpdateOptions
   
   bool RemoveSfxBlock;
   bool MultiThreadMixer;
-  // 7zip-modern: compress new folders in parallel (docs/design/0003)
+  // Tensor7: compress new folders in parallel (docs/design/0003)
   bool ParallelFolderEncoding;
 
   bool Need_CTime;

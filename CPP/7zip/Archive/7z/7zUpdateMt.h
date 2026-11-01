@@ -1,5 +1,5 @@
 // 7zUpdateMt.h
-// 7zip-modern: building blocks for the parallel compression of 7z folders.
+// Tensor7: building blocks for the parallel compression of 7z folders.
 // See docs/design/0003-compressione-parallela-folder-7z.md
 
 #ifndef ZIP7_INC_7Z_UPDATE_MT_H

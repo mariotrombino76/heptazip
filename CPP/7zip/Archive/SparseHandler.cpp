@@ -259,7 +259,7 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openCallback)
     return S_FALSE;
 
   _isArc = true;
-  // 7zip-modern: NumChunks comes from the header (up to 4 G entries); the vector grows
+  // Tensor7: NumChunks comes from the header (up to 4 G entries); the vector grows
   // as chunk headers are actually read.
   Chunks.Reserve(MyMin(h.NumChunks, (UInt32)1 << 16) + 1);
   UInt64 offset = kHeaderSize;

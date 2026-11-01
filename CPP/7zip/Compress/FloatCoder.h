@@ -1,5 +1,5 @@
 // FloatCoder.h
-// 7zip-modern: "FLOAT" method of 7z, lossless coder for arrays of floating-point
+// Tensor7: "FLOAT" method of 7z, lossless coder for arrays of floating-point
 // numbers such as the weights of AI models (design 0008, block format in
 // C/FloatPlane.h). The encoder chooses the float type (BF16, FP16, FP32) and the
 // alignment for each block, so any data can be compressed; other data are stored.

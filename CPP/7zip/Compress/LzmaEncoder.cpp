@@ -32,7 +32,7 @@ CEncoder::CEncoder()
   _encoder = NULL;
   _encoder = LzmaEnc_Create(&g_AlignedAlloc);
   if (!_encoder)
-    throw CNewException();  // 7zip-modern: allocation failed (E_OUTOFMEMORY)
+    throw CNewException();  // Tensor7: allocation failed (E_OUTOFMEMORY)
 }
 
 CEncoder::~CEncoder()

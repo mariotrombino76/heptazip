@@ -55,7 +55,7 @@ public:
   HRESULT SetParams(unsigned numDictBits);
 
   CDecoder(): _win(NULL), _numDictBits(0) {}
-  // 7zip-modern: the window from SetParams() was never freed (leak found by fuzzing).
+  // Tensor7: the window from SetParams() was never freed (leak found by fuzzing).
   ~CDecoder() { MidFree(_win); }
   const Byte * GetDataPtr() const { return _win + _winPos; }
 };

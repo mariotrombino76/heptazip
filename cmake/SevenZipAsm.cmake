@@ -25,7 +25,7 @@ get_filename_component(_asm_name "${SEVENZIP_ASSEMBLER}" NAME)
 message(STATUS "Assembler: ${SEVENZIP_ASSEMBLER}")
 
 # File C sostituiti -> sorgente asm.
-# 7zip-modern: LzFindOpt resta in C. Con LzFind_MatchEnd() (design 0004) il C e' piu'
+# Tensor7: LzFindOpt resta in C. Con LzFind_MatchEnd() (design 0004) il C e' piu'
 # veloce di LzFindOpt.asm: compressione LZMA2 -mx5 con 20 thread 20,7 s contro 22,1 s,
 # LZMA -mmt=2 34,8 s contro 37,3 s (Silesia, misure alternate, archivi identici).
 set(_asm_replace

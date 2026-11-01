@@ -1414,7 +1414,7 @@ static void ZstdDec1_Init(CZstdDec1 *p)
 
   #define COPY_CHUNK_SIZE 16
 
-    /* 7zip-modern: unaligned copies through Z7_LoadNative / Z7_StoreNative
+    /* Tensor7: unaligned copies through Z7_LoadNative / Z7_StoreNative
        (CpuArch.h) instead of dereferencing cast pointers (undefined behaviour) */
     #define COPY_CHUNK_4_2(dest, src) \
     { \

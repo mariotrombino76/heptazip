@@ -1,5 +1,5 @@
 /* FloatQuant.c -- context model for the quantized structs of GGUF files (FLOAT mode 4)
-7zip-modern (design 0008) : Public domain
+Tensor7 (design 0008) : Public domain
 
 The fields of the K-quant structs (Q4_K, Q5_K, Q6_K) are coded with rANS (8 or 32
 interleaved states) and one frequency table per context: the context of a quantized value is a

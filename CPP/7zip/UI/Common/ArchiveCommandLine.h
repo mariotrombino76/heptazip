@@ -66,7 +66,7 @@ struct CArcCmdLineOptions
   bool YesToAll;
   bool ShowDialog;
   bool TechMode;
-  bool JsonOutput; // 7zip-modern: -json
+  bool JsonOutput; // Tensor7: -json
   bool ShowTime;
   CBoolPair ListPathSeparatorSlash;
 

@@ -30,9 +30,9 @@
 namespace NArchive {
 namespace N7z {
 
-// 7zip-modern: default of property "pfd" (parallel extraction of folders)
+// Tensor7: default of property "pfd" (parallel extraction of folders)
 const bool k_ParallelFolderDecoding_Default = true;
-// 7zip-modern: default of property "pfc" (parallel compression of folders):
+// Tensor7: default of property "pfc" (parallel compression of folders):
 // on, because the archive is the same as with sequential compression.
 const bool k_ParallelFolderEncoding_Default = true;
 
@@ -60,9 +60,9 @@ public:
   CBoolPair Write_Attrib;
 
   bool _useMultiThreadMixer;
-  // 7zip-modern: parallel extraction of folders, property "pfd" (docs/design/0001)
+  // Tensor7: parallel extraction of folders, property "pfd" (docs/design/0001)
   bool _parallelFolderDecoding;
-  // 7zip-modern: parallel compression of folders, property "pfc" (docs/design/0003)
+  // Tensor7: parallel compression of folders, property "pfc" (docs/design/0003)
   bool _parallelFolderEncoding;
   bool _removeSfxBlock;
   // bool _volumeMode;
@@ -150,7 +150,7 @@ private:
   #ifdef Z7_7Z_SET_PROPERTIES
   bool _useMultiThreadMixer;
   #endif
-  // 7zip-modern: parallel extraction of folders, property "pfd" (docs/design/0001)
+  // Tensor7: parallel extraction of folders, property "pfd" (docs/design/0001)
   bool _parallelFolderDecoding;
 
   UInt32 _crcSize;

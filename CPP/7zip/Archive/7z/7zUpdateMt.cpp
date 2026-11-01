@@ -1,5 +1,5 @@
 // 7zUpdateMt.cpp
-// 7zip-modern: see 7zUpdateMt.h and docs/design/0003-compressione-parallela-folder-7z.md
+// Tensor7: see 7zUpdateMt.h and docs/design/0003-compressione-parallela-folder-7z.md
 
 #include "StdAfx.h"
 

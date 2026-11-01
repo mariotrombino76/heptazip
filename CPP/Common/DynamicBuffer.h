@@ -27,7 +27,7 @@ template <class T> class CDynamicBuffer
     {
       newCap = _size + size;
       if (newCap < size)
-        throw CNewException();  // 7zip-modern: size overflow, allocation impossible
+        throw CNewException();  // Tensor7: size overflow, allocation impossible
     }
 
     T *newBuffer = new T[newCap];

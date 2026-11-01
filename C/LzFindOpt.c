@@ -91,7 +91,7 @@ else
       if (len[diff] == len[0])
       {
         if (++len != lenLimit && len[diff] == len[0])
-          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // 7zip-modern (same result)
+          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // Tensor7 (same result)
         if (maxLen < len)
         {
           maxLen = len;
@@ -287,7 +287,7 @@ else
       if (len[diff] == len[0])
       {
         if (++len != lenLimit && len[diff] == len[0])
-          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // 7zip-modern (same result)
+          len = LzFind_MatchEnd(len + 1, lenLimit, diff);  // Tensor7 (same result)
         if (maxLen < len)
         {
           maxLen = len;
@@ -325,7 +325,7 @@ else
                 {
                   // SPEC code
                   CLzRef *dest = son + ((size_t)(_cyclicBufferPos) << 1);
-                  /* 7zip-modern: "* 2" instead of "<< 1": the offset is negative
+                  /* Tensor7: "* 2" instead of "<< 1": the offset is negative
                      here, and left shift of a negative value is undefined behavior
                      (reported by UBSan). Same machine code. See docs/upstream-patches.md */
                   const CLzRef *src = dest + ((diff

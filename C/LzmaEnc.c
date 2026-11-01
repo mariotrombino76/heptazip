@@ -2169,7 +2169,7 @@ static void WriteEndMarker(CLzmaEnc *p, unsigned posState)
 }
 
 
-/* 7zip-modern: atomic read of CMatchFinder::result (see LzFind.h). It's not
+/* Tensor7: atomic read of CMatchFinder::result (see LzFind.h). It's not
    inlined: CheckErrors() is inlined into the hot LzmaEnc_CodeOneBlock(), and an
    inlined __atomic load there changes the inlining and the register allocation
    of the whole function (measured: 1.4% slower compression). */

@@ -347,7 +347,7 @@ static THREAD_FUNC_DECL ThreadFunc(void *pp)
       
       #ifndef MTCODER_USE_WRITE_THREAD
       {
-        /* 7zip-modern: (numStartedThreads) is read in the read section (readEvent),
+        /* Tensor7: (numStartedThreads) is read in the read section (readEvent),
            after (stopReading) is set: then no thread can start another one, so the
            value is final for this MtCoder_Code() call. And it's read before the
            increment of (numFinishedThreads): the read can't overlap with the next

@@ -1,4 +1,4 @@
-# 7-Zip modern fork — build e test
+# Tensor7 (fork di 7-Zip, branch modern) — build e test
 
 Questo branch (`modern`) affianca ai makefile originali un build system CMake
 e un banco di prova per misurare correttezza e prestazioni di ogni modifica.

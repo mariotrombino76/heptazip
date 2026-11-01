@@ -313,7 +313,7 @@ typedef int BoolInt;
 #endif //  _MSC_VER
 
 
-/* 7zip-modern: relaxed atomic load / store of a 32-bit integer object
+/* Tensor7: relaxed atomic load / store of a 32-bit integer object
    (BoolInt, SRes, Int32, UInt32) that one thread writes while another thread
    reads it. Without them such accesses are a data race: undefined behaviour in
    C11 / C++11, reported by ThreadSanitizer.
