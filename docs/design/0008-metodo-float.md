@@ -436,8 +436,27 @@ Storia del decoder a un thread nell'archivio: 750 MB/s con un flusso di Huffman,
 4 flussi, 1105 con i bit di mantissa nel simbolo (k, −0,30% di dimensione: costava
 l'estrazione dei campi impacchettati di r), 1616 con le due fasi e AVX2, **1846** con la
 tabella doppia (§3.4). pythia FP16 1819 MB/s, gpt2 FP32 2664 MB/s (AVX2 anche per FP32).
-Con più thread l'estrazione resta a ~2100-2250 MB/s: il limite è il resto della pipeline
-di estrazione (thread chiamante, copie, CRC), non il decoder.
+Con più thread l'estrazione si fermava a ~2100-2250 MB/s, e peggiorava oltre 4 thread
+(`7zz t` di Qwen BF16: 0,28 s con 4 thread, 0,64 s con 20). Non era né l'SMT né gli
+E-core (stessi tempi fissando i thread su core fisici diversi o sugli E-core), ma il
+numero di thread a parità di lavoro: il thread chiamante (lettura, copia nello slot, CRC,
+scrittura) è il collo di bottiglia, e i blocchi giravano su tutti i thread e su tutti gli
+slot, ogni volta su un core freddo e su buffer fuori cache (40 slot da 2 MB = 80 MB,
+oltre i 24 MB di L3). Tre correzioni (`FloatCoder.cpp`, `MtTaskPool.cpp`):
+- il pool dà un compito al worker rimasto inattivo per ultimo (LIFO, un evento per
+  worker) invece che a uno qualsiasi: lavorano sempre gli stessi pochi thread;
+- i blocchi in volo seguono il bisogno: (tempo di decodifica di un blocco) / (tempo del
+  chiamante per blocco) + 2, con le medie misurate da worker e chiamante;
+- gli slot liberi in una pila: si riusa per primo l'ultimo liberato (caldo in cache).
+
+| `7zz t`, 20 thread | prima | dopo |
+|---|---|---|
+| Qwen3-0.6B BF16 (1,5 GB) | 0,64 s (2,3 GB/s) | **0,27 s** (5,6 GB/s) |
+| DeepHat-7B Q4_K_M (4,7 GB) | 2,69 s | **1,76-1,83 s** |
+
+Ora più thread non sono mai più lenti di meno thread (BF16: 0,25 s con 4, 0,27 con 8 e
+con 20). Il limite che resta è il thread chiamante: una copia dell'input negli slot e il
+CRC dell'uscita, in un solo thread.
 
 **ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
 perdita: la decompressione restituisce dati diversi dall'originale con ogni
@@ -473,7 +492,8 @@ in decompressione), sono solo indicative.
 
 - Quantizzati: i tipi IQ* (tabelle a griglia, codici a 8-16 bit), Q4_1/Q5_0/Q5_1 e
   TQ1/TQ2 non sono ancora coperti.
-- Estrazione multi-thread: oltre ~2,2 GB/s il limite è la pipeline (thread chiamante,
-  copie, CRC), non il decoder.
+- Estrazione multi-thread: il thread chiamante limita a ~5,6 GB/s (BF16); si può
+  togliere la copia dell'input negli slot (decodifica dal buffer di lettura) e
+  calcolare il CRC a pezzi nei worker (combinazione dei CRC).
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS anche per i float: da valutare contro il costo in velocità.

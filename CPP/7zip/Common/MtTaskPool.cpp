@@ -15,8 +15,6 @@
 
 using namespace NWindows::NSynchronization;
 
-static const UInt32 kMaxQueued = (UInt32)1 << 30;
-
 THREAD_FUNC_DECL CMtTaskPool::WorkerThread(void *p)
 {
   CWorker *w = (CWorker *)p;
@@ -26,21 +24,38 @@ THREAD_FUNC_DECL CMtTaskPool::WorkerThread(void *p)
 
 void CMtTaskPool::WorkerLoop(unsigned workerIndex)
 {
+  CWorker &w = _workers[workerIndex];
   for (;;)
   {
-    if (_numQueued.Lock() != 0)
-      return;
-    CMtTask *task;
+    CMtTask *task = NULL;
     {
       CCriticalSectionLock lock(_cs);
       if (_exit)
         return;
-      task = _queue[_queueHead++];
-      if (_queueHead == _queue.Size())
+      if (_queueHead != _queue.Size())
       {
-        _queue.Clear();
-        _queueHead = 0;
+        task = _queue[_queueHead++];
+        if (_queueHead == _queue.Size())
+        {
+          _queue.Clear();
+          _queueHead = 0;
+        }
       }
+      else
+        _idle.Add(workerIndex);
+    }
+    if (!task)
+    {
+      // Submit() sets (Task) and then (Wake); Stop() sets (_exit) and then (Wake)
+      if (w.Wake.Lock() != 0)
+        return;
+      CCriticalSectionLock lock(_cs);
+      if (_exit)
+        return;
+      task = w.Task;
+      w.Task = NULL;
+      if (!task)
+        continue;
     }
     try
     {
@@ -58,23 +73,31 @@ HRESULT CMtTaskPool::Start(unsigned numThreads)
 {
   if (!_workers.IsEmpty() || numThreads == 0)
     return E_FAIL;
-  {
-    // OptCreateInit(): Start() can be called again after Stop()
-    const WRes wres = _numQueued.OptCreateInit(0, kMaxQueued);
-    if (wres != 0)
-      return HRESULT_FROM_WIN32(wres);
-  }
   _exit = false;
-  for (unsigned i = 0; i < numThreads; i++)
+  _idle.Clear();
+  _queue.Clear();
+  _queueHead = 0;
+  unsigned i;
+  // all the workers (and their events) exist before the first thread runs
+  for (i = 0; i < numThreads; i++)
   {
     CWorker &w = _workers.AddNew();
     w.Pool = this;
     w.Index = i;
-    const WRes wres = w.Thread.Create(WorkerThread, &w);
+    w.Task = NULL;
+    const WRes wres = w.Wake.CreateIfNotCreated_Reset();
     if (wres != 0)
     {
-      _workers.DeleteBack();
-      Stop();
+      _workers.Clear();
+      return HRESULT_FROM_WIN32(wres);
+    }
+  }
+  for (i = 0; i < numThreads; i++)
+  {
+    const WRes wres = _workers[i].Thread.Create(WorkerThread, &_workers[i]);
+    if (wres != 0)
+    {
+      Stop();   // only the created threads are waited for
       return HRESULT_FROM_WIN32(wres);
     }
   }
@@ -89,14 +112,27 @@ HRESULT CMtTaskPool::Submit(CMtTask *task)
       return HRESULT_FROM_WIN32(wres);
   }
   task->ExceptionWasCaught = false;
+  CWorker *w = NULL;
   {
     CCriticalSectionLock lock(_cs);
     if (_exit || _workers.IsEmpty())
       return E_FAIL;
-    _queue.Add(task);
+    if (!_idle.IsEmpty())
+    {
+      w = &_workers[_idle.Back()];
+      _idle.DeleteBack();
+      w->Task = task;
+    }
+    else
+      _queue.Add(task);
   }
-  const WRes wres = _numQueued.Release();
-  return wres == 0 ? S_OK : HRESULT_FROM_WIN32(wres);
+  if (w)
+  {
+    const WRes wres = w->Wake.Set();
+    if (wres != 0)
+      return HRESULT_FROM_WIN32(wres);
+  }
+  return S_OK;
 }
 
 void CMtTaskPool::Stop()
@@ -108,11 +144,14 @@ void CMtTaskPool::Stop()
     _exit = true;
     _queue.Clear();
     _queueHead = 0;
+    _idle.Clear();
   }
   // wake up all workers: each one sees (_exit) and returns
-  _numQueued.Release(_workers.Size());
   FOR_VECTOR (i, _workers)
-    _workers[i].Thread.Wait_Close();
+    _workers[i].Wake.Set();
+  FOR_VECTOR (i, _workers)
+    if (_workers[i].Thread.IsCreated())
+      _workers[i].Thread.Wait_Close();
   _workers.Clear();
 }
 

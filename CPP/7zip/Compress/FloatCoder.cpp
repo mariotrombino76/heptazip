@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+#include <chrono>
+
 #include "../../../C/FloatPlane.h"
 
 #include "../Common/StreamUtils.h"
@@ -29,7 +31,10 @@ void CSlot::Run(unsigned /* workerIndex */)
   else
   {
     size_t used = 0;
+    const auto t0 = std::chrono::steady_clock::now();
     Res = FloatPlane_DecodeBlock(In, InLen, Out, BlockSize, &used, &LzCoder.Zstd.Lz);
+    DecodeNs = (UInt64)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - t0).count();
     if (Res == SZ_OK && used != InLen)   // InLen came from FloatPlane_GetBlockSize()
       Res = SZ_ERROR_DATA;
   }
@@ -138,7 +143,21 @@ Z7_COM7F_IMF(CDecoder::SetNumberOfThreads(UInt32 numThreads))
 /* The calling thread reads the stream into _inBuf, finds each block with
    FloatPlane_GetBlockSize() and copies it to a free slot; the slots decode in
    parallel; the caller writes their outputs in order. The input buffer holds the
-   largest encoded block (stored: block + 5 bytes). */
+   largest encoded block (stored: block + 5 bytes).
+   Blocks in flight: often the caller (reading, copying, CRC, writing) is slower than
+   the workers, and more blocks in flight only spread the work over more threads, cold
+   and on more cores (BF16 with 20 threads: 0.37 s with 40 slots, 0.28 s with 4-10).
+   The pipeline needs about (decoding time of a block) / (time of the caller per block)
+   blocks in work, plus 2 (the one being written, one ready): the limit follows the
+   two averages (the decoding time measured by the workers, the caller's by itself). */
+static unsigned InFlightLimit(UInt64 decNs, UInt64 callerNs, unsigned numSlots)
+{
+  if (callerNs == 0)
+    callerNs = 1;
+  const UInt64 n = (decNs + callerNs - 1) / callerNs + 2;
+  return n < numSlots ? (unsigned)n : numSlots;
+}
+
 HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *outStream,
     const UInt64 *outSize, ICompressProgressInfo *progress)
 {
@@ -154,12 +173,25 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
   HRESULT endRes = S_OK;      // result once the submitted blocks are written
   UInt64 inProcessed = 0, outProcessed = 0;
   UInt64 outQueued = 0;       // bytes of the submitted blocks
-  unsigned next = 0, numInWork = 0;
+  unsigned next = 0, numInWork = 0;   // order[next]: the slot of the oldest block
+  /* the blocks in work, oldest first, in order[]; the free slots in a stack: the slot
+     freed last is used first, so that few slots (warm in the caches) are used when few
+     blocks are in flight */
+  CRecordVector<unsigned> order, freeSlots;
+  {
+    order.ClearAndSetSize(numSlots);
+    freeSlots.ClearAndReserve(numSlots);
+    for (unsigned i = numSlots; i != 0;)
+      freeSlots.AddInReserved(--i);
+  }
+  unsigned limit = numSlots;   // blocks in flight
+  UInt64 avgDecNs = 0, avgCallerNs = 0;   // averages (1/8 of each new value)
+  auto tCaller = std::chrono::steady_clock::now();
 
   for (;;)
   {
     // 1. Fill free slots with the next blocks.
-    while (!streamEnd && numInWork < numSlots)
+    while (!streamEnd && numInWork < limit)
     {
       if (outSize && outQueued == *outSize)
       {
@@ -207,7 +239,9 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
         endRes = S_FALSE;
         break;
       }
-      const unsigned k = (next + numInWork) % numSlots;
+      const unsigned k = freeSlots.Back();
+      freeSlots.DeleteBack();
+      order[(next + numInWork) % numSlots] = k;
       CSlot &s = _ring.Slot(k);
       memcpy(s.In, _inBuf + inPos, encSize);
       s.InLen = encSize;
@@ -227,8 +261,23 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
     // 2. Write the oldest block.
     if (numInWork == 0)
       return endRes;
-    CSlot &s = _ring.Slot(next);
-    HRESULT hres = _ring.Wait(next);
+    const unsigned slotIndex = order[next];
+    CSlot &s = _ring.Slot(slotIndex);
+    const auto tWaitStart = std::chrono::steady_clock::now();
+    HRESULT hres = _ring.Wait(slotIndex);
+    if (hres == S_OK && numSlots > 1)
+    {
+      // the caller's own time per block: from the end of the previous wait to the
+      // start of this one (writing, reading, copying)
+      const auto tWaitEnd = std::chrono::steady_clock::now();
+      const UInt64 own = (UInt64)std::chrono::duration_cast<std::chrono::nanoseconds>(
+          tWaitStart - tCaller).count();
+      const UInt64 dec = s.DecodeNs;
+      avgDecNs = avgDecNs == 0 ? dec : avgDecNs - (avgDecNs >> 3) + (dec >> 3);
+      avgCallerNs = avgCallerNs == 0 ? own : avgCallerNs - (avgCallerNs >> 3) + (own >> 3);
+      limit = InFlightLimit(avgDecNs, avgCallerNs, numSlots);
+      tCaller = tWaitEnd;
+    }
     if (hres == S_OK)
       hres = SResToHRESULT_Float(s.Res);
     if (hres == S_OK)
@@ -245,6 +294,7 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
       _ring.Stop();
       return hres;
     }
+    freeSlots.Add(slotIndex);
     next = (next + 1) % numSlots;
     numInWork--;
   }

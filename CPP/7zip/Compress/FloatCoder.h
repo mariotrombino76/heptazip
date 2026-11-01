@@ -65,6 +65,7 @@ public:
   size_t BlockSize;
   bool Encode;
   int Res;          // SRes of the decoder
+  UInt64 DecodeNs;  // decoder: time of FloatPlane_DecodeBlock() in Run()
   CLzCoder LzCoder;
 
   void Run(unsigned workerIndex) Z7_FLOAT_TASK_OVERRIDE;

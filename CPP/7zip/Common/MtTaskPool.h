@@ -49,13 +49,20 @@ class CMtTaskPool
     NWindows::CThread Thread;
     CMtTaskPool *Pool;
     unsigned Index;
+    NWindows::NSynchronization::CAutoResetEvent Wake;
+    CMtTask *Task;                   // handed by Submit() to an idle worker; protected by _cs
   };
 
+  /* A task goes to the worker that became idle last (LIFO), or to the queue if all are
+     busy. When fewer workers than threads are needed (the producer is slower than the
+     workers), the same few threads do the work, with warm caches and cores, and the
+     others sleep: with a FIFO hand-off the tasks went round all the threads, each of
+     them cold (decoding FLOAT with 20 threads: 2.3 times slower than with 4). */
   CObjectVector<CWorker> _workers;
   NWindows::NSynchronization::CCriticalSection _cs;
-  NWindows::NSynchronization::CSemaphore _numQueued;
   CRecordVector<CMtTask *> _queue;   // protected by _cs
   unsigned _queueHead;               // protected by _cs
+  CRecordVector<unsigned> _idle;     // stack of the idle workers; protected by _cs
   bool _exit;                        // protected by _cs
 
   static THREAD_FUNC_DECL WorkerThread(void *p);
