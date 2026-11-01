@@ -18,6 +18,7 @@ The block format is described in FloatPlane.h. */
 
 #define MODE_STORED  0
 #define MODE_SPLIT   1
+#define MODE_LZ      2
 
 typedef struct
 {
@@ -96,12 +97,84 @@ static void Canonical_Codes(const Byte *lens, UInt32 *codes)
     codes[i] = lens[i] ? next[lens[i]]++ : 0;
 }
 
-size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest)
+/* Writes the split block (mode 1) whose size was computed by the caller. */
+static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
+    unsigned type, unsigned phase, const Byte *lens, size_t huffSize)
+{
+  const CFloatType *ft = &g_Types[type];
+  const unsigned w = ft->w, s = ft->shift;
+  const size_t n = (srcLen - phase) / w;
+  const size_t tail = srcLen - phase - n * w;
+  const Byte *e = src + phase;
+  UInt32 codes[kNumSyms];
+  Byte *d = dest;
+  UInt64 acc = 0;
+  unsigned cnt = 0;
+  size_t k;
+  unsigned i;
+
+  Canonical_Codes(lens, codes);
+  *d++ = MODE_SPLIT;
+  SetUi32(d, (UInt32)srcLen)  d += 4;
+  *d++ = (Byte)type;
+  *d++ = (Byte)phase;
+  memcpy(d, src, phase);                    d += phase;
+  memcpy(d, src + srcLen - tail, tail);     d += tail;
+  for (i = 0; i < kNumSyms; i += 2)
+    *d++ = (Byte)(lens[i] | (lens[i + 1] << 4));
+  SetUi32(d, (UInt32)huffSize)  d += 4;
+
+  /* Huffman codes of e, MSB first */
+  for (k = 0; k < n; k++)
+  {
+    const unsigned sym = SPLIT_E(LoadElem(e + k * w, w), s);
+    acc = (acc << lens[sym]) | codes[sym];
+    cnt += lens[sym];
+    if (cnt >= 32)
+    {
+      cnt -= 32;
+      SetBe32(d, (UInt32)(acc >> cnt))
+      d += 4;
+    }
+  }
+  while (cnt >= 8)
+  {
+    cnt -= 8;
+    *d++ = (Byte)(acc >> cnt);
+  }
+  if (cnt != 0)
+    *d++ = (Byte)(acc << (8 - cnt));
+
+  /* r, w - 1 bytes per element */
+  if (w == 2)
+    for (k = 0; k < n; k++)
+      *d++ = (Byte)SPLIT_R(GetUi16(e + k * 2), s);
+  else
+    for (k = 0; k < n; k++)
+    {
+      const UInt32 r = SPLIT_R(GetUi32(e + k * 4), s);
+      d[0] = (Byte)r;
+      d[1] = (Byte)(r >> 8);
+      d[2] = (Byte)(r >> 16);
+      d += 3;
+    }
+  return (size_t)(d - dest);
+}
+
+#define kLzProbeSize  ((size_t)1 << 14)
+#define kLzHeaderSize 9
+
+size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const CFloatPlaneLz *lz)
 {
   UInt32 hist[kNumSyms];
   unsigned bestType = 0, bestPhase = 0;
-  UInt64 bestCost = (UInt64)(Int64)-1;
+  UInt64 bestCost = (UInt64)8 << 16;   /* bits per byte (16.16) of the best candidate; 8 = stored */
+  const size_t storedTotal = FLOAT_PLANE_ENCODED_MAX(srcLen);
+  size_t splitTotal = storedTotal, lzTotal = storedTotal;
+  size_t huffSize = 0;
+  Byte lens[kNumSyms];
   unsigned t;
+  int haveCandidate = 0;
 
   /* 1. Type and phase from a sample: cost per byte of exponent + raw rest. */
   {
@@ -121,8 +194,9 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest)
         cost = Hist_Cost(hist, (UInt32)n) + ((UInt64)n * (ft->w - 1) * 8 << 16);
         /* normalize to the bytes covered: n * w */
         cost = cost / (n * ft->w);
-        if (cost < bestCost)
+        if (!haveCandidate || cost < bestCost)
         {
+          haveCandidate = 1;
           bestCost = cost;
           bestType = t;
           bestPhase = phase;
@@ -132,82 +206,48 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest)
   }
 
   /* 2. Exact size of the split block, with the Huffman code of the whole block. */
-  if (bestCost != (UInt64)(Int64)-1)
+  if (haveCandidate)
   {
     const CFloatType *ft = &g_Types[bestType];
-    const unsigned w = ft->w, s = ft->shift;
+    const unsigned w = ft->w;
     const size_t n = (srcLen - bestPhase) / w;
     const size_t tail = srcLen - bestPhase - n * w;
     UInt32 p[kNumSyms];
-    UInt32 codes[kNumSyms];
-    Byte lens[kNumSyms];
     UInt64 numBits = 0;
-    size_t huffSize, total;
     unsigned i;
-
     Histogram(src + bestPhase, n, ft, hist);
     Huffman_Generate(hist, p, lens, kNumSyms, kMaxLen);
     for (i = 0; i < kNumSyms; i++)
       numBits += (UInt64)hist[i] * lens[i];
     huffSize = (size_t)((numBits + 7) >> 3);
-    total = 7 + bestPhase + tail + kLensSize + 4 + huffSize + n * (w - 1);
+    splitTotal = 7 + bestPhase + tail + kLensSize + 4 + huffSize + n * (w - 1);
+  }
 
-    if (total < FLOAT_PLANE_ENCODED_MAX(srcLen))
+  /* 3. zstd (mode 2), if a probe of the block start compresses better than the float
+     estimate: then the whole block, and the smaller result wins. The frame is written in
+     place (dest + 9); a split or stored block overwrites it. */
+  if (lz && lz->Compress && storedTotal > kLzHeaderSize)
+  {
+    const size_t probeLen = srcLen < kLzProbeSize ? srcLen : kLzProbeSize;
+    const size_t probeSize = lz->Compress(lz->ctx, src, probeLen, dest, storedTotal);
+    if (probeSize != 0 && (((UInt64)probeSize * 8 << 16) / probeLen) < bestCost)
     {
-      Byte *d = dest;
-      const Byte *e = src + bestPhase;
-      UInt64 acc = 0;
-      unsigned cnt = 0;
-      size_t k;
-
-      Canonical_Codes(lens, codes);
-      *d++ = MODE_SPLIT;
-      SetUi32(d, (UInt32)srcLen)  d += 4;
-      *d++ = (Byte)bestType;
-      *d++ = (Byte)bestPhase;
-      memcpy(d, src, bestPhase);                    d += bestPhase;
-      memcpy(d, src + srcLen - tail, tail);         d += tail;
-      for (i = 0; i < kNumSyms; i += 2)
-        *d++ = (Byte)(lens[i] | (lens[i + 1] << 4));
-      SetUi32(d, (UInt32)huffSize)  d += 4;
-
-      /* Huffman codes of e, MSB first */
-      for (k = 0; k < n; k++)
-      {
-        const unsigned sym = SPLIT_E(LoadElem(e + k * w, w), s);
-        acc = (acc << lens[sym]) | codes[sym];
-        cnt += lens[sym];
-        if (cnt >= 32)
-        {
-          cnt -= 32;
-          SetBe32(d, (UInt32)(acc >> cnt))
-          d += 4;
-        }
-      }
-      while (cnt >= 8)
-      {
-        cnt -= 8;
-        *d++ = (Byte)(acc >> cnt);
-      }
-      if (cnt != 0)
-        *d++ = (Byte)(acc << (8 - cnt));
-
-      /* r, w - 1 bytes per element */
-      if (w == 2)
-        for (k = 0; k < n; k++)
-          *d++ = (Byte)SPLIT_R(GetUi16(e + k * 2), s);
-      else
-        for (k = 0; k < n; k++)
-        {
-          const UInt32 r = SPLIT_R(GetUi32(e + k * 4), s);
-          d[0] = (Byte)r;
-          d[1] = (Byte)(r >> 8);
-          d[2] = (Byte)(r >> 16);
-          d += 3;
-        }
-      return (size_t)(d - dest);
+      const size_t lzSize = lz->Compress(lz->ctx, src, srcLen, dest + kLzHeaderSize,
+          storedTotal - kLzHeaderSize);
+      if (lzSize != 0)
+        lzTotal = kLzHeaderSize + lzSize;
     }
   }
+
+  if (lzTotal < storedTotal && lzTotal <= splitTotal)
+  {
+    dest[0] = MODE_LZ;
+    SetUi32(dest + 1, (UInt32)srcLen)
+    SetUi32(dest + 5, (UInt32)(lzTotal - kLzHeaderSize))
+    return lzTotal;
+  }
+  if (splitTotal < storedTotal)
+    return Write_Split(src, srcLen, dest, bestType, bestPhase, lens, huffSize);
 
   dest[0] = MODE_STORED;
   SetUi32(dest + 1, (UInt32)srcLen)
@@ -221,7 +261,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest)
 SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen)
 {
   UInt32 len;
-  if (srcLen < 5 || src[0] > MODE_SPLIT)
+  if (srcLen < 5 || src[0] > MODE_LZ)
     return SZ_ERROR_DATA;
   len = GetUi32(src + 1);
   if (len == 0 || len > FLOAT_PLANE_BLOCK_MAX)
@@ -240,6 +280,18 @@ SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
   if (src[0] == MODE_STORED)
   {
     *blockSize = 5 + outLen;
+    return SZ_OK;
+  }
+  if (src[0] == MODE_LZ)
+  {
+    size_t lzSize;
+    if (srcLen < kLzHeaderSize)
+      return SZ_ERROR_INPUT_EOF;
+    lzSize = GetUi32(src + 5);
+    /* as the encoder: the block is smaller than the stored block */
+    if (lzSize == 0 || kLzHeaderSize + lzSize >= FLOAT_PLANE_ENCODED_MAX(outLen))
+      return SZ_ERROR_DATA;
+    *blockSize = kLzHeaderSize + lzSize;
     return SZ_OK;
   }
   if (srcLen < 7)
@@ -307,7 +359,8 @@ static int Build_Table(const Byte *packedLens, UInt16 *table)
   return 1;
 }
 
-SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t destLen, size_t *srcUsed)
+SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t destLen, size_t *srcUsed,
+    const CFloatPlaneLz *lz)
 {
   size_t outLen;
   const Byte *p = src;
@@ -325,6 +378,22 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
       return SZ_ERROR_INPUT_EOF;
     memcpy(dest, p, outLen);
     *srcUsed = 5 + outLen;
+    return SZ_OK;
+  }
+
+  if (src[0] == MODE_LZ)
+  {
+    size_t blockSize;
+    SRes res;
+    RINOK(FloatPlane_GetBlockSize(src, srcLen, &blockSize))
+    if (srcLen < blockSize)
+      return SZ_ERROR_INPUT_EOF;
+    if (!lz || !lz->Decompress)
+      return SZ_ERROR_UNSUPPORTED;
+    res = lz->Decompress(lz->ctx, src + kLzHeaderSize, blockSize - kLzHeaderSize, dest, outLen);
+    if (res != SZ_OK)
+      return res == SZ_ERROR_MEM ? SZ_ERROR_MEM : SZ_ERROR_DATA;
+    *srcUsed = blockSize;
     return SZ_OK;
   }
 

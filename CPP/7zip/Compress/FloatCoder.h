@@ -13,6 +13,8 @@
 #ifndef ZIP7_INC_COMPRESS_FLOAT_CODER_H
 #define ZIP7_INC_COMPRESS_FLOAT_CODER_H
 
+#include "../../../C/FloatPlaneLz.h"
+
 #include "../../Common/MyBuffer.h"
 #include "../../Common/MyCom.h"
 #include "../../Common/MyVector.h"
@@ -39,6 +41,17 @@ const UInt32 kNumThreadsMax = 64;
 #define Z7_FLOAT_TASK_OVERRIDE
 #endif
 
+// zstd for the blocks that are not floats (mode 2 of the format, C/FloatPlaneLz.h).
+// One per slot: the slots run in parallel.
+class CLzCoder
+{
+  Z7_CLASS_NO_COPY(CLzCoder)
+public:
+  CFloatPlaneZstd Zstd;
+  CLzCoder();
+  ~CLzCoder();
+};
+
 // One block in work: input, output and the result of Run().
 class CSlot Z7_FLOAT_TASK_BASE
 {
@@ -50,6 +63,7 @@ public:
   size_t BlockSize;
   bool Encode;
   int Res;          // SRes of the decoder
+  CLzCoder LzCoder;
 
   void Run(unsigned workerIndex) Z7_FLOAT_TASK_OVERRIDE;
 };

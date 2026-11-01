@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Stato** | v1 implementata: codifica a blocchi, multi-thread, metodo 7z `FLOAT`, test, fuzzing, benchmark |
+| **Stato** | v1 implementata: blocchi split/zstd/stored, multi-thread, scelta automatica per safetensors e GGUF, test, fuzzing, benchmark |
 | **Data** | 2026-11-01 |
-| **Codice** | `C/FloatPlane.{h,c}` (formato a blocchi), `CPP/7zip/Compress/FloatCoder.{h,cpp}`, `FloatRegister.cpp` |
+| **Codice** | `C/FloatPlane.{h,c}` (formato a blocchi), `C/FloatPlaneLz.{h,c}` (zstd per i blocchi non float), `CPP/7zip/Compress/FloatCoder.{h,cpp}`, `FloatRegister.cpp`, analisi in `7zUpdate.cpp` |
 | **ID del metodo** | `3F 70 7F 5E 72 8B 00 01` (`0x3F707F5E728B0001`), nome `FLOAT` |
-| **Uso** | `7zz a -m0=FLOAT modello.7z model.safetensors` (opzionale `-m0=FLOAT:c=4m`, blocchi da 64 KiB a 4 MiB) |
+| **Uso** | automatico per `.safetensors` e `.gguf` F16/BF16/F32 (§3.4); esplicito `-m0=FLOAT` (opzionale `:c=4m`, blocchi da 64 KiB a 4 MiB); `-mf=off` disattiva la scelta automatica |
 
 ---
 
@@ -63,9 +63,12 @@ Lo stream è una sequenza di blocchi indipendenti; ognuno decodifica al più la 
 del blocco. Interi little-endian.
 
 ```
-u8  mode        0 = stored, 1 = split
+u8  mode        0 = stored, 1 = split, 2 = zstd
 u32 outLen      byte decodificati, 1 .. dimensione del blocco
 mode 0: outLen byte grezzi
+mode 2:
+  u32 lzSize    byte del frame, con 9 + lzSize < 5 + outLen (più piccolo del blocco stored)
+  lzSize byte   un solo frame zstd (RFC 8878) che decodifica esattamente outLen byte
 mode 1:
   u8  type      0 = BF16 (s = 7), 1 = FP16 (s = 8), 2 = FP32 (s = 23); w = 2, 2, 4
   u8  phase     0 .. w-1, byte grezzi prima del primo elemento
@@ -97,6 +100,11 @@ Il decoder rifiuta:
 Non legge mai fuori dall'input: gli zeri dopo la fine del flusso sono virtuali, e se
 vengono consumati è un errore.
 
+Il modo 2 è decodificato dal decoder zstd di 7-Zip (`C/ZstdDec.c`, sempre presente)
+nella modalità che scrive nel buffer del chiamante: nulla oltre `outLen` e nessuna
+finestra allocata, qualunque cosa dichiari il frame. È accettato solo un frame di dati,
+senza frame "skip" e senza byte dopo la fine.
+
 ### 3.3 Encoder
 
 Per ogni blocco:
@@ -108,17 +116,52 @@ Per ogni blocco:
    indicare a mano.
 2. Istogramma del blocco intero, `Huffman_Generate` di 7-Zip (`C/HuffEnc.c`) con
    lunghezza massima 12, dimensione esatta del risultato.
-3. Se non è più piccolo del blocco grezzo, il blocco è *stored* (+5 byte). Su dati che non
-   sono float il metodo costa al massimo 5 byte per blocco.
+3. zstd (livello 3) su un campione di 16 KiB dall'inizio del blocco: se costa meno della
+   stima float, zstd comprime il blocco intero. Vince il più piccolo tra split, zstd e
+   stored (+5 byte), misurati esattamente. Il campione costa l'1,6% del tempo
+   dell'encoder; senza l'encoder zstd (opzione CMake `SEVENZIP_ZSTD_ENCODER=OFF`) il
+   modo 2 non viene usato, ma è sempre decodificato.
+
+Il modo 2 serve perché i file dei modelli non contengono solo float: maschere di
+attenzione (0/1, salvate in U8 o in FP32), padding, metadati di testo nei GGUF. In
+pythia-160m le maschere U8 sono 48 MB su 375: senza il modo 2 FLOAT le lasciava al 56%,
+zstd le porta allo 0,1%.
 
 Su dati FP16 gaussiani l'encoder sceglie spesso la separazione BF16 (bit 7-14:
 esponente e 3 bit di mantissa, senza segno), che costa quanto quella FP16. È la scelta per
 costo misurato, non un errore.
 
+### 3.4 Scelta automatica
+
+L'analisi dei file del 7z (che sceglie già BCJ/ARM64 per gli eseguibili e Delta per i
+WAV) legge i primi 16 KiB dei file `.safetensors` e `.gguf`:
+
+- **safetensors**: intestazione valida (u64 da 2 B a 100 MiB, poi `{`); FLOAT se nel
+  JSON letto i dtype `BF16`, `F16`, `F32` sono più frequenti degli altri (interi, `F8_*`,
+  `F64`, `BOOL`): i modelli quantizzati restano a LZMA2;
+- **GGUF**: magic, versione 2 o 3, chiave `general.file_type` = 0 (F32), 1 (F16) o
+  32 (BF16); i tipi quantizzati (Q4_K, Q8_0...) restano a LZMA2.
+
+I file riconosciuti formano un gruppo, che usa FLOAT al posto del metodo principale se
+questo è LZMA o LZMA2 da solo (il default). Le altre scelte esplicite (zstd, PPMd, `-mx0`,
+catene con filtri) restano; `-mf=off` disattiva l'analisi. In un aggiornamento, i file
+nuovi vanno nel gruppo dei folder FLOAT esistenti. Il gruppo è un marcatore interno
+(`k_FLOAT_FilterGroup`), mai scritto nell'archivio.
+
 ## 4. Risultati
 
-Qwen3-0.6B BF16 (1503 MB), archivio 7z con `config.json`: **66,58%** (1000,9 MB), file
-identici. Dati sintetici gaussiani (test unitario): BF16 66,2%, FP16 84,3%, FP32 83,1%.
+Tre modelli reali da Hugging Face, un tipo ciascuno:
+
+| Modello | Tipi | FLOAT (automatico) | LZMA2 `-mx5` | xz -9 | zstd -19 |
+|---|---|---|---|---|---|
+| Qwen3-0.6B (1503 MB) | BF16 | **66,58%** in 0,9 s | 70,24% | 70,06% | 75,48% |
+| pythia-160m (375 MB) | FP16 + maschere U8 | **71,83%** in 0,3 s | 76,13% in 11,1 s | 75,98% | 78,35% |
+| gpt2 (548 MB) | FP32 (maschere in FP32) | **76,81%** in 0,4 s | 83,34% in 13,6 s | 82,62% | 84,31% |
+
+Su tutti e tre FLOAT è il più piccolo di 4-6 punti e 30-90 volte più veloce di LZMA2
+`-mx5`. Senza il modo 2 pythia era al 79,30% e gpt2 all'81,39%. I soli float di pythia:
+FLOAT 82,85%, LZMA2 87,93%. Dati sintetici gaussiani (test unitario): BF16 66,2%, FP16
+84,3%, FP32 83,1%.
 
 Benchmark a macchina scarica (20 thread, `tools/bench/market-bench.py`, tabella completa
 in `docs/benchmark-mercato.md`):
@@ -142,14 +185,20 @@ in decompressione), sono solo indicative.
 
 ## 5. Verifica
 
-- `tests/unit_float_plane.c` (CTest): round-trip di BF16, FP16, FP32, costanti e casuali,
-  fasi 0-3, dimensioni da 1 byte a 4 MiB; scelta di tipo e fase; ogni byte corrotto e ogni
-  troncamento di blocchi piccoli. Eseguito con ASan e UBSan.
-- `tests/update_equivalence.py`: tre profili `FLOAT` (non solid, solid 2 MiB, blocchi
-  64 KiB) su dati misti con pesi BF16 e FP32 sfasati di un byte. Archivi identici con
-  `-mpfc=off/on`, estrazione corretta.
-- `tests/fuzz/fuzz_float.c` (libFuzzer): round-trip di qualunque input, decodifica di
-  qualunque input (20 minuti, 1,5 milioni di esecuzioni, nessun problema).
+- `tests/unit_float_plane.c` (CTest, 19000 controlli): round-trip di BF16, FP16, FP32,
+  costanti e casuali, fasi 0-3, dimensioni da 1 byte a 4 MiB; scelta di tipo e fase; modo
+  2 per maschere, costanti e testo, rifiuto di un frame con byte in più, "non supportato"
+  senza decoder; ogni byte corrotto e ogni troncamento di blocchi piccoli. Con ASan e
+  UBSan.
+- `tests/update_equivalence.py` (65 casi): tre profili `FLOAT` espliciti; nei dati di
+  tutti i casi un safetensors sintetico (BF16 + maschera U8) e un GGUF F16, quindi la
+  scelta automatica; un aggiornamento che aggiunge pesi a un archivio con un folder
+  FLOAT. Archivi identici con `-mpfc=off/on`, estrazione corretta.
+- `tests/fuzz/fuzz_float.c` (libFuzzer, con zstd reale): round-trip di qualunque input,
+  decodifica di qualunque input (2 x 20 minuti, 4,5 milioni di esecuzioni, nessun
+  problema).
+- Interoperabilità: un archivio con blocchi zstd si estrae con una build senza encoder
+  zstd; quella build produce archivi senza modo 2, estratti dalla build normale.
 - Multi-thread: archivi identici con 1, 4 e 20 thread; 300 archivi corrotti a caso
   decodificati con `-mmt=on` dalla build ASan (tutti "errore nei dati", nessun crash);
   TSan pulito in compressione e decompressione.
@@ -158,5 +207,5 @@ in decompressione), sono solo indicative.
 
 - Decoder a thread singolo più veloce: più flussi di Huffman interlacciati per blocco
   (parallelismo a livello di istruzione), tabella a due livelli.
-- Scelta automatica del metodo per `.safetensors`, `.gguf` (tensori F16/BF16), `.pt`.
+- PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.

@@ -44,6 +44,12 @@ namespace N7z {
 
 #define k_X86 k_BCJ
 
+/* 7zip-modern: group of the files with AI model weights (safetensors, GGUF in F16/BF16/F32),
+   compressed with the FLOAT method (design 0008) instead of LZMA/LZMA2. It is a marker of
+   CFilterMode::Id only (not a method ID: it is never written to the archive), handled
+   before MakeExeMethod(). */
+static const UInt32 k_FLOAT_FilterGroup = 0x3F70F10A;
+
 struct CFilterMode
 {
   UInt32 Id;
@@ -423,6 +429,76 @@ static BoolInt Parse_WAV(const Byte *buf, size_t size, CFilterMode *filterMode)
 }
 
 
+/* ---------- AI model weights (7zip-modern, design 0008) ---------- */
+
+static size_t CountSubstr(const Byte *buf, size_t size, const char *s)
+{
+  const size_t len = strlen(s);
+  size_t num = 0;
+  for (size_t i = 0; i + len <= size; i++)
+    if (buf[i] == (Byte)s[0] && memcmp(buf + i, s, len) == 0)
+      num++;
+  return num;
+}
+
+/* safetensors: u64 size of the JSON header, then the header ({"name":{"dtype":"BF16",
+   "shape":[..],"data_offsets":[..]},...}), then the tensors. FLOAT is chosen if the
+   float dtypes it codes (BF16, F16, F32) are more frequent than the others (integer,
+   FP8, F64: quantized models stay with LZMA2) in the part of the header we read. */
+static BoolInt Parse_Safetensors(const Byte *buf, size_t size, CFilterMode *filterMode)
+{
+  if (size < 16)
+    return False;
+  const UInt64 headerSize = GetUi64(buf);
+  if (headerSize < 2 || headerSize > ((UInt64)100 << 20) || buf[8] != '{')
+    return False;
+  const size_t scan = (size_t)MyMin((UInt64)size, 8 + headerSize);
+  const size_t numFloat =
+        CountSubstr(buf, scan, "\"BF16\"")
+      + CountSubstr(buf, scan, "\"F16\"")
+      + CountSubstr(buf, scan, "\"F32\"");
+  static const char * const kOthers[] = { "\"F64\"", "\"I8\"", "\"U8\"", "\"I16\"",
+      "\"U16\"", "\"I32\"", "\"U32\"", "\"I64\"", "\"U64\"", "\"BOOL\"", "\"F8_" };
+  size_t numOther = 0;
+  for (unsigned i = 0; i < Z7_ARRAY_SIZE(kOthers); i++)
+    numOther += CountSubstr(buf, scan, kOthers[i]);
+  if (numFloat == 0 || numFloat <= numOther)
+    return False;
+  filterMode->Id = k_FLOAT_FilterGroup;
+  return True;
+}
+
+/* GGUF (llama.cpp): "GGUF", version 2 or 3, then key-value metadata. The key
+   general.file_type (u32 value type 4) gives the type of most tensors: 0 = F32,
+   1 = F16, 32 = BF16 go to FLOAT; quantized types (Q4_K, Q8_0...) stay with LZMA2. If
+   the key is not in the part we read, the file stays with LZMA2. */
+static BoolInt Parse_Gguf(const Byte *buf, size_t size, CFilterMode *filterMode)
+{
+  if (size < 24 || GetUi32(buf) != 0x46554747)   // "GGUF"
+    return False;
+  const UInt32 version = GetUi32(buf + 4);
+  if (version != 2 && version != 3)
+    return False;
+  static const char kKey[] = "general.file_type";
+  const size_t keyLen = sizeof(kKey) - 1;
+  for (size_t i = 8; i + 8 + keyLen + 8 <= size; i++)
+  {
+    // the key string is stored as u64 length + bytes
+    if (GetUi64(buf + i) != keyLen || memcmp(buf + i + 8, kKey, keyLen) != 0)
+      continue;
+    const Byte *v = buf + i + 8 + keyLen;
+    if (GetUi32(v) != 4)   // GGUF_TYPE_UINT32
+      return False;
+    const UInt32 fileType = GetUi32(v + 4);
+    if (fileType != 0 && fileType != 1 && fileType != 32)
+      return False;
+    filterMode->Id = k_FLOAT_FilterGroup;
+    return True;
+  }
+  return False;
+}
+
+
 /*
   filterMode->Delta will be set as:
     = delta value : [1, 256] : for k_Delta
@@ -435,6 +511,8 @@ static BoolInt ParseFile(const Byte *buf, size_t size, CFilterMode *filterMode)
   if (Parse_EXE(buf, size, filterMode)) return True;
   if (Parse_ELF(buf, size, filterMode)) return True;
   if (Parse_MACH(buf, size, filterMode)) return True;
+  if (Parse_Safetensors(buf, size, filterMode)) return True;
+  if (Parse_Gguf(buf, size, filterMode)) return True;
   return Parse_WAV(buf, size, filterMode);
 }
 
@@ -577,6 +655,8 @@ static unsigned Get_FilterGroup_for_Folder(
         m.Id = k_Delta;
       }
     }
+    else if (coder.MethodID == k_FLOAT && f.Coders.Size() == 1)
+      m.Id = k_FLOAT_FilterGroup;
     else if (IsExeFilter(coder.MethodID))
     {
       m.Id = (UInt32)coder.MethodID;
@@ -1031,6 +1111,7 @@ struct CAnalysis
   CByteBuffer Buffer;
 
   bool ParseWav;
+  bool ParseModel;   // 7zip-modern: .safetensors, .gguf (FLOAT method, design 0008)
   bool ParseExe;
   bool ParseExeUnix;
   bool ParseNoExt;
@@ -1044,6 +1125,7 @@ struct CAnalysis
 
   CAnalysis():
       ParseWav(false),
+      ParseModel(false),
       ParseExe(false),
       ParseExeUnix(false),
       ParseNoExt(false),
@@ -1138,6 +1220,12 @@ HRESULT CAnalysis::GetFilterGroup(UInt32 index, const CUpdateItem &ui, CFilterMo
           {
             if (!needReadFile)
               needReadFile = ParseWav;
+          }
+          else if (StringsAreEqualNoCase_Ascii(ext, "safetensors")
+              || StringsAreEqualNoCase_Ascii(ext, "gguf"))
+          {
+            if (!needReadFile)
+              needReadFile = ParseModel;
           }
         }
       }
@@ -1434,6 +1522,25 @@ static HRESULT MakeExeMethod(CCompressionMethodMode &mode,
     nextMethod.AddProp32(NCoderPropID::kLitPosBits, (unsigned)alignBits);
   }
   return S_OK;
+}
+
+
+/* 7zip-modern: the group of AI model weights uses FLOAT (design 0008) instead of the main
+   method, if that is LZMA or LZMA2 (the default) alone. Other choices of the user (zstd,
+   PPMd, copy with -mx0, chains of methods) are kept; -mf=off disables the analysis. */
+static bool UseFloatMethod(CCompressionMethodMode &mode)
+{
+  if (mode.Methods.Size() != 1 || !mode.Bonds.IsEmpty() || mode.Filter_was_Inserted)
+    return false;
+  const CMethodFull &old = mode.Methods[0];
+  if (old.Id != k_LZMA && old.Id != k_LZMA2)
+    return false;
+  CMethodFull m;
+  m.Id = k_FLOAT;
+  m.NumStreams = 1;
+  m.AddProp_NumThreads(mode.NumThreads);
+  mode.Methods[0] = m;
+  return true;
 }
 
 
@@ -2893,6 +3000,7 @@ HRESULT Update(
     {
       analysis.Callback = opCallback;
       analysis.ParseWav = true;
+      analysis.ParseModel = true;
       if (analysisLevel >= 5)
       {
         analysis.ParseExe = true;
@@ -3132,8 +3240,13 @@ HRESULT Update(
     const CFilterMode2 &filterMode = filters[groupIndex];
 
     CCompressionMethodMode method = *options.Method;
+    // not replaced (other method chosen by the user): the group is like a group without filter
+    if (filterMode.Id != k_FLOAT_FilterGroup || !UseFloatMethod(method))
     {
-      const HRESULT res = MakeExeMethod(method, filterMode,
+      CFilterMode noFloat = filterMode;
+      if (noFloat.Id == k_FLOAT_FilterGroup)
+        noFloat.ClearFilterMode();
+      const HRESULT res = MakeExeMethod(method, noFloat,
         // bcj2_IsAllowed:
         #ifdef Z7_ST
           false

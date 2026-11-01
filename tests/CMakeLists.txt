@@ -41,7 +41,8 @@ target_link_libraries(update_growing PRIVATE sevenzip_flags Threads::Threads ${C
 add_executable(mf_bench
   ${CMAKE_SOURCE_DIR}/tools/mfbench/mf_bench.c
   $<TARGET_OBJECTS:sevenzip_c>
-  ${SEVENZIP_ASM_OBJECTS})
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})  # C/FloatPlaneLz.c usa l'encoder zstd
 target_link_libraries(mf_bench PRIVATE sevenzip_flags Threads::Threads)
 
 # Test unitari del modulo di compressione parallela (7zUpdateMt, docs/design/0003).
@@ -92,10 +93,10 @@ if(SEVENZIP_FUZZ)
   target_link_libraries(fuzz_archive PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_archive PRIVATE -fsanitize=fuzzer)
   add_executable(fuzz_float fuzz/fuzz_float.c
-    ${CMAKE_SOURCE_DIR}/C/FloatPlane.c ${CMAKE_SOURCE_DIR}/C/HuffEnc.c ${CMAKE_SOURCE_DIR}/C/Sort.c)
-  target_link_libraries(fuzz_float PRIVATE sevenzip_flags)
+    $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS})
+  target_link_libraries(fuzz_float PRIVATE sevenzip_flags Threads::Threads)
   target_link_options(fuzz_float PRIVATE -fsanitize=fuzzer)
-  set(_fuzz_targets fuzz_archive)
+  set(_fuzz_targets fuzz_archive fuzz_float)
 endif()
 
 # Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
@@ -193,8 +194,11 @@ set_tests_properties(fuzz_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_fuzz_en
 
 # Formato FLOAT (design 0008): round-trip, scelta del tipo, input corrotti e troncati
 add_executable(unit_float_plane unit_float_plane.c
-  ${CMAKE_SOURCE_DIR}/C/FloatPlane.c ${CMAKE_SOURCE_DIR}/C/HuffEnc.c ${CMAKE_SOURCE_DIR}/C/Sort.c)
-target_link_libraries(unit_float_plane PRIVATE sevenzip_flags m)
+  $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS})
+target_link_libraries(unit_float_plane PRIVATE sevenzip_flags Threads::Threads m)
+if(TARGET sevenzip_asm)
+  add_dependencies(unit_float_plane sevenzip_asm)
+endif()
 add_test(NAME unit_float_plane COMMAND ${_test_launcher} $<TARGET_FILE:unit_float_plane>)
 set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 

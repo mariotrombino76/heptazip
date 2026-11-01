@@ -5,6 +5,7 @@
  *   al blocco massimo;
  * - il tipo e la fase scelti dall'encoder sono quelli giusti, e il blocco si riduce
  *   (BF16 gaussiano: sotto il 70%);
+ * - blocchi non float (maschere, costanti, testo): zstd (mode 2), con il frame verificato;
  * - ogni blocco troncato da' SZ_ERROR_INPUT_EOF; ogni byte corrotto (uno alla volta, su
  *   blocchi piccoli) da' un errore oppure un blocco decodificato, mai un accesso fuori
  *   dai limiti (da eseguire con ASan).
@@ -15,7 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../C/FloatPlane.h"
+#include "../C/CpuArch.h"
+#include "../C/FloatPlaneLz.h"
 
 static unsigned g_NumChecks, g_NumFailures;
 
@@ -91,24 +93,26 @@ static void Fill(Byte *p, size_t size, int kind, unsigned phase)
 }
 
 static Byte *g_Src, *g_Enc, *g_Dec;
+static CFloatPlaneZstd g_Zstd;   /* zstd reale (mode 2), se l'encoder e' compilato */
+#define LZ (&g_Zstd.Lz)
 
 /* encode + decode di un blocco; restituisce la dimensione codificata (0 se errore) */
 static size_t RoundTrip(size_t size)
 {
   size_t encLen, used = 0, outLen = 0;
   SRes res;
-  encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc);
+  encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc, LZ);
   CHECK(encLen <= FLOAT_PLANE_ENCODED_MAX(size));
   CHECK(FloatPlane_GetBlockOutLen(g_Enc, encLen, &outLen) == SZ_OK && outLen == size);
   memset(g_Dec, 0xAA, size);
-  res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, size, &used);
+  res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, size, &used, LZ);
   CHECK(res == SZ_OK);
   CHECK(used == encLen);
   CHECK(memcmp(g_Src, g_Dec, size) == 0);
   /* buffer di uscita troppo piccolo: errore, non overflow */
   if (size > 1)
   {
-    res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, size - 1, &used);
+    res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, size - 1, &used, LZ);
     CHECK(res == SZ_ERROR_DATA);
   }
   return res == SZ_OK || size > 1 ? encLen : 0;
@@ -162,7 +166,7 @@ static void Test_Corruption(void)
     const size_t size = 777;
     size_t encLen, pos;
     Fill(g_Src, size, kinds[k], 1);
-    encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc);
+    encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc, LZ);
     for (pos = 0; pos < encLen; pos++)
     {
       static const Byte deltas[] = { 1, 0x80, 0xFF };
@@ -172,7 +176,7 @@ static void Test_Corruption(void)
         size_t used;
         SRes res;
         g_Enc[pos] ^= deltas[d];
-        res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used);
+        res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used, LZ);
         CHECK(res == SZ_OK || res == SZ_ERROR_DATA || res == SZ_ERROR_INPUT_EOF);
         if (res == SZ_OK)
           CHECK(used <= encLen);
@@ -183,9 +187,79 @@ static void Test_Corruption(void)
     for (pos = 0; pos < encLen; pos++)
     {
       size_t used;
-      const SRes res = FloatPlane_DecodeBlock(g_Enc, pos, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used);
+      const SRes res = FloatPlane_DecodeBlock(g_Enc, pos, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used, LZ);
       CHECK(res == SZ_ERROR_INPUT_EOF || res == SZ_ERROR_DATA);
     }
+  }
+}
+
+/* blocchi che non sono float: zstd (mode 2) se l'encoder zstd c'e' */
+static void Test_Lz(void)
+{
+  size_t size = (size_t)1 << 20, encLen, used, i, j;
+  SRes res;
+  if (!g_Zstd.Lz.Compress)
+  {
+    printf("  encoder zstd non compilato: test del mode 2 saltati\n");
+    return;
+  }
+  /* maschera triangolare 1024 x 1024 di 0/1, come nei modelli */
+  for (i = 0; i < 1024; i++)
+    for (j = 0; j < 1024; j++)
+      g_Src[i * 1024 + j] = (Byte)(j <= i);
+  encLen = RoundTrip(size);
+  CHECK(g_Enc[0] == 2);
+  CHECK(encLen < size / 100);
+  printf("  maschera triangolare: mode %u, %.3f%%\n", g_Enc[0], 100.0 * (double)encLen / (double)size);
+  /* senza decoder zstd: non supportato */
+  res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, size, &used, NULL);
+  CHECK(res == SZ_ERROR_UNSUPPORTED);
+  /* il frame con un byte in piu' (lzSize + 1) non e' accettato */
+  {
+    const UInt32 lzSize = GetUi32(g_Enc + 5);
+    g_Enc[encLen] = 0;
+    SetUi32(g_Enc + 5, lzSize + 1)
+    res = FloatPlane_DecodeBlock(g_Enc, encLen + 1, g_Dec, size, &used, LZ);
+    CHECK(res == SZ_ERROR_DATA);
+    SetUi32(g_Enc + 5, lzSize)
+  }
+  /* costante */
+  memset(g_Src, 0, size);
+  RoundTrip(size);
+  CHECK(g_Enc[0] == 2);
+  /* pesi gaussiani: resta split anche con zstd disponibile */
+  Fill(g_Src, size, kBf16, 0);
+  RoundTrip(size);
+  CHECK(g_Enc[0] == 1);
+  /* testo ripetitivo dopo un'intestazione (metadati GGUF, JSON) */
+  {
+    static const char kText[] = "\"dtype\":\"BF16\",\"shape\":[1024,896]},";
+    for (i = 0; i < size; i++)
+      g_Src[i] = (Byte)kText[i % (sizeof(kText) - 1)];
+  }
+  RoundTrip(size);
+  CHECK(g_Enc[0] == 2);
+  /* corruzione di blocchi mode 2 piccoli: ogni byte */
+  for (i = 0; i < 3000; i++)
+    g_Src[i] = (Byte)(i % 7 == 0 ? i : 0);
+  encLen = FloatPlane_EncodeBlock(g_Src, 3000, g_Enc, LZ);
+  CHECK(g_Enc[0] == 2);
+  for (i = 0; i < encLen; i++)
+  {
+    static const Byte deltas[] = { 1, 0x80, 0xFF };
+    unsigned d;
+    for (d = 0; d < 3; d++)
+    {
+      g_Enc[i] ^= deltas[d];
+      res = FloatPlane_DecodeBlock(g_Enc, encLen, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used, LZ);
+      CHECK(res == SZ_OK || res == SZ_ERROR_DATA || res == SZ_ERROR_INPUT_EOF);
+      g_Enc[i] ^= deltas[d];
+    }
+  }
+  for (i = 0; i < encLen; i++)
+  {
+    res = FloatPlane_DecodeBlock(g_Enc, i, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used, LZ);
+    CHECK(res == SZ_ERROR_INPUT_EOF || res == SZ_ERROR_DATA);
   }
 }
 
@@ -196,6 +270,7 @@ int main(void)
   g_Dec = (Byte *)malloc(FLOAT_PLANE_BLOCK_MAX + 8);
   if (!g_Src || !g_Enc || !g_Dec)
     return 2;
+  FloatPlaneZstd_Construct(&g_Zstd);
 
   Test_RoundTrips();
   printf("scelta di tipo e fase, blocco da 1 MiB:\n");
@@ -206,6 +281,9 @@ int main(void)
   Test_Choice(kFp32, 0, 2, 0.85);
   Test_Choice(kFp32, 3, 2, 0.85);
   Test_Corruption();
+  printf("blocchi non float (zstd):\n");
+  Test_Lz();
+  FloatPlaneZstd_Free(&g_Zstd);
 
   free(g_Src);
   free(g_Enc);

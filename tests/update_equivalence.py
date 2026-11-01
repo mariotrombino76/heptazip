@@ -97,6 +97,26 @@ def make_data(root: Path) -> None:
         bf16 += struct.pack("<H", (v + 0x7FFF + ((v >> 16) & 1)) >> 16)
     (root / "weights.bf16").write_bytes(bytes(bf16))
     (root / "weights-fp32.bin").write_bytes(b"\x07" + struct.pack("<65536f", *(r.gauss(0.0, 0.02) for _ in range(65536))))
+    # maschera di attenzione (0/1 triangolare) dopo pesi FP16: blocchi zstd del metodo FLOAT
+    mask = b"".join(bytes(1 if j <= i else 0 for j in range(1024)) for i in range(1024))
+    fp16 = struct.pack("<131072e", *(r.gauss(0.0, 0.02) for _ in range(131072)))
+    (root / "model-fp16-mask.bin").write_bytes(fp16 + mask)
+    # file di modelli riconosciuti dall'analisi: FLOAT al posto di LZMA2 (design 0008)
+    sub = root / "models"
+    sub.mkdir()
+    bf16 = struct.pack("<65536H", *((v + 0x7FFF + ((v >> 16) & 1)) >> 16 for v in
+        (struct.unpack("<I", struct.pack("<f", r.gauss(0.0, 0.02)))[0] for _ in range(65536))))
+    header = (b'{"w":{"dtype":"BF16","shape":[256,256],"data_offsets":[0,131072]},'
+              b'"mask":{"dtype":"U8","shape":[512,512],"data_offsets":[131072,393216]}}')
+    header += b" " * ((-len(header)) % 8)
+    tri = b"".join(bytes(1 if j <= i else 0 for j in range(512)) for i in range(512))
+    (sub / "model.safetensors").write_bytes(struct.pack("<Q", len(header)) + header + bf16 + tri)
+    def gguf_str(x):
+        return struct.pack("<Q", len(x)) + x
+    kv = gguf_str(b"general.file_type") + struct.pack("<II", 4, 1)   # MOSTLY_F16
+    gg = b"GGUF" + struct.pack("<IQQ", 3, 0, 1) + kv
+    gg += b"\0" * ((-len(gg)) % 32)
+    (sub / "tiny-f16.gguf").write_bytes(gg + struct.pack("<65536e", *(r.gauss(0.0, 0.02) for _ in range(65536))))
     # eseguibili: per il gruppo dei filtri exe (analisi dell'intestazione ELF)
     elfs = [Path(p) for p in ("/usr/bin/true", "/usr/bin/ls", "/usr/bin/cat") if Path(p).is_file()]
     for i, src in enumerate(elfs):
@@ -251,13 +271,17 @@ def main() -> int:
         # aggiunta di file nuovi, e sostituzione di file (ricompressione dei folder)
         base = work / "base.7z"
         rc, _, err = run(sz, ["a", "-t7z", "-mx3", "-ms=2m", "-mpfc=off", "-bso0", "-bsp0",
-                              str(base), "dir0", "dir1", "random.bin"], data)
+                              str(base), "dir0", "dir1", "random.bin", "models"], data)
         if rc != 0:
             failures.append(f"creazione dell'archivio di partenza fallita: {err[-500:]}")
         else:
             case("update/add", ["a", "-t7z", "-mx3", "-ms=2m", "-mmt=on"],
                  cfg_a, cfg_b, data, work, False, failures, prepare=base,
                  files=["dir2", "dir3", "repeat.txt"])
+            # un folder FLOAT esiste gia': i nuovi file di modelli vanno nello stesso gruppo
+            case("update/add-models", ["a", "-t7z", "-mx3", "-ms=2m", "-mmt=on"],
+                 cfg_a, cfg_b, data, work, False, failures, prepare=base,
+                 files=["weights.bf16", "dir2"])
             case("update/add-nonsolid", ["a", "-t7z", "-mx5", "-ms=off", "-mmt=on"],
                  cfg_a, cfg_b, data, work, False, failures, prepare=base,
                  files=["dir4", "dir5", "prog0"])

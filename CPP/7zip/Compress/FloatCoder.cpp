@@ -14,16 +14,20 @@
 namespace NCompress {
 namespace NFloat {
 
+CLzCoder::CLzCoder() { FloatPlaneZstd_Construct(&Zstd); }
+CLzCoder::~CLzCoder() { FloatPlaneZstd_Free(&Zstd); }
+
+
 // ---------- Slots ----------
 
 void CSlot::Run(unsigned /* workerIndex */)
 {
   if (Encode)
-    OutLen = FloatPlane_EncodeBlock(In, InLen, Out);
+    OutLen = FloatPlane_EncodeBlock(In, InLen, Out, &LzCoder.Zstd.Lz);
   else
   {
     size_t used = 0;
-    Res = FloatPlane_DecodeBlock(In, InLen, Out, BlockSize, &used);
+    Res = FloatPlane_DecodeBlock(In, InLen, Out, BlockSize, &used, &LzCoder.Zstd.Lz);
     if (Res == SZ_OK && used != InLen)   // InLen came from FloatPlane_GetBlockSize()
       Res = SZ_ERROR_DATA;
   }

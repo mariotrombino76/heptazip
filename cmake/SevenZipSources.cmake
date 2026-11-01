@@ -29,6 +29,7 @@ set(SEVENZIP_C_SOURCES
   C/CpuArch.c
   C/Delta.c
   C/FloatPlane.c
+  C/FloatPlaneLz.c
   C/HuffEnc.c
   C/LzFind.c
   C/Lzma2Dec.c

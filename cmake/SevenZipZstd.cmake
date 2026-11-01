@@ -47,4 +47,5 @@ set_source_files_properties(
   CPP/7zip/Compress/ZstdCodecRegister.cpp
   CPP/7zip/Compress/ZstdLibEncoder.cpp
   CPP/7zip/Archive/7z/7zUpdateMt.cpp  # stima dell'encoder zstd (design 0003)
+  C/FloatPlaneLz.c                    # blocchi non float del metodo FLOAT (design 0008)
   PROPERTIES COMPILE_DEFINITIONS Z7_ZSTD_LIB_ENCODER)
