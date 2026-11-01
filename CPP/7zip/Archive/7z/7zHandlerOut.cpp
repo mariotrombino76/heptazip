@@ -200,9 +200,11 @@ HRESULT CHandler::SetMainMethod(CCompressionMethodMode &methodMode)
     */
     if (methodFull.Id == k_LZMA2)
     {
-      // he we calculate default chunk Size for LZMA2 as defined in LZMA2 encoder code
-      /* lzma2 code use dictionary up to fake 4 GiB to calculate ChunkSize.
-         So we do same */
+      /* 7zip-modern: the solid block size stays as in upstream: 64 x (4 x dictionary),
+         a ratio decision independent of the LZMA2 block size (2 x dictionary now,
+         C/Lzma2Enc.h). Upstream comment:
+         he we calculate default chunk Size for LZMA2 as defined in LZMA2 encoder code
+         lzma2 code use dictionary up to fake 4 GiB to calculate ChunkSize. */
       UInt64 cs = (UInt64)dicSize << 2;
       const UInt32 kMinSize = (UInt32)1 << 20;
       const UInt32 kMaxSize = (UInt32)1 << 28;

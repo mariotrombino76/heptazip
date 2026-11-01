@@ -92,39 +92,46 @@ load 1m alla fine: 2.43
 **Dove perde**
 
 1. **Decompressione di un file grande compresso con LZMA2**: xz 5.8 decomprime
-   `-6` a 658 MB/s, il fork `-mx5` a 169 MB/s (3,9 volte meno). Causa: i blocchi
-   indipendenti di LZMA2 sono 4 volte il dizionario (64 MiB a `-mx5`): su 202 MB solo 4
-   blocchi, quindi quasi un solo core in decompressione e pochi in compressione (xz `-6`:
-   blocchi da 24 MiB). Lo stesso limite rende xz più veloce in tempo reale anche in
-   compressione (13,6 contro 10,3 MB/s), pur consumando il doppio della CPU.
+   `-6` a 658 MB/s, il fork `-mx5` a 169 MB/s (3,9 volte meno). Cause: il decoder C (la
+   versione assembly non era attiva) e i blocchi indipendenti di LZMA2, 4 volte il
+   dizionario (128 MiB a `-mx5`, dizionario di 32 MiB su 64 bit): su 202 MB solo 2
+   blocchi, quindi pochi core in decompressione e in compressione (xz `-6`: blocchi da
+   24 MiB, dizionario di 8 MiB). Lo stesso limite rende xz più veloce in tempo reale
+   anche in compressione (13,6 contro 10,3 MB/s), pur consumando il doppio della CPU.
 2. **Rapporto sui testi**: bzip3 (BWT) arriva al 22,29%, il 3% meglio di LZMA2 `-mx9`, ma
    decomprime a 70 MB/s con 1,7 GB di memoria e 27 s di CPU.
 
 Priorità che ne seguono: politica dei blocchi LZMA2 per file grandi (punto 1), poi una
 valutazione di un metodo BWT per i testi (punto 2).
 
-## Blocchi LZMA2: compromesso misurato (decisione aperta)
+## Blocchi LZMA2: compromesso misurato
 
-`tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione:
+`tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione, build con il decoder
+assembly. Su 64 bit `-mx5` usa un dizionario di 32 MiB e `-mx9` di 256 MiB.
 
-| `-mx5` (dizionario 16 MiB) | auto (64 MiB) | 48 MiB | 32 MiB | 24 MiB | 16 MiB |
+| `-mx5` (dizionario 32 MiB) | 128 MiB (4×, upstream) | 96 MiB (3×) | **64 MiB (2×)** | 48 MiB | 32 MiB |
 |---|---|---|---|---|---|
-| Dimensione | 0 | +0,22% | +0,72% | +0,93% | +1,43% |
-| Decompressione 20 thread (MiB/s) | 160 | 316 | 380 | 435 | 486 |
-| Compressione (MiB/s) | 9,6 | 12,6 | 16,8 | 19,9 | 22,4 |
+| Dimensione | 0 | +0,01% | **+0,06%** | +0,22% | +0,72% |
+| Decompressione 20 thread (MiB/s) | 205 | 270 | **364** | 437 | 551 |
+| Compressione (MiB/s) | 9,8 | 9,5 | **11,6** | 13,2 | 17,0 |
 
-| `-mx9` (dizionario 64 MiB) | auto (256 MiB) | 48 MiB | 32 MiB | 24 MiB | 16 MiB |
+| `-mx9` (dizionario 256 MiB) | 256 MiB | 192 MiB | 128 MiB | 96 MiB | 64 MiB |
 |---|---|---|---|---|---|
-| Dimensione | 0 | +0,41% | +0,97% | +1,22% | +1,73% |
-| Decompressione 20 thread (MiB/s) | 101 | 313 | 385 | 402 | 511 |
-| Compressione (MiB/s) | 4,9 | 11,4 | 15,0 | 18,3 | 19,9 |
+| Dimensione | 0 | +0,04% | +0,13% | +0,16% | +0,21% |
+| Decompressione 20 thread (MiB/s) | 147 | 156 | 220 | 276 | 347 |
+| Compressione (MiB/s) | 5,0 | 5,2 | 8,4 | 8,7 | 10,6 |
 
-Ogni blocco riparte con il dizionario vuoto: blocchi più piccoli danno più parallelismo
-(compressione e decompressione di un file grande) a scapito del rapporto. Il default non
-è cambiato: CLAUDE.md chiede di mantenere o migliorare il rapporto. Opzione già
-disponibile per l'utente: `-m0=lzma2:c=48m`. Proposta da decidere: blocchi da 3 volte il
-dizionario (la regola di xz) invece di 4, cioè +0,22% a `-mx5` per una decompressione 2
-volte più veloce sui file grandi.
+**Scelta (2026-11-01): blocchi da 2 volte il dizionario** (`C/Lzma2Enc.h`,
+`Lzma2Enc_GetAutoBlockSize()`, unica definizione usata dall'encoder, anche per xz, e dal
+handler 7z). A `-mx5`: +0,06% di dimensione, decompressione dei file grandi 1,77 volte e
+compressione 1,18 volte più veloci. Il blocco non è mai più piccolo del dizionario: a
+`-mx9` resta di 256 MiB, perché blocchi più piccoli taglierebbero i match a lunga
+distanza, la ragione di un dizionario grande (su dati con ripetizioni lontane la perdita
+può essere grande: design 0001, §1.2). La dimensione dei blocchi solid del 7z non cambia.
+Chi vuole più velocità: `-m0=lzma2:c=48m` (o meno).
+
+Correzione: la prima versione di questa sezione indicava per `-mx5` un dizionario di 16
+MiB (blocchi da 64 MiB); il valore reale su 64 bit è 32 MiB (`LZMA2:25`).
 
 ## Aggiornamento: decoder assembly attivo di default (2026-11-01)
 
@@ -140,3 +147,14 @@ LZMA del fork migliora del ~40%, a parità di archivi:
 
 Il divario residuo a `-mx5` dipende dalla dimensione dei blocchi LZMA2 (sezione
 precedente, decisione aperta).
+
+## Aggiornamento: blocchi LZMA2 da 2 volte il dizionario (2026-11-01)
+
+| Silesia | Rapporto | comp MB/s | dec MB/s | comp RSS |
+|---|---|---|---|---|
+| fork `-mx5` prima (C, blocchi 4×) | 23,40% | 10,3 | 169 | 907 MB |
+| fork `-mx5` ora (asm, blocchi 2×) | 23,42% | **11,8** | **354** | 1353 MB |
+| xz 5.8.4 `-6 -T0` | 23,35% | 13,2 | 630 | 1080 MB |
+
+Il divario in decompressione con xz `-6` è sceso da 3,9 a 1,8 volte; il fork usa ancora
+poco più della metà della CPU di xz in compressione (62 contro 106 s).

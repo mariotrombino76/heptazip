@@ -44,7 +44,8 @@ Contatori temporanei (`-mx5` / `-mx9`, stessi dati):
 | Passi con estensione 0 / 1-3 / 4-7 / 8-15 / 16+ | 49% / 18% / 25% / 7% / 1% | 49% / 19% / 23% / 7% / 2% |
 
 Con ~250 ns per ricerca, cioè ~30 ns per passo, il costo è quello di un accesso alla
-memoria che manca nella cache: i nodi di `son[]` (128 MiB con dizionario da 16 MiB) e i
+memoria che manca nella cache: i nodi di `son[]` (256 MiB con il dizionario da 32 MiB di
+`-mx5` su 64 bit) e i
 dati del candidato sono sparsi. L'estensione, la sola parte vettorializzabile, conta
 pochi nanosecondi per passo. Il passo successivo dipende dal confronto: i caricamenti
 non si possono sovrapporre.

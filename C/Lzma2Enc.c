@@ -303,18 +303,7 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
   else
   {
     if (p->blockSize == LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO)
-    {
-      const UInt32 kMinSize = (UInt32)1 << 20;
-      const UInt32 kMaxSize = (UInt32)1 << 28;
-      const UInt32 dictSize = p->lzmaProps.dictSize;
-      UInt64 blockSize = (UInt64)dictSize << 2;
-      if (blockSize < kMinSize) blockSize = kMinSize;
-      if (blockSize > kMaxSize) blockSize = kMaxSize;
-      if (blockSize < dictSize) blockSize = dictSize;
-      blockSize += (kMinSize - 1);
-      blockSize &= ~(UInt64)(kMinSize - 1);
-      p->blockSize = blockSize;
-    }
+      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);  // 7zip-modern
     
     if (t2 > 1 && fileSize != (UInt64)(Int64)-1)
     {

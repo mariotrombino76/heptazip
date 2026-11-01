@@ -9,6 +9,8 @@
 #include "../../Windows/WinDefs.h"
 #include "../../Windows/PropVariant.h"
 
+#include "../../../C/Lzma2Enc.h"
+
 #include "../ICoder.h"
 
 // UInt64 GetMemoryUsage_LZMA(UInt32 dict, bool isBt, UInt32 numThreads);
@@ -232,17 +234,8 @@ public:
       if (maxSize != 0)
         return maxSize;
     }
-    const UInt32 kMinSize = (UInt32)1 << 20;
-    const UInt32 kMaxSize = (UInt32)1 << 28;
-    const UInt64 dictSize = Get_Lzma_DicSize();
-    /* lzma2 code uses fake 4 GiB to calculate ChunkSize. So we do same */
-    UInt64 blockSize = (UInt64)dictSize << 2;
-    if (blockSize < kMinSize) blockSize = kMinSize;
-    if (blockSize > kMaxSize) blockSize = kMaxSize;
-    if (blockSize < dictSize) blockSize = dictSize;
-    blockSize += (kMinSize - 1);
-    blockSize &= ~(UInt64)(kMinSize - 1);
-    return blockSize;
+    // 7zip-modern: the rule of the LZMA2 encoder (C/Lzma2Enc.h)
+    return Lzma2Enc_GetAutoBlockSize(Get_Lzma_DicSize());
   }
 
 
