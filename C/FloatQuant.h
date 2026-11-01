@@ -23,7 +23,8 @@ typedef struct
   Byte levels[FLOAT_QUANT_MAX_FIELDS][FLOAT_QUANT_MAX_TAB];
 } CFloatQuantPlan;
 
-/* qtype: index of the struct type (0 = Q4_0, 1 = Q8_0, 2 = Q4_K, 3 = Q5_K, 4 = Q6_K).
+/* qtype: index of the struct type (0 = Q4_0, 1 = Q8_0, 2 = Q4_K, 3 = Q5_K, 4 = Q6_K,
+   5 = Q2_K, 6 = Q3_K).
    Returns 1 and the plan, or 0 if the type is unknown or there is no struct after
    phase. */
 int FloatQuant_Plan(const Byte *src, size_t srcLen, unsigned qtype, unsigned phase, CFloatQuantPlan *plan);

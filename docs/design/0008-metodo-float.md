@@ -375,6 +375,29 @@ scalari costavano 5,7 cicli per simbolo contro 1,1. Qwen3-0.6B, un core, GCC:
 
 Nell'archivio: Q4_0 90,80%, Q8_0 93,65%; DeepHat-7B 93,21% in 5,95 s / 2,69 s.
 
+**Q2_K e Q3_K** (qtype 5 e 6; GGUF Q2_K, Q2_K_S, Q3_K_S/M/L, prima a LZMA2). Q2_K: scale
+e minimi a 4 bit per sotto-blocchi di 16 valori a 2 bit; il contesto è il punto zero
+(⌊4·q0⌋) con `sc >> 2`. Q3_K: scale simmetriche a 6 bit, valori a 3 bit sparsi tra qs
+(2 bit) e hmask (1 bit), ricomposti; il contesto è `|s − 32| >> 1`. Entropie sui tensori
+di Qwen3-0.6B (blocchi da 1 MiB):
+
+| | Huffman sui byte | valori ricomposti | con il contesto |
+|---|---|---|---|
+| valori Q2_K (138 MB di struct) | 101,4 MB | 100,5 | **96,6** |
+| valori Q3_K (180 MB, Q3_K_M) | 157,4 | 150,8 | **150,1** |
+| scale Q3_K | 19,0 | 17,5 (a 6 bit) | – |
+
+Le coppie di valori come un simbolo valgono 0,05%: non usate. Qwen3-0.6B, `7zz a` senza
+opzioni:
+
+| GGUF | 7zz (FLOAT) | LZMA2 `-mx5` | zstd -19 | xz -9 |
+|---|---|---|---|---|
+| Q2_K (347 MB) | **93,46%**, 0,35 s / 0,23 s | 96,68%, 8,5 s | 96,39% | 96,68% |
+| Q3_K_M (414 MB) | **94,59%**, 0,39 s / 0,27 s | 97,75%, 9,9 s | 97,53% | 97,75% |
+
+Nucleo, un core (GCC): Q2_K 557 MB/s in decompressione e 204 in compressione (3 valori
+per byte), Q3_K_M 702 / 265.
+
 ## 4. Risultati
 
 Tre modelli reali da Hugging Face, un tipo ciascuno:
@@ -448,7 +471,8 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Quantizzati: i tipi IQ* e Q2_K/Q3_K non sono ancora coperti.
+- Quantizzati: i tipi IQ* (tabelle a griglia, codici a 8-16 bit), Q4_1/Q5_0/Q5_1 e
+  TQ1/TQ2 non sono ancora coperti.
 - Estrazione multi-thread: oltre ~2,2 GB/s il limite è la pipeline (thread chiamante,
   copie, CRC), non il decoder.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.

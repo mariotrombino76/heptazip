@@ -75,11 +75,15 @@ static const Byte g_LaneCount[256] =
 #define QM_Q6K     5   /* the 256 values of Q6_K: context = |scale| >> 3 */
 #define QM_Q40     6   /* the 32 values of Q4_0: context = exponent of d */
 #define QM_Q80     7   /* the 32 values of Q8_0: context = exponent of d >> 1 */
+#define QM_Q3SC    8   /* the 16 scales (6 bits) of the Q3_K scales[12] at start */
+#define QM_Q2K     9   /* the 256 values of Q2_K: context = zero point, scale >> 2 */
+#define QM_Q3K    10   /* the 256 values of Q3_K (3 bits): context = |scale - 32| >> 1 */
 
 /* states N of a field: 64 for the values (the bulk of the data: 8 vectors of 8 states
    in flight in the AVX2 decoder, to hide the latency of its gathers), 32 for the other
    fields with one context (4 vectors), 8 for the rest (scalar) */
-#define QM_STATES(f)  ((f)->kind >= QM_Q4K ? 64u : (f)->numCtx == 1 ? 32u : 8u)
+#define QM_IS_VALUES(f)  ((f)->kind >= QM_Q4K && (f)->kind != QM_Q3SC)
+#define QM_STATES(f)  (QM_IS_VALUES(f) ? 64u : (f)->numCtx == 1 ? 32u : 8u)
 
 typedef struct
 {
@@ -119,7 +123,13 @@ static const CQMType g_QMTypes[] =
               { QM_Q5K, 16, 0, 0, 5, 9, 128, 256 } } },
   /* Q6_K: ql[128], qh[64], scales[16], d */
   { 210, 4, { { QM_BYTES, 192, 16, 1, 8, 12, 1, 16 }, { QM_BYTES, 208, 1, 1, 8, 12, 1, 1 },
-              { QM_BYTES, 209, 1, 1, 8, 12, 1, 1 }, { QM_Q6K, 0, 0, 0, 6, 11, 16, 256 } } }
+              { QM_BYTES, 209, 1, 1, 8, 12, 1, 1 }, { QM_Q6K, 0, 0, 0, 6, 11, 16, 256 } } },
+  /* Q2_K: scales[16] (scale | min << 4), qs[64], d, dmin */
+  {  84, 4, { { QM_BYTES, 80, 2, 2, 8, 12, 2, 2 }, { QM_BYTES, 81, 2, 2, 8, 12, 2, 2 },
+              { QM_BYTES, 0, 16, 1, 8, 12, 1, 16 }, { QM_Q2K, 16, 0, 0, 2, 9, 64, 256 } } },
+  /* Q3_K: hmask[32], qs[64], scales[12], d */
+  { 110, 4, { { QM_BYTES, 108, 1, 1, 8, 12, 1, 1 }, { QM_BYTES, 109, 1, 1, 8, 12, 1, 1 },
+              { QM_Q3SC, 96, 0, 0, 6, 10, 1, 16 }, { QM_Q3K, 0, 0, 0, 3, 9, 16, 256 } } }
 };
 #define kNumQMTypes  (sizeof(g_QMTypes) / sizeof(g_QMTypes[0]))
 
@@ -129,6 +139,14 @@ static const CQMType g_QMTypes[] =
 /* scale j (6 bits) and min j of the K-quant scales[12] q (get_scale_min_k4 of ggml) */
 #define KQ_SCALE(q, j)  ((j) < 4 ? (q)[j] & 63u : ((q)[(j) + 4] & 15u) | (((unsigned)(q)[(j) - 4] >> 6) << 4))
 #define KQ_MIN(q, j)    ((j) < 4 ? (q)[(j) + 4] & 63u : ((unsigned)(q)[(j) + 4] >> 4) | (((unsigned)(q)[j] >> 6) << 4))
+
+/* scale j (6 bits, 0 .. 15) of the Q3_K scales[12] q (dequantize_row_q3_K of ggml) */
+static unsigned Q3_Scale(const Byte *q, unsigned j)
+{
+  const unsigned k = j & 3, hi = (q[8 + k] >> (2 * (j >> 2))) & 3;
+  const unsigned lo = j < 8 ? q[j] & 15 : q[j - 8] >> 4;
+  return lo | (hi << 4);
+}
 
 /* fp16 magnitude as mant * 2^(e - 25) */
 static void Fp16_Split(unsigned h, UInt32 *mant, int *e)
@@ -207,6 +225,28 @@ static void Q_Contexts(const Byte *p, unsigned S, const CQMField *f, size_t ns, 
           memset(ctx + 16 * j, (int)(a > 15 ? 15 : a), 16);
         }
         break;
+      case QM_Q2K:   /* sub-block of 16 values: v / 16 */
+      {
+        UInt32 md, mm;
+        int ed, em;
+        Fp16_Split(GetUi16(p + 80), &md, &ed);
+        Fp16_Split(GetUi16(p + 82), &mm, &em);
+        for (j = 0; j < 16; j++)
+        {
+          const unsigned sc = p[j] & 15;
+          const unsigned b = ZeroBucket(md, ed, mm, em, sc, p[j] >> 4, 4, 16);
+          memset(ctx + 16 * j, (int)(b * 4 + (sc >> 2)), 16);
+        }
+        break;
+      }
+      case QM_Q3K:
+        for (j = 0; j < 16; j++)
+        {
+          const int sc = (int)Q3_Scale(p + 96, j) - 32;
+          const unsigned a = (unsigned)(sc < 0 ? -sc : sc) >> 1;
+          memset(ctx + 16 * j, (int)(a > 15 ? 15 : a), 16);
+        }
+        break;
       case QM_Q40:   /* the exponent of the fp16 d */
         memset(ctx, (int)((p[1] >> 2) & 31), 32);
         break;
@@ -272,6 +312,32 @@ static void Q_Symbols(const Byte *p, unsigned S, const CQMField *f, size_t ns, B
             v0[l] = (Byte)((qs[l] & 15) | (((b[l] >> s0) & 1) << 4));
           for (l = 0; l < 32; l++)
             v0[l + 32] = (Byte)((qs[l] >> 4) | (((b[l] >> s1) & 1) << 4));
+        }
+        memcpy(sym, v, 256);
+        break;
+      }
+      case QM_Q3SC:
+        for (j = 0; j < 16; j++)
+          sym[j] = (Byte)Q3_Scale(p + 96, j);
+        break;
+      /* value 128n + 32c + l (l < 32): bits 2c of qs[32n + l]; Q3_K: bit 4n + c of
+         hmask[l] */
+      case QM_Q2K:
+      case QM_Q3K:
+      {
+        Byte b[96], v[256];   /* (hmask[32]), qs[64] */
+        const unsigned o = f->kind == QM_Q3K ? 32 : 0;
+        memcpy(b, p + f->start, o + 64);
+        for (c = 0; c < 8; c++)
+        {
+          const Byte *b0 = b + o + 32 * (c >> 2);
+          Byte *v0 = v + 32 * c;
+          const unsigned sh = 2 * (c & 3);
+          for (l = 0; l < 32; l++)
+            v0[l] = (Byte)((b0[l] >> sh) & 3);
+          if (o != 0)
+            for (l = 0; l < 32; l++)
+              v0[l] = (Byte)(v0[l] | (((b[l] >> c) & 1) << 2));
         }
         memcpy(sym, v, 256);
         break;
@@ -373,6 +439,44 @@ static void Q_Join(Byte *p, unsigned S, const CQMField *f, size_t ns, const Byte
             v0[l] = (Byte)((w0[l] & 15) | ((w0[l + 32] & 15) << 4));
         }
         memcpy(p + 16, v, 160);
+        break;
+      }
+      case QM_Q3SC:   /* the inverse of Q3_Scale() */
+        for (j = 0; j < 4; j++)
+        {
+          q = p + 96;
+          q[j] = (Byte)((sym[j] & 15) | ((sym[j + 8] & 15) << 4));
+          q[j + 4] = (Byte)((sym[j + 4] & 15) | ((sym[j + 12] & 15) << 4));
+          q[j + 8] = (Byte)((sym[j] >> 4) | ((sym[j + 4] >> 4) << 2)
+              | ((sym[j + 8] >> 4) << 4) | ((sym[j + 12] >> 4) << 6));
+        }
+        break;
+      case QM_Q2K:
+      case QM_Q3K:
+      {
+        Byte w[256], v[96];   /* (hmask[32]), qs[64] */
+        const unsigned o = f->kind == QM_Q3K ? 32 : 0;
+        memcpy(w, sym, 256);
+        for (c = 0; c < 2; c++)
+        {
+          const Byte *w0 = w + 128 * c;
+          Byte *q0 = v + o + 32 * c;
+          for (l = 0; l < 32; l++)
+            q0[l] = (Byte)((w0[l] & 3) | ((w0[l + 32] & 3) << 2) | ((w0[l + 64] & 3) << 4)
+                | ((w0[l + 96] & 3) << 6));
+        }
+        if (o != 0)
+        {
+          for (l = 0; l < 32; l++)
+            v[l] = 0;
+          for (c = 0; c < 8; c++)
+          {
+            const Byte *w0 = w + 32 * c;
+            for (l = 0; l < 32; l++)
+              v[l] = (Byte)(v[l] | ((w0[l] >> 2) << c));
+          }
+        }
+        memcpy(p + f->start, v, o + 64);
         break;
       }
       case QM_Q40:
@@ -784,6 +888,8 @@ static Byte *name(UInt32 *x, unsigned N, const CEncSym *es, const Byte *sym, con
   return o; \
 }
 
+DEFINE_ENC_GROUPS(Enc_Groups2, 2, 1)   /* Q2_K values */
+DEFINE_ENC_GROUPS(Enc_Groups3, 3, 1)   /* Q3_K values */
 DEFINE_ENC_GROUPS(Enc_Groups4, 4, 1)   /* Q4_K values */
 DEFINE_ENC_GROUPS(Enc_Groups5, 5, 1)   /* Q5_K values */
 DEFINE_ENC_GROUPS(Enc_Groups6G, 6, 1)  /* Q6_K values */
@@ -968,6 +1074,8 @@ static FLOAT_QUANT_ATTRIB_AVX2 Byte *name(UInt32 *x, const UInt32 *rcpT, const U
   return o; \
 }
 
+DEFINE_ENC_AVX2(EncAvx2_9_2, 9, 2)
+DEFINE_ENC_AVX2(EncAvx2_9_3, 9, 3)
 DEFINE_ENC_AVX2(EncAvx2_9_4, 9, 4)
 DEFINE_ENC_AVX2(EncAvx2_9_5, 9, 5)
 DEFINE_ENC_AVX2(EncAvx2_11_6, 11, 6)
@@ -988,6 +1096,8 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
   const unsigned numSyms = 1u << f->logSyms, P = f->prec;
   /* one context: the groups have the same context */
   const Func_EncGroups groups = (f->kind == QM_BYTES && f->numCtx == 1) ? Enc_Groups8G
+      : f->kind == QM_Q2K ? Enc_Groups2 : f->kind == QM_Q3K ? Enc_Groups3
+      : f->kind == QM_Q3SC ? Enc_Groups6G
       : (f->kind == QM_Q4K || f->kind == QM_Q40) ? Enc_Groups4
       : f->kind == QM_Q5K ? Enc_Groups5 : f->kind == QM_Q6K ? Enc_Groups6G
       : f->kind == QM_Q80 ? Enc_Groups8G : f->kind == QM_SCALE6 ? Enc_Groups6G
@@ -998,7 +1108,8 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
   const Func_EncAvx2 avx2 = !CPU_IsSupported_AVX2() ? NULL
       : (f->kind == QM_Q4K || f->kind == QM_Q40) ? EncAvx2_9_4 : f->kind == QM_Q5K ? EncAvx2_9_5
       : f->kind == QM_Q6K ? EncAvx2_11_6 : f->kind == QM_Q80 ? EncAvx2_12_8
-      : f->kind == QM_SCALE6 ? EncAvx2x4_10_6
+      : f->kind == QM_Q2K ? EncAvx2_9_2 : f->kind == QM_Q3K ? EncAvx2_9_3
+      : (f->kind == QM_SCALE6 || f->kind == QM_Q3SC) ? EncAvx2x4_10_6
       : (f->kind == QM_BYTES && f->numCtx == 1) ? EncAvx2x4_12_8 : NULL;
   #endif
   Byte sym[kGather * kMaxWidth], ctx[kGather * kMaxWidth];
@@ -1245,6 +1356,8 @@ static size_t name(CRansDec *d, const Byte *ctx, Byte *out, size_t num) \
   return i; \
 }
 
+DEFINE_DEC_GROUPS(Dec_Groups_9_2, 9, 2, 1)    /* Q2_K values */
+DEFINE_DEC_GROUPS(Dec_Groups_9_3, 9, 3, 1)    /* Q3_K values */
 DEFINE_DEC_GROUPS(Dec_Groups_9_4, 9, 4, 1)    /* Q4_K values */
 DEFINE_DEC_GROUPS(Dec_Groups_9_5, 9, 5, 1)    /* Q5_K values */
 DEFINE_DEC_GROUPS(Dec_Groups_11_6, 11, 6, 1)  /* Q6_K values */
@@ -1446,6 +1559,8 @@ static FLOAT_QUANT_ATTRIB_AVX2 size_t name(CRansDec *d, const Byte *ctx, Byte *o
   return i; \
 }
 
+DEFINE_DEC_AVX2(DecAvx2_9_2, 9, 2)
+DEFINE_DEC_AVX2(DecAvx2_9_3, 9, 3)
 DEFINE_DEC_AVX2(DecAvx2_9_4, 9, 4)
 DEFINE_DEC_AVX2(DecAvx2_9_5, 9, 5)
 DEFINE_DEC_AVX2(DecAvx2_11_6, 11, 6)
@@ -1466,7 +1581,10 @@ static Func_DecGroups Get_DecGroups(const CQMField *f, int simd)
       case QM_Q5K: return DecAvx2_9_5;
       case QM_Q6K: return DecAvx2_11_6;
       case QM_Q80: return DecAvx2_12_8;
-      case QM_SCALE6: return DecAvx2x4_10_6;
+      case QM_Q2K: return DecAvx2_9_2;
+      case QM_Q3K: return DecAvx2_9_3;
+      case QM_SCALE6:
+      case QM_Q3SC: return DecAvx2x4_10_6;
       case QM_BYTES: if (f->numCtx == 1) return DecAvx2x4_12_8;  break;
       default: break;
     }
@@ -1480,7 +1598,10 @@ static Func_DecGroups Get_DecGroups(const CQMField *f, int simd)
     case QM_Q5K: return Dec_Groups_9_5;
     case QM_Q6K: return Dec_Groups_11_6;
     case QM_Q80: return Dec_Groups_12_8G;
-    case QM_SCALE6: return Dec_Groups_10_6G;   /* one context */
+    case QM_Q2K: return Dec_Groups_9_2;
+    case QM_Q3K: return Dec_Groups_9_3;
+    case QM_SCALE6:
+    case QM_Q3SC: return Dec_Groups_10_6G;   /* one context */
     case QM_MIN6: return Dec_Groups_10_6;
     default: return f->numCtx == 1 ? Dec_Groups_12_8G : Dec_Groups_12_8;
   }

@@ -217,9 +217,9 @@ per `.safetensors`/`.gguf` (`7zz a archivio.7z model.safetensors`, senza opzioni
 
 ### Modelli quantizzati GGUF (2026-11-01)
 
-Blocchi quantizzati del metodo FLOAT (design 0008 §3.6-3.7: Huffman per Q4_0 e Q8_0,
-modello a contesti con rANS per i K-quant), scelti in automatico per i GGUF Q4_0, Q8_0,
-Q4_K_M/S, Q5_K_M/S, Q6_K. `7zz a` senza opzioni, 20 thread:
+Blocchi quantizzati del metodo FLOAT (design 0008 §3.6-3.7: modello a contesti con
+rANS), scelti in automatico per i GGUF Q2_K, Q3_K_S/M/L, Q4_0, Q8_0, Q4_K_M/S, Q5_K_M/S,
+Q6_K. `7zz a` senza opzioni, 20 thread:
 
 | Modello | 7zz (FLOAT) | LZMA2 `-mx5` | zstd `-19 -T0` | xz `-9 -T0` |
 |---|---|---|---|---|
@@ -230,6 +230,8 @@ Q4_K_M/S, Q5_K_M/S, Q6_K. `7zz a` senza opzioni, 20 thread:
 | Qwen3-0.6B Q6_K | **95,19%** | 98,66% | 98,34% | 98,67% |
 | Qwen3-0.6B Q8_0 | **93,65%** | 96,02% | 95,17% | 95,98% |
 | Qwen3-0.6B Q4_0 | **90,80%** | – | – | – |
+| Qwen3-0.6B Q3_K_M | **94,59%** | 97,75% | 97,53% | 97,75% |
+| Qwen3-0.6B Q2_K | **93,46%** | 96,68% | 96,39% | 96,68% |
 
 (tempi: compressione / decompressione). Più piccolo di 1,4-4,6 punti del migliore dei
 concorrenti, e più veloce di tutti in entrambe le direzioni. Il modello a contesti

@@ -100,7 +100,13 @@ static const CQType g_QTypes[] =
                    { QF_Q5, 16, 0, 0 } } },
   /* Q6_K: ql[128], qh[64], scales[16], d */
   { 210, { 209, 209 }, 4, { { QF_Q6, 0, 0, 0 }, { QF_BYTES, 192, 16, 1 }, { QF_BYTES, 208, 1, 1 },
-                   { QF_BYTES, 209, 1, 1 } } }
+                   { QF_BYTES, 209, 1, 1 } } },
+  /* Q2_K: scales[16], qs[64], d, dmin */
+  {  84, { 81, 83 }, 4, { { QF_BYTES, 80, 2, 2 }, { QF_BYTES, 81, 2, 2 }, { QF_BYTES, 0, 16, 1 },
+                   { QF_BYTES, 16, 64, 1 } } },
+  /* Q3_K: hmask[32], qs[64], scales[12], d */
+  { 110, { 109, 109 }, 4, { { QF_BYTES, 108, 1, 1 }, { QF_BYTES, 109, 1, 1 }, { QF_BYTES, 96, 12, 1 },
+                   { QF_BYTES, 0, 96, 1 } } }
 };
 #define kNumQTypes  (sizeof(g_QTypes) / sizeof(g_QTypes[0]))
 

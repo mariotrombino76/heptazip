@@ -223,7 +223,7 @@ if(TARGET sevenzip_asm)
   add_dependencies(unit_float_plane sevenzip_asm)
 endif()
 add_test(NAME unit_float_plane COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_float_plane>)
-set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
 
 add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

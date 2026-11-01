@@ -30,15 +30,21 @@ the speed of a Huffman coder. The structs (types of ggml-common.h):
                         the 256 values of 5 bits from qs[128] and qh[32] (256: 32)
   4      Q6_K    210    the 256 values of 6 bits from ql[128] and qh[64] (256: 64),
                         scales[16] (16), d low byte (1), d high byte (1)
+  5      Q2_K    84     low bytes of d, dmin (2), high bytes (2), scales[16] (16),
+                        qs[64] (64)
+  6      Q3_K    110    d low byte (1), d high byte (1), scales[12] (12), hmask[32] and
+                        qs[64] (96)
   Value v of Q5_K: c = v / 64, h = (v / 32) % 2, l = v % 32; low 4 bits in qs[32c + l] at
   bit 4h, bit 4 in qh[l] at bit 2c + h. Value v of Q6_K: h = v / 128, c = (v / 32) % 4,
   l = v % 32; low 4 bits in ql[64h + 32(c % 2) + l] at bit 4(c / 2), bits 4-5 in
-  qh[32h + l] at bit 2c (as dequantize_row_q5_K / q6_K of ggml).
+  qh[32h + l] at bit 2c (as dequantize_row_q5_K / q6_K of ggml). Value v = 128n + 32c + l
+  (l < 32) of Q2_K / Q3_K: 2 low bits at bit 2c of qs[32n + l]; in Q3_K the third bit at
+  bit 4n + c of hmask[l]; the sub-block (scale) of v is v / 16.
 Mode 4 codes the structs with a context model: rANS with one
 frequency table per context, where the context of a quantized value is known from the
 fields decoded before it: in Q4_K / Q5_K the zero point of its sub-block (the quantized
 value of the weight 0: the values cluster around it), in Q6_K the scale of its sub-block.
-in Q4_0 / Q8_0 the exponent of d. About 1.7 points smaller than mode 3 on Q4_K / Q5_K
+in Q4_0 / Q8_0 the exponent of d.  Q2_K / Q3_K: about 3 points smaller than LZMA2. About 1.7 points smaller than mode 3 on Q4_K / Q5_K
 models, 0.7 on Q6_K, 0.3 on Q4_0, 0.1 on Q8_0 (C/FloatQuant.c).
 
 Block format (all integers little-endian):
@@ -70,7 +76,7 @@ Block format (all integers little-endian):
     for each field: 4 streams, as mode 1: symbol i of the field (struct i / w, symbol
                              i % w of the struct) in stream i % 4
   mode 4:
-    u8  qtype                0 .. 4 (as mode 3), struct size S
+    u8  qtype                0 .. 6 (as mode 3), struct size S
     u8  phase                as mode 3; n structs (n >= 1), tail
     phase raw bytes, tail raw bytes
     for each field: u32 tabSize, u32 streamSize
@@ -90,6 +96,15 @@ Block format (all integers little-endian):
       16, 9, (d >> 10) & 31: the exponent of d), value v the low nibble of qs[v] (v < 16)
       or the high nibble of qs[v - 16].
     Q8_0: d as Q4_0; the values qs[32] (32, 256, 12, (d >> 11) & 15).
+    Q2_K: low bytes of d, dmin (2, 256, 12, which); high bytes (2, 256, 12, which);
+      scales[16] (16, 256, 12, 1); the values (256, 4, 9, 4 * b + (sc >> 2)) with
+      sc = scales[v / 16] & 15, m = scales[v / 16] >> 4, b = min(15, floor(4 * q0)) and
+      q0 = dmin * m / (d * sc) as for Q4_K (15 if d * sc = 0).
+    Q3_K: low byte of d (1, 256, 12, 1); high byte (1, 256, 12, 1); the 16 scales s_j
+      (6 bits) of scales[12] (16, 64, 10, 1): s_j = lo | hi << 4, lo = scales[j] & 15
+      (j < 8) or scales[j - 8] >> 4, hi = (scales[8 + j % 4] >> (2 * (j / 4))) & 3 (as
+      dequantize_row_q3_K); the values (3 bits: 2 low bits | third bit << 2; 256, 8, 9,
+      min(15, |s_{v / 16} - 32| >> 1)).
   Frequency tables of a field: per context one bit (1 = used), and if used, for each
   symbol its level L (0 = absent, else a frequency of about 2^((L - 1) / 8)): L minus the
   level of the previous symbol (0 before the first), zigzag (d >= 0: 2d, else -2d - 1),

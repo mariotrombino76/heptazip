@@ -158,10 +158,9 @@ Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 Senza perdita, per array di float (BF16, FP16, FP32): l'esponente di ogni peso è
 codificato con Huffman, segno e mantissa sono copiati. L'encoder sceglie tipo e
 allineamento per ogni blocco; i blocchi che non sono float (maschere, testo) vanno in
-zstd o restano grezzi. Nei GGUF quantizzati (Q4_0, Q8_0, Q4_K, Q5_K, Q6_K) ogni tipo
-di campo delle strutture (scale, valori a 4-8 bit) ha il suo codice: Huffman per Q4_0 e
-Q8_0, rANS con un modello a contesti per i K-quant (il valore dato il punto zero o la
-scala del suo sotto-blocco).
+zstd o restano grezzi. Nei GGUF quantizzati (Q2_K, Q3_K, Q4_0, Q8_0, Q4_K, Q5_K, Q6_K)
+ogni tipo di campo delle strutture (scale, valori a 2-8 bit) ha il suo codice rANS con
+un modello a contesti (il valore dato il punto zero o la scala del suo sotto-blocco).
 **Automatico** per i file `.safetensors` e `.gguf` in F16/BF16/F32 e nei tipi
 quantizzati qui sopra quando il metodo è quello di default (`-mf=off` lo disattiva; con
 `-m0=zstd` e altri metodi espliciti non cambia nulla). Metodo `3F707F5E728B0001`, solo in

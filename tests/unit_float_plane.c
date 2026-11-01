@@ -288,8 +288,8 @@ static void PutFp16(Byte *p, float f)
 }
 
 /* una struttura GGUF del tipo dato, con la disposizione di ggml-common.h */
-enum { kQ4_0, kQ8_0, kQ4_K, kQ5_K, kQ6_K };
-static const unsigned kQSize[] = { 18, 34, 144, 176, 210 };
+enum { kQ4_0, kQ8_0, kQ4_K, kQ5_K, kQ6_K, kQ2_K, kQ3_K, kNumQ };
+static const unsigned kQSize[] = { 18, 34, 144, 176, 210, 84, 110 };
 
 static void FillQStruct(Byte *p, unsigned qtype)
 {
@@ -347,6 +347,58 @@ static void FillQStruct(Byte *p, unsigned qtype)
       }
       break;
     }
+    case kQ2_K:
+    {
+      /* scales[16]: scala | minimo << 4; qs[64]: valore 128n + 32c + l nei bit 2c di
+         qs[32n + l]; i valori attorno al punto zero del sotto-blocco di 16 */
+      const float d = 0.002f + 0.002f * (float)(Rnd32() & 255) / 256.0f;
+      const float dmin = 0.002f + 0.001f * (float)(Rnd32() & 255) / 256.0f;
+      unsigned sc[16];
+      for (v = 0; v < 16; v++)
+      {
+        const float q0 = 0.5f + 2.0f * (float)(Rnd32() & 255) / 256.0f;
+        const int m = (int)(q0 * d * (float)(sc[v] = 4 + QValue(11)) / dmin + 0.5f);
+        p[v] = (Byte)(sc[v] | ((m > 15 ? 15 : (unsigned)m) << 4));
+      }
+      for (v = 0; v < 256; v++)
+      {
+        const float q0 = dmin * (float)(p[v / 16] >> 4) / (d * (float)sc[v / 16]);
+        const int qi = (int)(q0 + Gauss(0.8f) + 0.5f);
+        const unsigned q = qi < 0 ? 0 : qi > 3 ? 3 : (unsigned)qi;
+        p[16 + 32 * (v >> 7) + (v & 31)] |= (Byte)(q << (2 * ((v >> 5) & 3)));
+      }
+      PutFp16(p + 80, d);
+      PutFp16(p + 82, dmin);
+      break;
+    }
+    case kQ3_K:
+    {
+      /* scales[12]: 16 scale a 6 bit (32 = zero); valore v = (bit bassi in qs) | (bit di
+         hmask) << 2, piu' largo se la scala e' lontana da 32 */
+      unsigned sc[16];
+      for (v = 0; v < 16; v++)
+      {
+        const unsigned dv = QValue(20) / 2;
+        sc[v] = (Rnd32() & 1) ? 32 + dv : 32 - dv;
+      }
+      for (v = 0; v < 4; v++)
+      {
+        p[96 + v] = (Byte)((sc[v] & 15) | ((sc[v + 8] & 15) << 4));
+        p[100 + v] = (Byte)((sc[v + 4] & 15) | ((sc[v + 12] & 15) << 4));
+        p[104 + v] = (Byte)((sc[v] >> 4) | ((sc[v + 4] >> 4) << 2) | ((sc[v + 8] >> 4) << 4)
+            | ((sc[v + 12] >> 4) << 6));
+      }
+      for (v = 0; v < 256; v++)
+      {
+        const int a = (int)sc[v / 16] - 32;
+        const int qi = 4 + (int)Gauss(0.5f + (float)(a < 0 ? -a : a) / 8.0f);
+        const unsigned q = qi < 0 ? 0 : qi > 7 ? 7 : (unsigned)qi;
+        p[32 + 32 * (v >> 7) + (v & 31)] |= (Byte)((q & 3) << (2 * ((v >> 5) & 3)));
+        p[v & 31] |= (Byte)((q >> 2) << (v >> 5));
+      }
+      PutFp16(p + 108, 0.0005f + 0.001f * (float)(Rnd32() & 255) / 256.0f);
+      break;
+    }
     default:   /* Q6_K */
       /* i valori di un sotto-blocco di 16 sono piu' larghi se la sua scala e' grande */
       for (v = 0; v < 16; v++)
@@ -379,13 +431,13 @@ static size_t FillQuant(Byte *p, size_t numStructs, unsigned qtype, unsigned pha
   return size;
 }
 
-static const char * const kQNames[] = { "Q4_0", "Q8_0", "Q4_K", "Q5_K", "Q6_K" };
+static const char * const kQNames[] = { "Q4_0", "Q8_0", "Q4_K", "Q5_K", "Q6_K", "Q2_K", "Q3_K" };
 
 static void Test_Quant(void)
 {
   static const char * const * const names = kQNames;
   unsigned qtype;
-  for (qtype = 0; qtype < 5; qtype++)
+  for (qtype = 0; qtype < kNumQ; qtype++)
   {
     const unsigned S = kQSize[qtype];
     const unsigned phases[] = { 0, 1, S / 2, S - 1 };
@@ -428,7 +480,7 @@ static void Test_QuantCorruption(void)
 {
   unsigned qtype, big;
   for (big = 0; big < 2; big++)
-  for (qtype = 0; qtype < 5; qtype++)
+  for (qtype = 0; qtype < kNumQ; qtype++)
   {
     /* 16 KiB: Huffman (mode 3) o contesti (mode 4), le tabelle dei campi devono
        rendere; 256 KiB: mode 4 */

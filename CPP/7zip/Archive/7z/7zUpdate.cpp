@@ -471,15 +471,16 @@ static BoolInt Parse_Safetensors(const Byte *buf, size_t size, CFilterMode *filt
 /* GGUF (llama.cpp): "GGUF", version 2 or 3, then key-value metadata. The key
    general.file_type (u32 value type 4, enum llama_ftype) gives the type of most
    tensors. To FLOAT: 0 = F32, 1 = F16, 32 = BF16 (split blocks), and the quantized types
-   whose structs FLOAT codes (mode 3: 2 = Q4_0, 7 = Q8_0, 14/15 = Q4_K_S/M, 16/17 =
-   Q5_K_S/M, 18 = Q6_K). The others (Q2_K, Q3_K, IQ...) stay with LZMA2, as a file
-   without the key in the part we read. */
+   whose structs FLOAT codes (2 = Q4_0, 7 = Q8_0, 14/15 = Q4_K_S/M, 16/17 = Q5_K_S/M,
+   18 = Q6_K, 10/21 = Q2_K/Q2_K_S, 11/12/13 = Q3_K_S/M/L). The others (IQ..., Q4_1,
+   Q5_0...) stay with LZMA2, as a file without the key in the part we read. */
 static bool Is_FloatGgufType(UInt32 fileType)
 {
   switch (fileType)
   {
     case 0: case 1: case 32:
     case 2: case 7: case 14: case 15: case 16: case 17: case 18:
+    case 10: case 11: case 12: case 13: case 21:   // Q2_K, Q3_K_S/M/L, Q2_K_S
       return true;
     default:
       return false;
