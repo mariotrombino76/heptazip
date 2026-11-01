@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Attivo: harness, semi, campagne, test di regressione; 9 bug corretti |
+| **Stato** | Attivo: harness, semi, 3 campagne (2,3 miliardi di esecuzioni), test di regressione; 9 bug corretti |
 | **Data** | 2026-11-01 |
 | **Codice** | `tests/fuzz/fuzz_archive.cpp`, `tools/fuzz/make-seeds.sh`, `tools/fuzz/run-campaign.sh`, `tests/fuzz/regress/` |
 
@@ -11,10 +11,10 @@
 ## 1. Obiettivo
 
 Un archiviatore apre file che arrivano da chiunque: ogni gestore di formato e ogni decoder
-è superficie d'attacco. Il fork ha 61 formati in lettura. Il fuzzing guidato dalla
-copertura (libFuzzer) con ASan e UBSan cerca automaticamente gli input che causano accessi
-fuori dai limiti, comportamento indefinito, leak, allocazioni sproporzionate o cicli
-infiniti.
+è superficie d'attacco. Il fork legge 61 formati; il fuzzing ne copre 59 (esclusi Split,
+che richiede più volumi, e Hash). Il fuzzing guidato dalla copertura (libFuzzer) con ASan
+e UBSan cerca automaticamente gli input che causano accessi fuori dai limiti,
+comportamento indefinito, leak, allocazioni sproporzionate o cicli infiniti.
 
 ## 2. Harness
 
@@ -62,7 +62,7 @@ campagna in campagna.
 |---|---|---|---|---|
 | 1 | 5 min | 219 M | 12 | 7 (+5 OOM attesi) |
 | 2 | 15 min | 631 M | 4 | 2 (+2 timeout: bombe di decompressione) |
-| 3 | 30 min | | | |
+| 3 | 30 min | 1406 M | 0 | 0 (harness con estrazione e limite di 256 MiB) |
 
 ## 4. Bug trovati e corretti
 

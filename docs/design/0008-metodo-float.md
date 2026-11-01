@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | v1 implementata: codifica a blocchi, metodo 7z `FLOAT`, test e fuzzing |
+| **Stato** | v1 implementata: codifica a blocchi, multi-thread, metodo 7z `FLOAT`, test, fuzzing, benchmark |
 | **Data** | 2026-11-01 |
 | **Codice** | `C/FloatPlane.{h,c}` (formato a blocchi), `CPP/7zip/Compress/FloatCoder.{h,cpp}`, `FloatRegister.cpp` |
 | **ID del metodo** | `3F 70 7F 5E 72 8B 00 01` (`0x3F707F5E728B0001`), nome `FLOAT` |
@@ -120,7 +120,25 @@ costo misurato, non un errore.
 Qwen3-0.6B BF16 (1503 MB), archivio 7z con `config.json`: **66,58%** (1000,9 MB), file
 identici. Dati sintetici gaussiani (test unitario): BF16 66,2%, FP16 84,3%, FP32 83,1%.
 
-Velocità, memoria e confronto con i concorrenti: §6.
+Benchmark a macchina scarica (20 thread, `tools/bench/market-bench.py`, tabella completa
+in `docs/benchmark-mercato.md`):
+
+| Metodo | Rapporto | Compr. MB/s | Decompr. MB/s | CPU compr. s | RSS MB |
+|---|---|---|---|---|---|
+| **FLOAT** | **66,58%** | **1521** | **2081** | **4,4** | 72 |
+| LZMA2 `-mx5` | 70,24% | 17 | 264 | 1252 | 4440 |
+| xz -9 -T0 | 70,06% | 3,6 | 185 | 1794 | 6196 |
+| zstd -19 -T0 | 75,48% | 12 | 479 | 1211 | 1523 |
+| zstd -3 -T0 | 78,12% | 2276 | 1122 | 4,9 | 187 |
+
+Con un thread FLOAT comprime a 620 MB/s e decomprime a 750 MB/s (test dell'archivio, CRC
+compreso), con 7 MB di memoria. Con N thread l'archivio è identico byte per byte.
+
+**ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
+perdita: la decompressione restituisce dati diversi dall'originale con ogni
+configurazione provata, anche su 1 MiB di byte 0..255 (Python 3.12, x86-64). Le sue
+velocità, misurate a macchina carica (con un thread circa 290 MB/s in compressione e 700
+in decompressione), sono solo indicative.
 
 ## 5. Verifica
 
@@ -131,13 +149,14 @@ Velocità, memoria e confronto con i concorrenti: §6.
   64 KiB) su dati misti con pesi BF16 e FP32 sfasati di un byte. Archivi identici con
   `-mpfc=off/on`, estrazione corretta.
 - `tests/fuzz/fuzz_float.c` (libFuzzer): round-trip di qualunque input, decodifica di
-  qualunque input.
+  qualunque input (20 minuti, 1,5 milioni di esecuzioni, nessun problema).
+- Multi-thread: archivi identici con 1, 4 e 20 thread; 300 archivi corrotti a caso
+  decodificati con `-mmt=on` dalla build ASan (tutti "errore nei dati", nessun crash);
+  TSan pulito in compressione e decompressione.
 
 ## 6. Prossimi passi
 
-- Benchmark completo (macchina scarica): velocità, CPU, memoria, contro LZMA2, xz, zstd,
-  e ZipNN (lo strumento di riferimento della letteratura).
-- Multi-thread nel coder (i blocchi sono indipendenti) e stima per la compressione
-  parallela dei folder (design 0003, `7zUpdateMt`).
+- Decoder a thread singolo più veloce: più flussi di Huffman interlacciati per blocco
+  (parallelismo a livello di istruzione), tabella a due livelli.
 - Scelta automatica del metodo per `.safetensors`, `.gguf` (tensori F16/BF16), `.pt`.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.

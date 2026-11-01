@@ -158,3 +158,48 @@ precedente, decisione aperta).
 
 Il divario in decompressione con xz `-6` è sceso da 3,9 a 1,8 volte; il fork usa ancora
 poco più della metà della CPU di xz in compressione (62 contro 106 s).
+
+## Pesi dei modelli AI: metodo FLOAT (2026-11-01)
+
+Qwen3-0.6B da Hugging Face, `model.safetensors` (1503 MB, tutto BF16). Stessa macchina,
+20 thread, 2 ripetizioni:
+
+```sh
+PATH=~/devtools/bin:$PATH tools/bench/market-bench.py -r 2 \
+  --inputs ~/devtools/models/qwen3-0.6b/model.safetensors --only '7zz-modern|zstd|xz|plzip|pigz|lz4|brotli -q 5'
+```
+
+| Strumento | Rapporto | Compr. MB/s | Decompr. MB/s | CPU compr. s | CPU decompr. s | RSS compr. MB |
+|---|---|---|---|---|---|---|
+| **7zz-modern `-m0=FLOAT`** | **66,58%** | **1521** | **2081** | **4,4** | **3,7** | 72 |
+| 7zz-modern LZMA2 `-mx1` | 74,16% | 98 | 487 | 304 | 61 | 92 |
+| 7zz-modern LZMA2 `-mx5` | 70,24% | 17 | 264 | 1252 | 79 | 4440 |
+| 7zz-modern LZMA2 `-mx9` | 70,02% | 7,3 | 162 | 1514 | 51 | 15480 |
+| 7zz-modern zstd `-mx3` | 78,12% | 1836 | 946 | 3,2 | 1,7 | 232 |
+| 7zz-modern zstd `-mx19` | 75,48% | 14 | 549 | 1882 | 3,0 | 2896 |
+| zstd -3 -T0 | 78,12% | 2276 | 1122 | 4,9 | 1,6 | 187 |
+| zstd -19 -T0 | 75,48% | 12 | 479 | 1211 | 3,5 | 1523 |
+| zstd --ultra -22 -T0 | 74,21% | 2,3 | 354 | 1834 | 4,9 | 4489 |
+| xz -1 -T0 | 73,49% | 43 | 449 | 690 | 65 | 298 |
+| xz -6 -T0 | 70,65% | 15 | 349 | 1960 | 81 | 2887 |
+| xz -9 -T0 | 70,06% | 3,6 | 185 | 1794 | 61 | 6196 |
+| plzip -6 | 70,72% | 14 | 260 | 1957 | 106 | 2509 |
+| brotli -q 5 | 78,09% | 133 | 249 | 12 | 6,3 | 40 |
+| pigz -9 | 79,51% | 153 | 195 | 196 | 9,0 | 16 |
+| lz4 -1 | 99,86% | 2023 | 3079 | 1,5 | 0,8 | 209 |
+
+FLOAT è il più piccolo di tutti e tra i più veloci:
+
+- contro il migliore degli altri per rapporto (LZMA2 `-mx9` e xz -9, 70,0%) è più
+  piccolo del 5%, comprime 200-400 volte più in fretta con 350-400 volte meno CPU e
+  decomprime 11-13 volte più in fretta;
+- contro zstd -3, alla stessa velocità, è più piccolo del 15%.
+
+Il confronto con ZipNN 0.5.4 (PyPI), lo strumento di riferimento della letteratura per
+questo caso, non è stato possibile. Il suo rapporto (66,2-66,6%) è uguale a FLOAT, ma la
+decompressione **non restituisce i dati originali**: su questo modello, su porzioni
+allineate e perfino su 1 MiB di byte 0..255, con tutte le combinazioni di
+`method`/`byte_reorder`/`reorder_signbit` provate (Python 3.12, x86-64).
+
+Con un solo thread FLOAT comprime a 620 MB/s e decomprime a 750 MB/s (CRC compreso), con
+7 MB di memoria. Dettagli: `docs/design/0008-metodo-float.md`.

@@ -58,7 +58,8 @@ def stream(name, exe, copts, dopts, ext, stdin=True):
 def profiles(fork, upstream):
     p = []
     for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"],
-                 ["-m0=zstd", "-mx3"], ["-m0=zstd", "-mx19"]):
+                 ["-m0=zstd", "-mx3"], ["-m0=zstd", "-mx19"],
+                 ["-m0=FLOAT"]):   # pesi dei modelli AI (design 0008); su altri dati ~ copia
         p.append(seven("7zz-modern", fork, opts))
     if upstream:
         for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"]):
