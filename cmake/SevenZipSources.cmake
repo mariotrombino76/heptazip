@@ -28,6 +28,7 @@ set(SEVENZIP_C_SOURCES
   C/BwtSort.c
   C/CpuArch.c
   C/Delta.c
+  C/FloatPlane.c
   C/HuffEnc.c
   C/LzFind.c
   C/Lzma2Dec.c
@@ -298,6 +299,8 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/Compress/ZDecoder.cpp
   CPP/7zip/Compress/ZstdDecoder.cpp
   CPP/7zip/Compress/ZstdCodecRegister.cpp
+  CPP/7zip/Compress/FloatCoder.cpp
+  CPP/7zip/Compress/FloatRegister.cpp
   CPP/7zip/Compress/Rar1Decoder.cpp
   CPP/7zip/Compress/Rar2Decoder.cpp
   CPP/7zip/Compress/Rar3Decoder.cpp

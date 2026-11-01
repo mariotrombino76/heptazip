@@ -91,6 +91,10 @@ if(SEVENZIP_FUZZ)
     ${SEVENZIP_ZSTD_OBJECTS})
   target_link_libraries(fuzz_archive PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_archive PRIVATE -fsanitize=fuzzer)
+  add_executable(fuzz_float fuzz/fuzz_float.c
+    ${CMAKE_SOURCE_DIR}/C/FloatPlane.c ${CMAKE_SOURCE_DIR}/C/HuffEnc.c ${CMAKE_SOURCE_DIR}/C/Sort.c)
+  target_link_libraries(fuzz_float PRIVATE sevenzip_flags)
+  target_link_options(fuzz_float PRIVATE -fsanitize=fuzzer)
   set(_fuzz_targets fuzz_archive)
 endif()
 
@@ -186,6 +190,13 @@ add_test(NAME fuzz_regress
 set(_fuzz_env "${_test_env}")
 list(TRANSFORM _fuzz_env REPLACE "^ASAN_OPTIONS=(.*)" "ASAN_OPTIONS=\\1:max_allocation_size_mb=1024")
 set_tests_properties(fuzz_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_fuzz_env}")
+
+# Formato FLOAT (design 0008): round-trip, scelta del tipo, input corrotti e troncati
+add_executable(unit_float_plane unit_float_plane.c
+  ${CMAKE_SOURCE_DIR}/C/FloatPlane.c ${CMAKE_SOURCE_DIR}/C/HuffEnc.c ${CMAKE_SOURCE_DIR}/C/Sort.c)
+target_link_libraries(unit_float_plane PRIVATE sevenzip_flags m)
+add_test(NAME unit_float_plane COMMAND ${_test_launcher} $<TARGET_FILE:unit_float_plane>)
+set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
 add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

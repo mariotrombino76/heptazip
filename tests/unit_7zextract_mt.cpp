@@ -59,6 +59,15 @@ static void Test_EstimateMemory()
     CHECK(EstimateCoderDecodeMemory(k_LZMA, propsSmall, 5, memSmall));
     CHECK(mem - memSmall == (((UInt64)0x300 << 12) - 0x300) * 2);
   }
+  // FLOAT: blocchi da 1 MiB (prop 20) -> 2 MiB di buffer; prop fuori da 16..22 non valida
+  {
+    Byte p = 20;
+    CHECK(EstimateCoderDecodeMemory(k_FLOAT, &p, 1, mem));
+    CHECK(mem >= ((UInt64)2 << 20) && mem < ((UInt64)5 << 20));
+    p = 23;
+    CHECK(!EstimateCoderDecodeMemory(k_FLOAT, &p, 1, mem));
+    CHECK(!EstimateCoderDecodeMemory(k_FLOAT, &p, 0, mem));
+  }
   // LZMA2: prop 24 -> 2 << 23 = 16 MiB; prop 40 -> 4 GiB - 1; prop 41 non valida
   {
     Byte p = 24;

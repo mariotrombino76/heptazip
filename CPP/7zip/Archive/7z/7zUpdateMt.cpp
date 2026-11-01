@@ -247,6 +247,27 @@ bool EstimateFolderEncodeCost(const CCompressionMethodMode &mode,
      #ifdef Z7_ZSTD_LIB_ENCODER
       case k_ZSTD_7zZstd: if (!Estimate_Zstd(m, folderSize, c)) return false; break;
      #endif
+      case k_FLOAT:
+      {
+        // one thread; input and output buffer of one block (FloatCoder.cpp)
+        UInt64 blockSize = (UInt64)1 << 20;
+        const int i = m.FindProp(NCoderPropID::kBlockSize);
+        if (i >= 0)
+        {
+          const NWindows::NCOM::CPropVariant &v = m.Props[(unsigned)i].Value;
+          if (v.vt == VT_UI4)
+            blockSize = v.ulVal;
+          else if (v.vt == VT_UI8)
+            blockSize = v.uhVal.QuadPart;
+          else
+            return false;
+          if (blockSize > ((UInt64)1 << 22))
+            return false;
+        }
+        c.NumThreads = 1;
+        c.EncoderMemory = 2 * blockSize + 16;
+        break;
+      }
       default:
         // IsFilterMethod() includes BCJ2, rejected above (4 streams)
         if (!IsFilterMethod(m.Id))

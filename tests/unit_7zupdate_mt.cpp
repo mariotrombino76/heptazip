@@ -159,6 +159,20 @@ static void Test_Estimate_Others()
  #endif
 }
 
+static void Test_Estimate_Float()
+{
+  CFolderEncodeCost c;
+  // FLOAT: un thread, due buffer di un blocco (default 1 MiB, c=4m -> 4 MiB)
+  CCompressionMethodMode mode;
+  CMethodFull &m = AddMethod(mode, k_FLOAT, 5, 8);
+  CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
+  CHECK(c.NumThreads == 1);
+  CHECK(c.EncoderMemory >= 2 * kMiB && c.EncoderMemory < 3 * kMiB);
+  m.AddProp32(NCoderPropID::kBlockSize, (UInt32)4 << 20);
+  CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
+  CHECK(c.EncoderMemory >= 8 * kMiB && c.EncoderMemory < 9 * kMiB);
+}
+
 static void Test_Estimate_Chains()
 {
   CFolderEncodeCost c, alone;
@@ -293,6 +307,7 @@ int main()
 {
   Test_Estimate_Lzma2();
   Test_Estimate_Others();
+  Test_Estimate_Float();
   Test_Estimate_Chains();
   Test_Replay();
   printf("%u controlli, %u falliti\n", g_NumChecks, g_NumFailures);

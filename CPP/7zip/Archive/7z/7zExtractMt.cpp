@@ -48,6 +48,14 @@ bool EstimateCoderDecodeMemory(CMethodId methodId, const Byte *props, size_t pro
   memUsage = 0;
   UInt64 mem = 0;
 
+  if (methodId == k_FLOAT)
+  {
+    // input buffer (largest encoded block) + output buffer, see FloatCoder.cpp
+    if (propsSize != 1 || props[0] < 16 || props[0] > 22)
+      return false;
+    memUsage = ((UInt64)2 << props[0]) + 16 + kCoderOverhead;
+    return true;
+  }
   if (methodId > (UInt32)0xFFFFFFFF)
     return false;
 

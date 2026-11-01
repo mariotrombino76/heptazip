@@ -11,7 +11,7 @@ Gli archivi devono essere IDENTICI byte per byte, e anche l'output della console
 cifrati (IV casuale) si confrontano console e codice di uscita, e si verifica che B
 si estragga e coincida con i dati.
 
-Casi: metodi (LZMA2, LZMA, zstd, PPMd, BZip2, Deflate, Deflate64, Copy, BCJ2, filtri),
+Casi: metodi (LZMA2, LZMA, zstd, PPMd, BZip2, Deflate, Deflate64, Copy, BCJ2, FLOAT, filtri),
 suddivisioni (-ms=off, -ms=e, -ms=<dim>, -qs, solid), un folder > 64 MiB in mezzo a
 folder piccoli, file vuoti e directory, file illeggibili, aggiornamento di un archivio
 esistente (aggiunta, sostituzione con ricompressione dei folder esistenti).
@@ -22,6 +22,7 @@ import difflib
 import filecmp
 import os
 import random
+import struct
 import shutil
 import subprocess
 import sys
@@ -52,6 +53,10 @@ PROFILES = [
     ("bcj2-nonsolid",      ["-mf=BCJ2", "-ms=off"], False),
     ("delta-1m",           ["-mf=Delta:4", "-ms=1m"], False),
     ("arm64-nonsolid",     ["-mf=ARM64", "-ms=off"], False),
+    # metodo FLOAT (design 0008): pesi BF16/FP32 tra file di altro tipo
+    ("float-nonsolid",     ["-m0=FLOAT", "-ms=off"], False),
+    ("float-solid-2m",     ["-m0=FLOAT", "-ms=2m"], False),
+    ("float-blocks-64k",   ["-m0=FLOAT:c=64k", "-mx1"], False),
     # pochi job alla volta: l'ammissione attende memoria (non thread)
     ("lowmem-nonsolid",    ["-mx5", "-ms=off", "-mmemuse=120m"], False),
     ("aes-nonsolid",       ["-mx3", "-ms=off", f"-p{PASSWORD}"], True),
@@ -85,6 +90,13 @@ def make_data(root: Path) -> None:
     (root / "empty-dir").mkdir()
     (root / "random.bin").write_bytes(r.randbytes(1 << 20))
     (root / "repeat.txt").write_bytes(b"0123456789abcdef" * (1 << 16))
+    # pesi di un modello: gaussiani in BF16, e in FP32 dopo un byte (fase 1)
+    bf16 = bytearray()
+    for _ in range(1 << 20):
+        v = struct.unpack("<I", struct.pack("<f", r.gauss(0.0, 0.02)))[0]
+        bf16 += struct.pack("<H", (v + 0x7FFF + ((v >> 16) & 1)) >> 16)
+    (root / "weights.bf16").write_bytes(bytes(bf16))
+    (root / "weights-fp32.bin").write_bytes(b"\x07" + struct.pack("<65536f", *(r.gauss(0.0, 0.02) for _ in range(65536))))
     # eseguibili: per il gruppo dei filtri exe (analisi dell'intestazione ELF)
     elfs = [Path(p) for p in ("/usr/bin/true", "/usr/bin/ls", "/usr/bin/cat") if Path(p).is_file()]
     for i, src in enumerate(elfs):

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Stato** | Analisi dei modelli quantizzati conclusa (§3); modelli a 16 bit da misurare (§4) |
+| **Stato** | Conclusa: quantizzati (§3), 16 bit (§4) → metodo FLOAT (design 0008) |
 | **Data** | 2026-11-01 |
-| **Strumenti** | `tools/bench/gguf_info.py` (composizione di un GGUF), `tools/bench/gguf_entropy.py` (limite teorico per flusso, richiede numpy) |
+| **Strumenti** | `tools/bench/gguf_info.py` (composizione di un GGUF), `tools/bench/gguf_entropy.py` (limite teorico per flusso), `tools/bench/safetensors_planes.py` (piani di byte di un safetensors); richiedono numpy |
 
 ---
 
@@ -63,9 +63,32 @@ dedicato ai blocchi Q4_K/Q6_K potrebbe arrivare vicino al 95,6% (un modello con 
 per esempio sulle scale dei blocchi vicini, forse un punto in più): circa **2 punti** del
 file, 50 MB su 2,4 GB. Guadagno modesto per un nuovo filtro nel formato.
 
-## 4. Prossimo passo
+## 4. Modelli a 16 bit: misure
 
-Misurare il caso dei modelli a 16 bit, dove il margine atteso è molto più grande: scaricare
-un modello pubblico piccolo in BF16 (safetensors), confrontare i compressori attuali con la
-separazione per piani di byte (prototipo in Python), e solo con un guadagno confermato
-(ordine del 20%) progettare un filtro nativo del 7z.
+Qwen3-0.6B (Hugging Face, `model.safetensors`, 1503 MB, tutto BF16).
+`safetensors_planes.py` separa ogni peso in due flussi e ne calcola l'entropia:
+
+| Flusso | MiB | bit/byte (ordine 0) |
+|---|---|---|
+| esponente (8 bit) | 716,8 | 2,618 |
+| segno + mantissa (8 bit) | 716,8 | 7,973 |
+| (variante a byte: byte alto) | 716,8 | 2,758 |
+| (variante a byte: byte basso) | 716,8 | 7,972 |
+
+Con il contesto l'esponente quasi non cambia: 2,627 bit dato il precedente, 2,621 dati i
+due precedenti (contro 2,634 globale). La mantissa dato l'esponente scende a 6,93 bit su
+7, il segno resta 1 bit.
+
+| Compressore | File intero | Esponente | Segno+mantissa | Totale a piani |
+|---|---|---|---|---|
+| LZMA2 `-mx5` | 70,24% | 265,2 MB | 748,6 MB | 67,4% |
+| zstd -19 | 75,48% | 252,4 MB | 748,6 MB | 66,6% |
+| zstd -3 | 78,12% | 308,3 MB | 749,2 MB | 70,4% |
+| Huffman per blocchi da 64 KiB | | 248,5 MB | non comprime | 66,5% |
+| limite di ordine 0 | | | | 66,19% |
+
+**Conclusione**: rispetto a LZMA2 il margine è di circa 4 punti (6% più piccolo), rispetto
+a zstd -19 di 9 (12% più piccolo); il 20-30% della letteratura (ZipNN, DFloat11) è misurato
+contro zstd. Il vantaggio grande è la **velocità**: un codificatore di Huffman sul solo
+esponente arriva al limite pratico senza la ricerca LZ. Da qui il metodo `FLOAT` del 7z,
+design 0008.

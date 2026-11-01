@@ -40,6 +40,7 @@ mk 7z bcj2.7z -t7z -mf=BCJ2
 mk 7z delta.7z -t7z -mf=Delta:4
 mk 7z arm64.7z -t7z -mf=ARM64
 mk 7z zstd.7z -t7z -m0=zstd
+mk 7z float.7z -t7z -m0=FLOAT:c=64k
 mk 7z aes.7z -t7z -pfuzz
 mk 7z aes-headers.7z -t7z -pfuzz -mhe=on
 mk 7z noheadercompr.7z -t7z -mhc=off

@@ -1,0 +1,58 @@
+/* FloatPlane.h -- lossless coder for arrays of floating-point numbers (AI model weights)
+7zip-modern (design 0008) : Public domain
+
+A block of bytes is read as little-endian elements of a float type (BF16, FP16 or FP32,
+at a byte phase chosen by the encoder). Each element x is split into
+  e = (x >> s) & 0xFF                                (exponent byte, Huffman coded)
+  r = (x & ((1 << s) - 1)) | ((x >> (s + 8)) << s)   (sign and mantissa, stored raw)
+with s = 7 (BF16), 8 (FP16: e is the high byte) or 23 (FP32). In model weights the
+exponent byte has 2.5-3 bits of entropy and the mantissa is close to random: the block
+shrinks to about 66% for BF16, at the speed of a Huffman coder.
+
+Block format (all integers little-endian):
+  u8  mode                   0 = stored, 1 = split
+  u32 outLen                 decoded size of the block, 1 .. FLOAT_PLANE_BLOCK_MAX
+  mode 0:  outLen raw bytes
+  mode 1:
+    u8  type                 0 = BF16, 1 = FP16, 2 = FP32 (element size w = 2, 2, 4)
+    u8  phase                0 .. w-1: raw bytes before the first element
+    n = (outLen - phase) / w elements, tail = outLen - phase - n * w raw bytes
+    phase raw bytes, tail raw bytes
+    128 bytes                Huffman code lengths of e (0..12), symbol 2k in the low nibble
+    u32 huffSize             size of the Huffman bit stream in bytes
+    huffSize bytes           n codes, canonical, MSB first, zero padding to a byte
+    n * (w - 1) bytes        r, little-endian, w - 1 bytes per element
+  Canonical codes: shorter codes first, then by symbol value (as in Deflate).
+  Decoding rejects lengths > 12, an over-subscribed code, a bit pattern that is not a
+  code, and a huffSize different from the bytes the n codes actually use. */
+
+#ifndef ZIP7_INC_FLOAT_PLANE_H
+#define ZIP7_INC_FLOAT_PLANE_H
+
+#include "7zTypes.h"
+
+EXTERN_C_BEGIN
+
+#define FLOAT_PLANE_BLOCK_MAX      ((size_t)1 << 22)  /* Huffman_Generate: < 4M symbols */
+#define FLOAT_PLANE_BLOCK_DEFAULT  ((size_t)1 << 20)
+#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 1 + 1 + 3 + 3 + 128 + 4)
+
+/* The encoded block is never larger than this (stored mode). */
+#define FLOAT_PLANE_ENCODED_MAX(srcLen)  ((srcLen) + 5)
+
+/* Encodes src[0 .. srcLen) (1 <= srcLen <= FLOAT_PLANE_BLOCK_MAX) into dest, which must
+   have FLOAT_PLANE_ENCODED_MAX(srcLen) bytes. Returns the encoded size. */
+size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest);
+
+/* Reads the block header: SZ_OK and *outLen, or SZ_ERROR_DATA if src does not start with
+   a valid header (srcLen < 5, unknown mode, outLen == 0 or > FLOAT_PLANE_BLOCK_MAX). */
+SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen);
+
+/* Decodes one block from src[0 .. srcLen) into dest (dest has room for the outLen of the
+   header). *srcUsed = size of the block. SZ_ERROR_INPUT_EOF if srcLen is shorter than the
+   block, SZ_ERROR_DATA for corrupted data. Never reads src or writes dest out of bounds. */
+SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t destLen, size_t *srcUsed);
+
+EXTERN_C_END
+
+#endif
