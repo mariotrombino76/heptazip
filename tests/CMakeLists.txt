@@ -98,7 +98,15 @@ if(SEVENZIP_FUZZ)
     $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS})
   target_link_libraries(fuzz_float PRIVATE sevenzip_flags Threads::Threads)
   target_link_options(fuzz_float PRIVATE -fsanitize=fuzzer)
-  set(_fuzz_targets fuzz_archive fuzz_float)
+  add_executable(fuzz_codec
+    fuzz/fuzz_codec.cpp
+    $<TARGET_OBJECTS:sevenzip_c>
+    $<TARGET_OBJECTS:sevenzip_cpp>
+    ${SEVENZIP_ASM_OBJECTS}
+    ${SEVENZIP_ZSTD_OBJECTS})
+  target_link_libraries(fuzz_codec PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+  target_link_options(fuzz_codec PRIVATE -fsanitize=fuzzer)
+  set(_fuzz_targets fuzz_archive fuzz_float fuzz_codec)
 endif()
 
 # Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
