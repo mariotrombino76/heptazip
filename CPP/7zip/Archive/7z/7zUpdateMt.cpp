@@ -264,8 +264,15 @@ bool EstimateFolderEncodeCost(const CCompressionMethodMode &mode,
           if (blockSize > ((UInt64)1 << 22))
             return false;
         }
-        c.NumThreads = 1;
-        c.EncoderMemory = 2 * blockSize + 16;
+        // NFloat::CEncoder: with N > 1 threads, 2 * N slots (FloatCoder.h), each with
+        // an input and an output buffer of one block; 1 slot with 1 thread
+        const int numThreadsProp = m.Get_NumThreads();
+        UInt32 numThreads = numThreadsProp > 0 ? (UInt32)numThreadsProp : 1;
+        if (numThreads > 64)
+          numThreads = 64;
+        const UInt64 numSlots = numThreads == 1 ? 1 : 2 * (UInt64)numThreads;
+        c.NumThreads = numThreads;
+        c.EncoderMemory = numSlots * (2 * blockSize + 16);
         break;
       }
       default:

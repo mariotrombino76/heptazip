@@ -162,15 +162,25 @@ static void Test_Estimate_Others()
 static void Test_Estimate_Float()
 {
   CFolderEncodeCost c;
-  // FLOAT: un thread, due buffer di un blocco (default 1 MiB, c=4m -> 4 MiB)
-  CCompressionMethodMode mode;
-  CMethodFull &m = AddMethod(mode, k_FLOAT, 5, 8);
-  CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
-  CHECK(c.NumThreads == 1);
-  CHECK(c.EncoderMemory >= 2 * kMiB && c.EncoderMemory < 3 * kMiB);
-  m.AddProp32(NCoderPropID::kBlockSize, (UInt32)4 << 20);
-  CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
-  CHECK(c.EncoderMemory >= 8 * kMiB && c.EncoderMemory < 9 * kMiB);
+  // FLOAT, 1 thread: uno slot con due buffer di un blocco (default 1 MiB)
+  {
+    CCompressionMethodMode mode;
+    CMethodFull &m = AddMethod(mode, k_FLOAT, 5, 1);
+    CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
+    CHECK(c.NumThreads == 1);
+    CHECK(c.EncoderMemory >= 2 * kMiB && c.EncoderMemory < 3 * kMiB);
+    m.AddProp32(NCoderPropID::kBlockSize, (UInt32)4 << 20);   // c=4m
+    CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
+    CHECK(c.EncoderMemory >= 8 * kMiB && c.EncoderMemory < 9 * kMiB);
+  }
+  // FLOAT, 8 thread: 16 slot -> 32 MiB
+  {
+    CCompressionMethodMode mode;
+    AddMethod(mode, k_FLOAT, 5, 8);
+    CHECK(Cost(mode, (UInt64)1 << 30, 100 * kMiB, c));
+    CHECK(c.NumThreads == 8);
+    CHECK(c.EncoderMemory >= 32 * kMiB && c.EncoderMemory < 33 * kMiB);
+  }
 }
 
 static void Test_Estimate_Chains()

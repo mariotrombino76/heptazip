@@ -50,7 +50,8 @@ bool EstimateCoderDecodeMemory(CMethodId methodId, const Byte *props, size_t pro
 
   if (methodId == k_FLOAT)
   {
-    // input buffer (largest encoded block) + output buffer, see FloatCoder.cpp
+    // input buffer (largest encoded block) + output buffer, see FloatCoder.cpp: one slot,
+    // because the parallel extraction gives 1 thread to each folder decoder
     if (propsSize != 1 || props[0] < 16 || props[0] > 22)
       return false;
     memUsage = ((UInt64)2 << props[0]) + 16 + kCoderOverhead;

@@ -230,6 +230,41 @@ SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen)
   return SZ_OK;
 }
 
+SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
+{
+  size_t outLen, n, tail, headerSize;
+  unsigned w, phase;
+  if (srcLen < 5)
+    return SZ_ERROR_INPUT_EOF;
+  RINOK(FloatPlane_GetBlockOutLen(src, srcLen, &outLen))
+  if (src[0] == MODE_STORED)
+  {
+    *blockSize = 5 + outLen;
+    return SZ_OK;
+  }
+  if (srcLen < 7)
+    return SZ_ERROR_INPUT_EOF;
+  if (src[5] >= kNumTypes)
+    return SZ_ERROR_DATA;
+  w = g_Types[src[5]].w;
+  phase = src[6];
+  if (phase >= w || outLen < phase)
+    return SZ_ERROR_DATA;
+  n = (outLen - phase) / w;
+  tail = outLen - phase - n * w;
+  headerSize = 7 + phase + tail + kLensSize + 4;
+  if (srcLen < headerSize)
+    return SZ_ERROR_INPUT_EOF;
+  /* the same limits as FloatPlane_DecodeBlock() */
+  {
+    const size_t huffSize = GetUi32(src + headerSize - 4);
+    if (huffSize > ((n * kMaxLen + 7) >> 3) || huffSize < ((n + 7) >> 3))
+      return SZ_ERROR_DATA;
+    *blockSize = headerSize + huffSize + n * (w - 1);
+  }
+  return SZ_OK;
+}
+
 /* table[v] for the next kTableBits bits v: symbol | (length << 8); 0 = not a code */
 static int Build_Table(const Byte *packedLens, UInt16 *table)
 {

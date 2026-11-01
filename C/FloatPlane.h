@@ -48,6 +48,12 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest);
    a valid header (srcLen < 5, unknown mode, outLen == 0 or > FLOAT_PLANE_BLOCK_MAX). */
 SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen);
 
+/* Size of the encoded block that starts at src, from its header only: SZ_OK and
+   *blockSize, SZ_ERROR_INPUT_EOF if srcLen does not contain the whole header (up to
+   FLOAT_PLANE_HEADER_MAX bytes), SZ_ERROR_DATA if the header is not valid. Lets a
+   multi-threaded decoder hand whole blocks to its threads. */
+SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize);
+
 /* Decodes one block from src[0 .. srcLen) into dest (dest has room for the outLen of the
    header). *srcUsed = size of the block. SZ_ERROR_INPUT_EOF if srcLen is shorter than the
    block, SZ_ERROR_DATA for corrupted data. Never reads src or writes dest out of bounds. */
