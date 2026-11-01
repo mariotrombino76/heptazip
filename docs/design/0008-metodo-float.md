@@ -41,7 +41,7 @@ velocità di centinaia di MB/s: più piccolo di LZMA2 e molto più veloce.
 | A. Filtro di trasposizione (come Delta/BCJ) + LZMA2 | 67,4% | come LZMA2 (lento) | piccolo | no: non risolve la velocità |
 | A'. Filtro + zstd -19 | 66,6% | zstd -19 (lento) | piccolo | no |
 | **B. Codec dedicato: piani + Huffman per blocco** | **66,5%** | **centinaia di MB/s** | medio | **sì** |
-| C. B con codifica aritmetica/rANS (esponente; mantissa dato l'esponente) | ~66,0% | più lento di Huffman | grande | in futuro, se mezzo punto vale |
+| C. B con codifica aritmetica/rANS (esponente; mantissa dato l'esponente) | ~66,0% | più lento di Huffman | grande | metà del guadagno ottenuta con k (§3.2) |
 
 Huffman sul piano di segno e mantissa non guadagna nulla (7,97 bit: Huffman non sa usare
 frazioni di bit), quindi in v1 è copiato.
@@ -72,12 +72,13 @@ mode 2:
 mode 1:
   u8  type      0 = BF16 (s = 7), 1 = FP16 (s = 8), 2 = FP32 (s = 23); w = 2, 2, 4
   u8  phase     0 .. w-1, byte grezzi prima del primo elemento
+  u8  k         0 .. 2, bit di mantissa nel simbolo di Huffman
   phase byte grezzi, poi tail = (outLen - phase) mod w byte grezzi (la coda del blocco)
-  128 byte      lunghezze dei codici di Huffman di e, 0..12, simbolo 2k nel nibble basso
+  (256 << k) / 2 byte  lunghezze dei codici di Huffman di e, 0..12, simbolo 2i nel nibble basso
   u32 huffSize[4]  byte di ognuno dei 4 flussi di Huffman
   4 flussi      flusso j: i codici degli elementi k con k mod 4 = j, canonici, MSB first,
                 riempimento a zero fino al byte
-  n*(w-1) byte  r, little-endian, w-1 byte per elemento
+  ceil(n * rb / 8) byte  r, rb = 8w - 8 - k bit per elemento, impacchettati little-endian
 ```
 
 I 4 flussi interlacciati (come huff0 di zstd) sono catene di dipendenze indipendenti: il
@@ -86,15 +87,21 @@ ogni simbolo aspettava lo shift del precedente (~10 cicli per peso): il decoder 
 passa da 887 a 1900 MB/s su un thread, al costo di 12 byte e del riempimento per blocco
 (+19 KB su 1 GB).
 
-Per ogni elemento x (w byte, little-endian) di esponente in posizione s:
+Per ogni elemento x (w byte, little-endian) di esponente in posizione s, con SK = s - k:
 
 ```
-e = (x >> s) & 0xFF                                    byte codificato con Huffman
-r = (x & ((1 << s) - 1)) | ((x >> (s + 8)) << s)       gli altri w*8-8 bit, copiati
-x = (r & ((1 << s) - 1)) | (e << s) | ((r >> s) << (s + 8))
+e = (x >> SK) & ((256 << k) - 1)                         esponente e k bit di mantissa:
+                                                         simbolo di Huffman di 8 + k bit
+r = (x & ((1 << SK) - 1)) | ((x >> (SK + 8 + k)) << SK)  gli altri bit, impacchettati
+x = (r & ((1 << SK) - 1)) | (e << SK) | ((r >> SK) << (SK + 8 + k))
 ```
 
-Una sola formula per i tre tipi. Codici canonici come in Deflate: prima i più corti, a
+Una sola formula per i tre tipi e i tre k. **k** sposta nel simbolo i bit alti della
+mantissa, che dato l'esponente non sono uniformi (in Qwen il primo vale 0,95 bit, i primi
+due 1,94): con k = 2 il blocco BF16 scende dal 66,58% al 66,27%, metà del guadagno teorico
+di un codificatore aritmetico (§2, alternativa C), con lo stesso decoder di Huffman. Con
+k = 3 si peggiora (tabella più grande, limite di 12 bit). L'encoder sceglie k per blocco
+dalla stima di entropia: dati con mantissa uniforme restano a k = 0. Codici canonici come in Deflate: prima i più corti, a
 parità di lunghezza per valore del simbolo.
 
 Il decoder rifiuta:
@@ -122,9 +129,10 @@ Per ogni blocco:
    minore. Così trova da solo il tipo e l'allineamento anche in un archivio solid con file
    di dimensioni dispari, intestazioni JSON e tensori di tipi diversi: nessuna opzione da
    indicare a mano.
-2. Istogramma del blocco intero (uno per flusso), `Huffman_Generate` di 7-Zip
-   (`C/HuffEnc.c`) con lunghezza massima 12, dimensione esatta di ogni flusso. Codici,
-   segno e mantissa si scrivono in un solo passaggio.
+2. Istogramma del blocco intero (uno per flusso) dei simboli a k = 2; per somma quelli a
+   k = 1 e 0. k dalla stima di entropia più i bit di r e la tabella; poi
+   `Huffman_Generate` di 7-Zip (`C/HuffEnc.c`), lunghezza massima 12, dimensione esatta
+   di ogni flusso. Codici e piano r si scrivono in un solo passaggio.
 3. zstd (livello 3) su un campione di 16 KiB dall'inizio del blocco: se costa meno della
    stima float, zstd comprime il blocco intero. Vince il più piccolo tra split, zstd e
    stored (+5 byte), misurati esattamente. Il campione costa l'1,6% del tempo
@@ -163,9 +171,9 @@ Tre modelli reali da Hugging Face, un tipo ciascuno:
 
 | Modello | Tipi | FLOAT (automatico) | LZMA2 `-mx5` | xz -9 | zstd -19 |
 |---|---|---|---|---|---|
-| Qwen3-0.6B (1503 MB) | BF16 | **66,58%** in 0,9 s | 70,24% | 70,06% | 75,48% |
-| pythia-160m (375 MB) | FP16 + maschere U8 | **71,83%** in 0,3 s | 76,13% in 11,1 s | 75,98% | 78,35% |
-| gpt2 (548 MB) | FP32 (maschere in FP32) | **76,81%** in 0,4 s | 83,34% in 13,6 s | 82,62% | 84,31% |
+| Qwen3-0.6B (1503 MB) | BF16 | **66,28%** in 1,0 s | 70,24% | 70,06% | 75,48% |
+| pythia-160m (375 MB) | FP16 + maschere U8 | **71,84%** in 0,3 s | 76,13% in 11,1 s | 75,98% | 78,35% |
+| gpt2 (548 MB) | FP32 (maschere in FP32) | **76,60%** in 0,4 s | 83,34% in 13,6 s | 82,62% | 84,31% |
 
 Su tutti e tre FLOAT è il più piccolo di 4-6 punti e 30-90 volte più veloce di LZMA2
 `-mx5`. Senza il modo 2 pythia era al 79,30% e gpt2 all'81,39%. I soli float di pythia:
@@ -183,10 +191,18 @@ in `docs/benchmark-mercato.md`):
 | zstd -19 -T0 | 75,48% | 12 | 479 | 1211 | 1523 |
 | zstd -3 -T0 | 78,12% | 2276 | 1122 | 4,9 | 187 |
 
-Con un thread FLOAT comprime a 620 MB/s e decomprime a **1460 MB/s** (test dell'archivio,
-CRC compreso; 750 MB/s con un solo flusso di Huffman), con 7 MB di memoria; con tutti i
-thread 2300 MB/s. Nucleo da solo, un thread: encoder 747 MB/s, decoder 1900 MB/s. Con N
-thread l'archivio è identico byte per byte.
+Velocità nell'archivio (CRC compreso), Qwen BF16:
+
+| | 1 thread | 20 thread |
+|---|---|---|
+| compressione | 475 MB/s | 1500 MB/s |
+| decompressione | 1105 MB/s | 1900 MB/s |
+
+Con 7 MB di memoria a thread singolo; con N thread l'archivio è identico byte per byte.
+Storia del decoder a un thread: 750 MB/s con un flusso di Huffman, 1460 con 4 flussi,
+1105 con i bit di mantissa nel simbolo (k): il −0,30% di dimensione costa l'estrazione
+dei campi impacchettati di r. Con clang lo stesso codice decodifica il nucleo a ~1650 MB/s
+contro ~1360 di GCC (generazione del codice dei cicli specializzati).
 
 **ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
 perdita: la decompressione restituisce dati diversi dall'originale con ogni
@@ -216,7 +232,7 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Decoder con SIMD (AVX2) per ricomporre gli elementi e tabella che decodifica due
-  simboli per lettura: il decoder a 4 flussi è a ~5 cicli per peso.
+- Decoder con SIMD (AVX2) per estrarre r e ricomporre gli elementi (recuperare il costo
+  di k), e capire perché GCC genera cicli più lenti di clang.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.

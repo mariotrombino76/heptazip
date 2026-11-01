@@ -211,6 +211,6 @@ per `.safetensors`/`.gguf` (`7zz a archivio.7z model.safetensors`, senza opzioni
 
 | Modello | Tipi | 7zz (automatico) | LZMA2 `-mx5` | xz -9 -T0 | zstd -19 -T0 |
 |---|---|---|---|---|---|
-| Qwen3-0.6B (1503 MB) | BF16 | **66,58%**, 0,9 s | 70,24%, 88 s | 70,06% | 75,48% |
-| pythia-160m (375 MB) | FP16 + maschere U8 | **71,83%**, 0,3 s | 76,13%, 11 s | 75,98% | 78,35% |
-| gpt2 (548 MB) | FP32 | **76,81%**, 0,4 s | 83,34%, 14 s | 82,62% | 84,31% |
+| Qwen3-0.6B (1503 MB) | BF16 | **66,28%**, 1,0 s | 70,24%, 88 s | 70,06% | 75,48% |
+| pythia-160m (375 MB) | FP16 + maschere U8 | **71,84%**, 0,3 s | 76,13%, 11 s | 75,98% | 78,35% |
+| gpt2 (548 MB) | FP32 | **76,60%**, 0,4 s | 83,34%, 14 s | 82,62% | 84,31% |

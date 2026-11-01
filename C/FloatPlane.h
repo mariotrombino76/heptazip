@@ -2,12 +2,15 @@
 7zip-modern (design 0008) : Public domain
 
 A block of bytes is read as little-endian elements of a float type (BF16, FP16 or FP32,
-at a byte phase chosen by the encoder). Each element x is split into
-  e = (x >> s) & 0xFF                                (exponent byte, Huffman coded)
-  r = (x & ((1 << s) - 1)) | ((x >> (s + 8)) << s)   (sign and mantissa, stored raw)
-with s = 7 (BF16), 8 (FP16: e is the high byte) or 23 (FP32). In model weights the
-exponent byte has 2.5-3 bits of entropy and the mantissa is close to random: the block
-shrinks to about 66% for BF16, at the speed of a Huffman coder.
+at a byte phase chosen by the encoder). With s = 7 (BF16), 8 (FP16: the high byte) or
+23 (FP32), the position of the exponent byte, and k = 0..2 mantissa bits chosen by the
+encoder, SK = s - k, each element x is split into
+  e = (x >> SK) & ((256 << k) - 1)                         (exponent and k mantissa bits:
+                                                            Huffman coded, 8 + k bits)
+  r = (x & ((1 << SK) - 1)) | ((x >> (SK + 8 + k)) << SK)  (the other bits, packed)
+In model weights the exponent byte has 2.5-3 bits of entropy, the top mantissa bits are
+slightly skewed given the exponent, the rest is close to random: a BF16 block shrinks to
+about 66%, at the speed of a Huffman coder.
 
 Model files also contain data that are not floats (masks, padding, text metadata):
 the encoder can code such a block as one zstd frame (mode 2), if the caller gives it a
@@ -23,13 +26,15 @@ Block format (all integers little-endian):
   mode 1:
     u8  type                 0 = BF16, 1 = FP16, 2 = FP32 (element size w = 2, 2, 4)
     u8  phase                0 .. w-1: raw bytes before the first element
+    u8  k                    0 .. 2: mantissa bits in the Huffman symbol
     n = (outLen - phase) / w elements, tail = outLen - phase - n * w raw bytes
     phase raw bytes, tail raw bytes
-    128 bytes                Huffman code lengths of e (0..12), symbol 2k in the low nibble
+    (256 << k) / 2 bytes     Huffman code lengths of e (0..12), symbol 2i in the low nibble
     u32 huffSize[4]          sizes of the 4 Huffman bit streams in bytes
     4 streams                stream j: the codes of the elements k with k % 4 == j,
                              canonical, MSB first, zero padding to a byte
-    n * (w - 1) bytes        r, little-endian, w - 1 bytes per element
+    ceil(n * rb / 8) bytes   r, rb = 8 * w - 8 - k bits per element, packed
+                             little-endian (element i at bit i * rb)
   Canonical codes: shorter codes first, then by symbol value (as in Deflate).
   Decoding rejects lengths > 12, an over-subscribed code, a bit pattern that is not a
   code, and a huffSize[j] different from the bytes the codes of stream j actually use.
@@ -45,7 +50,7 @@ EXTERN_C_BEGIN
 
 #define FLOAT_PLANE_BLOCK_MAX      ((size_t)1 << 22)  /* Huffman_Generate: < 4M symbols */
 #define FLOAT_PLANE_BLOCK_DEFAULT  ((size_t)1 << 20)
-#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 1 + 1 + 3 + 3 + 128 + 4 * 4)
+#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 3 + 3 + 3 + 512 + 4 * 4)
 
 /* The encoded block is never larger than this (stored mode). */
 #define FLOAT_PLANE_ENCODED_MAX(srcLen)  ((srcLen) + 5)

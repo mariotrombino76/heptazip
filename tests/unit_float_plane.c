@@ -60,7 +60,7 @@ static UInt16 ToFp16(float f)   /* semplice: troncamento, niente subnormali */
   return (UInt16)(sign | ((UInt32)exp << 10) | ((v >> 13) & 0x3FF));
 }
 
-enum { kBf16, kFp16, kFp32, kConst, kRandom };
+enum { kBf16, kFp16, kFp32, kConst, kRandom, kBf16Flat };
 
 /* size byte: phase byte casuali, poi elementi del tipo, poi coda casuale */
 static void Fill(Byte *p, size_t size, int kind, unsigned phase)
@@ -84,6 +84,13 @@ static void Fill(Byte *p, size_t size, int kind, unsigned phase)
     {
       const UInt32 v = FloatBits(Gauss(0.02f));
       memcpy(p + i, &v, 4); i += 4;
+    }
+    else if (kind == kBf16Flat && i + 2 <= size)
+    {
+      /* esponente gaussiano, mantissa uniforme: i bit alti della mantissa non dicono
+         nulla, l'encoder deve scegliere k = 0 */
+      const UInt16 v = (UInt16)((ToBf16(Gauss(0.02f)) & 0xFF80) | (Rnd32() & 0x7F));
+      p[i] = (Byte)v; p[i + 1] = (Byte)(v >> 8); i += 2;
     }
     else if (kind == kConst)
       p[i++] = 0x3C;
@@ -123,7 +130,7 @@ static void Test_RoundTrips(void)
   static const size_t sizes[] = { 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 100, 1001, 4096,
       65535, 65536, 65537, 300001, FLOAT_PLANE_BLOCK_DEFAULT, FLOAT_PLANE_BLOCK_MAX };
   int kind;
-  for (kind = kBf16; kind <= kRandom; kind++)
+  for (kind = kBf16; kind <= kBf16Flat; kind++)
   {
     unsigned phase;
     for (phase = 0; phase < 4; phase++)
@@ -152,8 +159,9 @@ static void Test_Choice(int kind, unsigned phase, unsigned expType, double maxRa
   CHECK(expType == 2 ? g_Enc[5] == 2 : g_Enc[5] <= 1);
   CHECK(g_Enc[6] == phase);
   CHECK((double)encLen < maxRatio * (double)size);
-  printf("  dati %s fase %u: tipo scelto %u, %.2f%%\n", kind == kBf16 ? "BF16" : kind == kFp16 ? "FP16" : "FP32",
-      phase, g_Enc[5], 100.0 * (double)encLen / (double)size);
+  printf("  dati %s fase %u: tipo %u, k %u, %.2f%%\n",
+      kind == kBf16 ? "BF16" : kind == kFp16 ? "FP16" : kind == kFp32 ? "FP32" : "BF16 mantissa uniforme",
+      phase, g_Enc[5], g_Enc[7], 100.0 * (double)encLen / (double)size);
 }
 
 static void Test_Corruption(void)
@@ -280,6 +288,11 @@ int main(void)
   Test_Choice(kFp16, 1, 1, 0.85);
   Test_Choice(kFp32, 0, 2, 0.85);
   Test_Choice(kFp32, 3, 2, 0.85);
+  /* k: i bit alti della mantissa nel simbolo solo se servono */
+  Test_Choice(kBf16, 0, 0, 0.70);
+  CHECK(g_Enc[7] > 0);
+  Test_Choice(kBf16Flat, 1, 0, 0.70);
+  CHECK(g_Enc[7] == 0);
   Test_Corruption();
   printf("blocchi non float (zstd):\n");
   Test_Lz();

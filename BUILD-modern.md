@@ -130,7 +130,7 @@ Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 ## Pesi dei modelli AI (`-m0=FLOAT`)
 
 ```sh
-7zz a modello.7z model.safetensors config.json             # automatico: BF16 ~66,6% (LZMA2 -mx5: 70,2%)
+7zz a modello.7z model.safetensors config.json             # automatico: BF16 ~66,3% (LZMA2 -mx5: 70,2%)
 7zz a -m0=FLOAT:c=4m modello.7z modello-f16.gguf           # blocchi da 64k a 4m (default 1m)
 ```
 
