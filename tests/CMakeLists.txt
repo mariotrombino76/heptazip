@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Test del fork (vedi BUILD-modern.md, sezione "Test").
 #
 #   cmake --build build -j && ctest --test-dir build --output-on-failure

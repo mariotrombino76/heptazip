@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // unit_7zupdate_mt.cpp
 //
 // Test unitari di CPP/7zip/Archive/7z/7zUpdateMt.{h,cpp} (docs/design/0003):

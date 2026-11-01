@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* mf_bench.c -- banco di prova dei match finder LZMA (docs/design/0005)
 
    Misura il SOLO match finder, configurato come lo configura LzmaEnc.c, su un file

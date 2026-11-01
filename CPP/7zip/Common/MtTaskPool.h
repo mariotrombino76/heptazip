@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // MtTaskPool.h
 // Tensor7: pool of worker threads that run tasks in FIFO order.
 // Used by the parallel extraction (design 0001) and compression (design 0003)

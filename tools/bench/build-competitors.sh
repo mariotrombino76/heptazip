@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Scarica, verifica e compila gli strumenti concorrenti per tools/bench/market-bench.py,
 # senza privilegi di amministratore: sorgenti in $DEVTOOLS/src, eseguibili in $DEVTOOLS/bin.
 #

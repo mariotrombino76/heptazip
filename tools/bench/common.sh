@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Funzioni e configurazione condivise dagli script in tools/bench.
 # shellcheck shell=bash
 

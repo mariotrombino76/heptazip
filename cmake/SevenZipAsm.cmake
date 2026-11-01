@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Routine assembly x86-64 di 7-Zip (Asm/x86/*.asm, sintassi MASM).
 #
 # Replica la logica di CPP/7zip/7zip_gcc.mak con USE_ASM=1 e IS_X64=1:

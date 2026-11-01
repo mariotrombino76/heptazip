@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 """Separazione per piani di byte dei pesi BF16/FP16 di un file safetensors (design 0006).
 
 Uso: tools/bench/safetensors_planes.py <model.safetensors> <dir_uscita>    (richiede numpy)

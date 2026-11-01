@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Lista dei sorgenti per 7zz (bundle Alone2).
 #
 # Generata dai comandi di compilazione di CPP/7zip/Bundles/Alone2/makefile.gcc

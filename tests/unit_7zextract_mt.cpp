@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // unit_7zextract_mt.cpp
 //
 // Test unitari di CPP/7zip/Archive/7z/7zExtractMt.{h,cpp} e CPP/7zip/Common/MtTaskPool.{h,cpp}

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # 7-Zip "modern" fork - build CMake per Linux (GCC/Clang).
 #
 # Affianca (non sostituisce) i makefile originali: CPP/7zip/Bundles/*/makefile.gcc

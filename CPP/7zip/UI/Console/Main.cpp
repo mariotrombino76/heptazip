@@ -134,7 +134,8 @@ DECLARE_AND_SET_CLIENT_VERSION_VAR
 static const char * const kCopyrightString = "\n" T7_NAME
   PROG_POSTFIX_2
   " " T7_VERSION_CPU
-  " : based on 7-Zip " MY_VERSION " : " MY_COPYRIGHT_DATE "\n";
+  " : " T7_COPYRIGHT "\n"
+  "based on 7-Zip " MY_VERSION " : " MY_COPYRIGHT_DATE "\n";
 
 static const char * const kHelpString =
     "Usage: 7z"

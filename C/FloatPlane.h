@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* FloatPlane.h -- lossless coder for arrays of floating-point numbers (AI model weights)
-Tensor7 (design 0008) : Public domain
+Tensor7 (design 0008)
 
 A block of bytes is read as little-endian elements of a float type (BF16, FP16 or FP32,
 at a byte phase chosen by the encoder). With s = 7 (BF16), 8 (FP16: the high byte) or

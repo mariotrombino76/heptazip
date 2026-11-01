@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* fuzz_float.c -- harness libFuzzer per il formato a blocchi FLOAT (C/FloatPlane.c, design 0008)
  *
  * Primo byte dispari: l'input (senza il primo byte) e' un blocco da comprimere;

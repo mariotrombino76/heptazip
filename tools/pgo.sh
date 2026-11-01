@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Build con Profile-Guided Optimization (GCC/Clang) in tre fasi:
 #   1. build strumentata  (SEVENZIP_PGO=GEN)  in build-pgo-gen/
 #   2. training: compressione/decompressione del corpus con i profili principali

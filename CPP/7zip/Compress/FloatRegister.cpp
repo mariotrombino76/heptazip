@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // FloatRegister.cpp
 // Tensor7: registers the "FLOAT" method (design 0008).
 //

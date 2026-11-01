@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Campagna di fuzzing su tutti i formati (design 0007).
 #
 #   tools/fuzz/run-campaign.sh <fuzz_archive> <dir_lavoro> [secondi_per_formato] [processi]

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // FloatCoder.h
 // Tensor7: "FLOAT" method of 7z, lossless coder for arrays of floating-point
 // numbers such as the weights of AI models (design 0008, block format in

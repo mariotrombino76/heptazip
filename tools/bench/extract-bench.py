@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 """Benchmark dell'estrazione parallela dei folder .7z (-mpfd, docs/design/0001).
 
 Uso:

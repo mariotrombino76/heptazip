@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Soppressioni ThreadSanitizer per race note e motivate.
 # Ogni voce deve essere spiegata qui e registrata in docs/upstream-patches.md.
 # Attenzione: una voce "race:<funzione>" sopprime ogni race con quella funzione

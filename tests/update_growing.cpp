@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // update_growing.cpp
 //
 // Crea un archivio .7z con l'handler 7z (IOutArchive::UpdateItems) e una callback che

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 """Test dell'output JSON di "7zz l -json" (docs/json-output.md).
 
 Per ogni caso verifica che:

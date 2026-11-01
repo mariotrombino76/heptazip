@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // ZstdCodecRegister.cpp
 // Tensor7: registers Zstandard as a codec for the 7z format.
 //

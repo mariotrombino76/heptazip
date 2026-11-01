@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 // 7zExtractMt.h
 // Tensor7: building blocks for parallel extraction of 7z folders.
 // See docs/design/0001-estrazione-parallela-folder-7z.md

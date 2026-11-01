@@ -8,6 +8,7 @@
 #define T7_NAME     "Tensor7"
 #define T7_RELEASE  1
 #define T7_VERSION  MY_VERSION_NUMBERS "-m1"
+#define T7_COPYRIGHT  "Copyright (c) 2026 Mario Trombino"
 
 #ifdef MY_CPU_NAME
   #define MY_VERSION_CPU MY_VERSION " (" MY_CPU_NAME ")"

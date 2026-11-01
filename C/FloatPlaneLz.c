@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* FloatPlaneLz.c -- zstd for the blocks of the FLOAT method that are not floats (mode 2)
-Tensor7 (design 0008) : Public domain */
+Tensor7 (design 0008) */
 
 #include "Precomp.h"
 

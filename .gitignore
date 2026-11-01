@@ -19,3 +19,4 @@ Asm/**/*.err
 # Cache di Python
 __pycache__/
 *.pyc
+__pycache__/

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Semi per il fuzzing dei gestori di archivio (design 0007): archivi piccoli e validi.
 #
 #   tools/fuzz/make-seeds.sh <7zz> <directory_corpus>

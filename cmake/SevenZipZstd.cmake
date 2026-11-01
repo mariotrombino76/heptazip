@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
 # Encoder Zstandard (metodo 7z 0x4F71101) con la libreria di riferimento inclusa in
 # third_party/zstd (vedi third_party/zstd/README-Tensor7.md).
 #

@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* FloatQuant.h -- context model for the quantized structs of GGUF files (FLOAT mode 4)
-Tensor7 (design 0008) : Public domain
+Tensor7 (design 0008)
 Internal interface of FloatPlane.c: the block format is described in FloatPlane.h. */
 
 #ifndef ZIP7_INC_FLOAT_QUANT_H

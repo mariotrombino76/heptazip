@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
 /* FloatPlane.c -- lossless coder for arrays of floating-point numbers (AI model weights)
-Tensor7 (design 0008) : Public domain
+Tensor7 (design 0008)
 The block format is described in FloatPlane.h. */
 
 #include "Precomp.h"
