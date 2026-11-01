@@ -74,10 +74,17 @@ mode 1:
   u8  phase     0 .. w-1, byte grezzi prima del primo elemento
   phase byte grezzi, poi tail = (outLen - phase) mod w byte grezzi (la coda del blocco)
   128 byte      lunghezze dei codici di Huffman di e, 0..12, simbolo 2k nel nibble basso
-  u32 huffSize  byte del flusso di Huffman
-  huffSize byte n codici canonici, MSB first, riempimento a zero fino al byte
+  u32 huffSize[4]  byte di ognuno dei 4 flussi di Huffman
+  4 flussi      flusso j: i codici degli elementi k con k mod 4 = j, canonici, MSB first,
+                riempimento a zero fino al byte
   n*(w-1) byte  r, little-endian, w-1 byte per elemento
 ```
+
+I 4 flussi interlacciati (come huff0 di zstd) sono catene di dipendenze indipendenti: il
+decoder ne fa avanzare quattro insieme e la CPU li esegue in parallelo. Con un flusso solo
+ogni simbolo aspettava lo shift del precedente (~10 cicli per peso): il decoder del nucleo
+passa da 887 a 1900 MB/s su un thread, al costo di 12 byte e del riempimento per blocco
+(+19 KB su 1 GB).
 
 Per ogni elemento x (w byte, little-endian) di esponente in posizione s:
 
@@ -94,7 +101,8 @@ Il decoder rifiuta:
 - lunghezze oltre 12;
 - un codice sovra-assegnato (somma di Kraft > 1);
 - una sequenza di bit che non è un codice;
-- un `huffSize` diverso dai byte effettivamente usati dagli n codici;
+- per ogni flusso, un `huffSize[j]` fuori dai limiti (almeno 1 bit, al più 12 per codice)
+  o diverso dai byte effettivamente usati dai suoi codici;
 - un `outLen` oltre il buffer.
 
 Non legge mai fuori dall'input: gli zeri dopo la fine del flusso sono virtuali, e se
@@ -109,13 +117,14 @@ senza frame "skip" e senza byte dopo la fine.
 
 Per ogni blocco:
 
-1. Su un campione di 64 KiB prova i 7 candidati (BF16 e FP16 con fase 0-1, FP32 con fase
+1. Su un campione di 16 KiB prova i 7 candidati (BF16 e FP16 con fase 0-1, FP32 con fase
    0-3) e stima il costo per byte: entropia dell'esponente più i bit copiati. Sceglie il
    minore. Così trova da solo il tipo e l'allineamento anche in un archivio solid con file
    di dimensioni dispari, intestazioni JSON e tensori di tipi diversi: nessuna opzione da
    indicare a mano.
-2. Istogramma del blocco intero, `Huffman_Generate` di 7-Zip (`C/HuffEnc.c`) con
-   lunghezza massima 12, dimensione esatta del risultato.
+2. Istogramma del blocco intero (uno per flusso), `Huffman_Generate` di 7-Zip
+   (`C/HuffEnc.c`) con lunghezza massima 12, dimensione esatta di ogni flusso. Codici,
+   segno e mantissa si scrivono in un solo passaggio.
 3. zstd (livello 3) su un campione di 16 KiB dall'inizio del blocco: se costa meno della
    stima float, zstd comprime il blocco intero. Vince il più piccolo tra split, zstd e
    stored (+5 byte), misurati esattamente. Il campione costa l'1,6% del tempo
@@ -174,8 +183,10 @@ in `docs/benchmark-mercato.md`):
 | zstd -19 -T0 | 75,48% | 12 | 479 | 1211 | 1523 |
 | zstd -3 -T0 | 78,12% | 2276 | 1122 | 4,9 | 187 |
 
-Con un thread FLOAT comprime a 620 MB/s e decomprime a 750 MB/s (test dell'archivio, CRC
-compreso), con 7 MB di memoria. Con N thread l'archivio è identico byte per byte.
+Con un thread FLOAT comprime a 620 MB/s e decomprime a **1460 MB/s** (test dell'archivio,
+CRC compreso; 750 MB/s con un solo flusso di Huffman), con 7 MB di memoria; con tutti i
+thread 2300 MB/s. Nucleo da solo, un thread: encoder 747 MB/s, decoder 1900 MB/s. Con N
+thread l'archivio è identico byte per byte.
 
 **ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
 perdita: la decompressione restituisce dati diversi dall'originale con ogni
@@ -205,7 +216,7 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Decoder a thread singolo più veloce: più flussi di Huffman interlacciati per blocco
-  (parallelismo a livello di istruzione), tabella a due livelli.
+- Decoder con SIMD (AVX2) per ricomporre gli elementi e tabella che decodifica due
+  simboli per lettura: il decoder a 4 flussi è a ~5 cicli per peso.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.

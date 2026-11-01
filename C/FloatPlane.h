@@ -26,12 +26,15 @@ Block format (all integers little-endian):
     n = (outLen - phase) / w elements, tail = outLen - phase - n * w raw bytes
     phase raw bytes, tail raw bytes
     128 bytes                Huffman code lengths of e (0..12), symbol 2k in the low nibble
-    u32 huffSize             size of the Huffman bit stream in bytes
-    huffSize bytes           n codes, canonical, MSB first, zero padding to a byte
+    u32 huffSize[4]          sizes of the 4 Huffman bit streams in bytes
+    4 streams                stream j: the codes of the elements k with k % 4 == j,
+                             canonical, MSB first, zero padding to a byte
     n * (w - 1) bytes        r, little-endian, w - 1 bytes per element
   Canonical codes: shorter codes first, then by symbol value (as in Deflate).
   Decoding rejects lengths > 12, an over-subscribed code, a bit pattern that is not a
-  code, and a huffSize different from the bytes the n codes actually use. */
+  code, and a huffSize[j] different from the bytes the codes of stream j actually use.
+  The 4 streams are independent dependency chains: a decoder can run them in parallel
+  (instruction-level parallelism), as huff0 in zstd. */
 
 #ifndef ZIP7_INC_FLOAT_PLANE_H
 #define ZIP7_INC_FLOAT_PLANE_H
@@ -42,7 +45,7 @@ EXTERN_C_BEGIN
 
 #define FLOAT_PLANE_BLOCK_MAX      ((size_t)1 << 22)  /* Huffman_Generate: < 4M symbols */
 #define FLOAT_PLANE_BLOCK_DEFAULT  ((size_t)1 << 20)
-#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 1 + 1 + 3 + 3 + 128 + 4)
+#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 1 + 1 + 3 + 3 + 128 + 4 * 4)
 
 /* The encoded block is never larger than this (stored mode). */
 #define FLOAT_PLANE_ENCODED_MAX(srcLen)  ((srcLen) + 5)

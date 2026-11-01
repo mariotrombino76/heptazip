@@ -14,7 +14,8 @@ The block format is described in FloatPlane.h. */
 #define kMaxLen      12
 #define kTableBits   kMaxLen
 #define kLensSize    (kNumSyms / 2)
-#define kSampleSize  ((size_t)1 << 16)
+#define kSampleSize  ((size_t)1 << 14)   /* to choose type and phase: 8192 BF16 elements */
+#define kNumStreams  4     /* element k is in Huffman stream k % 4 */
 
 #define MODE_STORED  0
 #define MODE_SPLIT   1
@@ -78,6 +79,16 @@ static void Histogram(const Byte *src, size_t n, const CFloatType *t, UInt32 *hi
     hist[SPLIT_E(LoadElem(src + i * w, w), s)]++;
 }
 
+/* histogram of each stream: hist4[j * 256 + sym] for the elements k % 4 == j */
+static void Histogram4(const Byte *src, size_t n, const CFloatType *t, UInt32 *hist4)
+{
+  size_t i;
+  const unsigned w = t->w, s = t->shift;
+  memset(hist4, 0, kNumStreams * kNumSyms * sizeof(hist4[0]));
+  for (i = 0; i < n; i++)
+    hist4[(i & 3) * kNumSyms + SPLIT_E(LoadElem(src + i * w, w), s)]++;
+}
+
 static void Canonical_Codes(const Byte *lens, UInt32 *codes)
 {
   unsigned counts[kMaxLen + 1];
@@ -97,9 +108,9 @@ static void Canonical_Codes(const Byte *lens, UInt32 *codes)
     codes[i] = lens[i] ? next[lens[i]]++ : 0;
 }
 
-/* Writes the split block (mode 1) whose size was computed by the caller. */
+/* Writes the split block (mode 1) whose stream sizes were computed by the caller. */
 static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
-    unsigned type, unsigned phase, const Byte *lens, size_t huffSize)
+    unsigned type, unsigned phase, const Byte *lens, const size_t *huffSizes)
 {
   const CFloatType *ft = &g_Types[type];
   const unsigned w = ft->w, s = ft->shift;
@@ -108,10 +119,11 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
   const Byte *e = src + phase;
   UInt32 codes[kNumSyms];
   Byte *d = dest;
-  UInt64 acc = 0;
-  unsigned cnt = 0;
+  Byte *ds[kNumStreams];
+  UInt64 acc[kNumStreams];
+  unsigned cnt[kNumStreams];
   size_t k;
-  unsigned i;
+  unsigned i, j;
 
   Canonical_Codes(lens, codes);
   *d++ = MODE_SPLIT;
@@ -122,42 +134,90 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
   memcpy(d, src + srcLen - tail, tail);     d += tail;
   for (i = 0; i < kNumSyms; i += 2)
     *d++ = (Byte)(lens[i] | (lens[i + 1] << 4));
-  SetUi32(d, (UInt32)huffSize)  d += 4;
-
-  /* Huffman codes of e, MSB first */
-  for (k = 0; k < n; k++)
+  for (j = 0; j < kNumStreams; j++)
   {
-    const unsigned sym = SPLIT_E(LoadElem(e + k * w, w), s);
-    acc = (acc << lens[sym]) | codes[sym];
-    cnt += lens[sym];
-    if (cnt >= 32)
+    SetUi32(d, (UInt32)huffSizes[j])  d += 4;
+  }
+  for (j = 0; j < kNumStreams; j++)
+  {
+    ds[j] = d;
+    d += huffSizes[j];
+    acc[j] = 0;
+    cnt[j] = 0;
+  }
+  /* d: the r plane, written in the same pass as the codes */
+
+  /* Huffman codes of e, MSB first, element k in stream k % 4: 4 elements per iteration
+     with the writers in local variables, then the last elements */
+  {
+    Byte *d0 = ds[0], *d1 = ds[1], *d2 = ds[2], *d3 = ds[3];
+    UInt64 a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    unsigned c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+    #define PUT(A, C, D, i) \
+    { \
+      const UInt32 x = LoadElem(e + (i) * w, w); \
+      const unsigned sym = SPLIT_E(x, s); \
+      PUT_R(i, x) \
+      A = (A << lens[sym]) | codes[sym]; \
+      C += lens[sym]; \
+      if (C >= 32) \
+      { \
+        C -= 32; \
+        SetBe32(D, (UInt32)(A >> C)) \
+        D += 4; \
+      } \
+    }
+    /* r of element i: w - 1 bytes, little-endian */
+    #define PUT_R(i, x) \
+    { \
+      const UInt32 rv = SPLIT_R(x, s); \
+      if (w == 2) \
+        d[i] = (Byte)rv; \
+      else \
+      { \
+        d[(i) * 3] = (Byte)rv; \
+        d[(i) * 3 + 1] = (Byte)(rv >> 8); \
+        d[(i) * 3 + 2] = (Byte)(rv >> 16); \
+      } \
+    }
+    for (k = 0; k + 4 <= n; k += 4)
     {
-      cnt -= 32;
-      SetBe32(d, (UInt32)(acc >> cnt))
-      d += 4;
+      PUT(a0, c0, d0, k + 0)
+      PUT(a1, c1, d1, k + 1)
+      PUT(a2, c2, d2, k + 2)
+      PUT(a3, c3, d3, k + 3)
+    }
+    ds[0] = d0; ds[1] = d1; ds[2] = d2; ds[3] = d3;
+    acc[0] = a0; acc[1] = a1; acc[2] = a2; acc[3] = a3;
+    cnt[0] = c0; cnt[1] = c1; cnt[2] = c2; cnt[3] = c3;
+  }
+  for (; k < n; k++)
+  {
+    const UInt32 x = LoadElem(e + k * w, w);
+    const unsigned sym = SPLIT_E(x, s);
+    PUT_R(k, x)
+    j = (unsigned)k & 3;
+    acc[j] = (acc[j] << lens[sym]) | codes[sym];
+    cnt[j] += lens[sym];
+    if (cnt[j] >= 32)
+    {
+      cnt[j] -= 32;
+      SetBe32(ds[j], (UInt32)(acc[j] >> cnt[j]))
+      ds[j] += 4;
     }
   }
-  while (cnt >= 8)
+  for (j = 0; j < kNumStreams; j++)
   {
-    cnt -= 8;
-    *d++ = (Byte)(acc >> cnt);
-  }
-  if (cnt != 0)
-    *d++ = (Byte)(acc << (8 - cnt));
-
-  /* r, w - 1 bytes per element */
-  if (w == 2)
-    for (k = 0; k < n; k++)
-      *d++ = (Byte)SPLIT_R(GetUi16(e + k * 2), s);
-  else
-    for (k = 0; k < n; k++)
+    while (cnt[j] >= 8)
     {
-      const UInt32 r = SPLIT_R(GetUi32(e + k * 4), s);
-      d[0] = (Byte)r;
-      d[1] = (Byte)(r >> 8);
-      d[2] = (Byte)(r >> 16);
-      d += 3;
+      cnt[j] -= 8;
+      *ds[j]++ = (Byte)(acc[j] >> cnt[j]);
     }
+    if (cnt[j] != 0)
+      *ds[j]++ = (Byte)(acc[j] << (8 - cnt[j]));
+  }
+
+  d += n * (w - 1);
   return (size_t)(d - dest);
 }
 
@@ -171,7 +231,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
   UInt64 bestCost = (UInt64)8 << 16;   /* bits per byte (16.16) of the best candidate; 8 = stored */
   const size_t storedTotal = FLOAT_PLANE_ENCODED_MAX(srcLen);
   size_t splitTotal = storedTotal, lzTotal = storedTotal;
-  size_t huffSize = 0;
+  size_t huffSizes[kNumStreams];
   Byte lens[kNumSyms];
   unsigned t;
   int haveCandidate = 0;
@@ -213,14 +273,22 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     const size_t n = (srcLen - bestPhase) / w;
     const size_t tail = srcLen - bestPhase - n * w;
     UInt32 p[kNumSyms];
-    UInt64 numBits = 0;
-    unsigned i;
-    Histogram(src + bestPhase, n, ft, hist);
-    Huffman_Generate(hist, p, lens, kNumSyms, kMaxLen);
+    UInt32 hist4[kNumStreams * kNumSyms];
+    size_t huffTotal = 0;
+    unsigned i, j;
+    Histogram4(src + bestPhase, n, ft, hist4);
     for (i = 0; i < kNumSyms; i++)
-      numBits += (UInt64)hist[i] * lens[i];
-    huffSize = (size_t)((numBits + 7) >> 3);
-    splitTotal = 7 + bestPhase + tail + kLensSize + 4 + huffSize + n * (w - 1);
+      hist[i] = hist4[i] + hist4[kNumSyms + i] + hist4[2 * kNumSyms + i] + hist4[3 * kNumSyms + i];
+    Huffman_Generate(hist, p, lens, kNumSyms, kMaxLen);
+    for (j = 0; j < kNumStreams; j++)
+    {
+      UInt64 numBits = 0;
+      for (i = 0; i < kNumSyms; i++)
+        numBits += (UInt64)hist4[j * kNumSyms + i] * lens[i];
+      huffSizes[j] = (size_t)((numBits + 7) >> 3);
+      huffTotal += huffSizes[j];
+    }
+    splitTotal = 7 + bestPhase + tail + kLensSize + 4 * kNumStreams + huffTotal + n * (w - 1);
   }
 
   /* 3. zstd (mode 2), if a probe of the block start compresses better than the float
@@ -247,7 +315,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     return lzTotal;
   }
   if (splitTotal < storedTotal)
-    return Write_Split(src, srcLen, dest, bestType, bestPhase, lens, huffSize);
+    return Write_Split(src, srcLen, dest, bestType, bestPhase, lens, huffSizes);
 
   dest[0] = MODE_STORED;
   SetUi32(dest + 1, (UInt32)srcLen)
@@ -267,6 +335,26 @@ SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen)
   if (len == 0 || len > FLOAT_PLANE_BLOCK_MAX)
     return SZ_ERROR_DATA;
   *outLen = len;
+  return SZ_OK;
+}
+
+/* Sizes of the 4 Huffman streams from the block header, with the same limits for
+   FloatPlane_GetBlockSize() and FloatPlane_DecodeBlock(): stream j has the codes of
+   nj = (n + 3 - j) / 4 elements, so at least nj bits and at most nj * kMaxLen bits. */
+static SRes Get_StreamSizes(const Byte *p, size_t n, size_t *sizes, size_t *total)
+{
+  unsigned j;
+  *total = 0;
+  for (j = 0; j < kNumStreams; j++)
+  {
+    const size_t nj = (n + 3 - j) / 4;
+    const size_t size = GetUi32(p + j * 4);
+    if (size > ((nj * kMaxLen + 7) >> 3) || size < ((nj + 7) >> 3))
+      return SZ_ERROR_DATA;
+    if (sizes)
+      sizes[j] = size;
+    *total += size;
+  }
   return SZ_OK;
 }
 
@@ -304,15 +392,13 @@ SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
     return SZ_ERROR_DATA;
   n = (outLen - phase) / w;
   tail = outLen - phase - n * w;
-  headerSize = 7 + phase + tail + kLensSize + 4;
+  headerSize = 7 + phase + tail + kLensSize + 4 * kNumStreams;
   if (srcLen < headerSize)
     return SZ_ERROR_INPUT_EOF;
-  /* the same limits as FloatPlane_DecodeBlock() */
   {
-    const size_t huffSize = GetUi32(src + headerSize - 4);
-    if (huffSize > ((n * kMaxLen + 7) >> 3) || huffSize < ((n + 7) >> 3))
-      return SZ_ERROR_DATA;
-    *blockSize = headerSize + huffSize + n * (w - 1);
+    size_t huffTotal;
+    RINOK(Get_StreamSizes(src + headerSize - 4 * kNumStreams, n, NULL, &huffTotal))
+    *blockSize = headerSize + huffTotal + n * (w - 1);
   }
   return SZ_OK;
 }
@@ -400,13 +486,17 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
   {
     UInt16 table[(size_t)1 << kTableBits];
     const CFloatType *ft;
-    unsigned w, s, phase;
-    size_t n, tail, huffSize, k;
-    const Byte *h, *hEnd, *r;
+    unsigned w, s, phase, j;
+    size_t n, tail, k, huffTotal;
+    size_t sizes[kNumStreams];
+    const Byte *r;
     Byte *e;
-    UInt64 bits = 0;
-    unsigned cnt = 0;      /* valid bits in (bits), MSB aligned */
-    size_t padBytes = 0;   /* zero bytes added after the end of the Huffman stream */
+    /* the 4 bit readers: (bits) has (cnt) valid bits, MSB aligned; pad = zero bytes
+       read after the end of the stream (an error if they are consumed) */
+    const Byte *hp[kNumStreams], *hEnd[kNumStreams], *hStart[kNumStreams];
+    UInt64 bits[kNumStreams];
+    unsigned cnt[kNumStreams];
+    size_t pad[kNumStreams];
 
     if (srcEnd - p < 2)
       return SZ_ERROR_INPUT_EOF;
@@ -422,97 +512,134 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
     n = (outLen - phase) / w;
     tail = outLen - phase - n * w;
 
-    if ((size_t)(srcEnd - p) < phase + tail + kLensSize + 4)
+    if ((size_t)(srcEnd - p) < phase + tail + kLensSize + 4 * kNumStreams)
       return SZ_ERROR_INPUT_EOF;
     memcpy(dest, p, phase);                    p += phase;
     memcpy(dest + outLen - tail, p, tail);     p += tail;
     if (!Build_Table(p, table))
       return SZ_ERROR_DATA;
     p += kLensSize;
-    huffSize = GetUi32(p);
-    p += 4;
-    /* the stream needs at least 1 bit per code, at most kMaxLen */
-    if (huffSize > ((n * kMaxLen + 7) >> 3) || huffSize < ((n + 7) >> 3))
-      return SZ_ERROR_DATA;
-    if ((size_t)(srcEnd - p) < huffSize || (size_t)(srcEnd - p) - huffSize < n * (w - 1))
+    RINOK(Get_StreamSizes(p, n, sizes, &huffTotal))
+    p += 4 * kNumStreams;
+    if ((size_t)(srcEnd - p) < huffTotal || (size_t)(srcEnd - p) - huffTotal < n * (w - 1))
       return SZ_ERROR_INPUT_EOF;
-    h = p;
-    hEnd = p + huffSize;
-    r = hEnd;
+    for (j = 0; j < kNumStreams; j++)
+    {
+      hStart[j] = hp[j] = p;
+      p += sizes[j];
+      hEnd[j] = p;
+      bits[j] = 0;
+      cnt[j] = 0;
+      pad[j] = 0;
+    }
+    r = p;
     e = dest + phase;
+    k = 0;
 
-    #define REFILL \
-      if (hEnd - h >= 8) \
-      { \
-        bits |= GetBe64(h) >> cnt; \
-        h += (63 - cnt) >> 3; \
-        cnt |= 56; \
-      } \
-      else \
-        while (cnt <= 56) \
-        { \
-          if (h != hEnd) \
-            bits |= (UInt64)*h++ << (56 - cnt); \
-          else \
-            padBytes++; \
-          cnt += 8; \
-        }
-
-    #define DECODE_SYM(sym) \
+    #define DECODE_SYM(B, C, sym) \
     { \
-      const unsigned v = table[(size_t)(bits >> (64 - kTableBits))]; \
+      const unsigned v = table[(size_t)((B) >> (64 - kTableBits))]; \
       const unsigned len = v >> 8; \
       if (len == 0) \
         return SZ_ERROR_DATA; \
       sym = v & 0xFF; \
-      bits <<= len; \
-      cnt -= len; \
+      B <<= len; \
+      C -= len; \
     }
 
-    /* separate loops with a constant shift: JOIN() becomes a few instructions */
-    #define DECODE_LOOP_2(S) \
+    /* reader with at least 8 bytes left: adds whole bytes up to 56..63 valid bits */
+    #define REFILL_FAST(H, B, C) \
     { \
-      for (k = 0; k + 4 <= n; k += 4) \
+      B |= GetBe64(H) >> C; \
+      H += (63 - C) >> 3; \
+      C |= 56; \
+    }
+
+    /* Main loop: 16 elements per iteration, 4 from each stream (<= 48 bits per refill).
+       The 4 streams are independent chains: the CPU decodes them in parallel. */
+    #define DECODE_MAIN(STORE) \
+    { \
+      const Byte *h0 = hp[0], *h1 = hp[1], *h2 = hp[2], *h3 = hp[3]; \
+      UInt64 b0 = 0, b1 = 0, b2 = 0, b3 = 0; \
+      unsigned c0 = 0, c1 = 0, c2 = 0, c3 = 0; \
+      for (; k + 16 <= n; k += 16) \
       { \
-        unsigned s0, s1, s2, s3; \
-        REFILL \
-        DECODE_SYM(s0) \
-        DECODE_SYM(s1) \
-        DECODE_SYM(s2) \
-        DECODE_SYM(s3) \
-        SetUi16(e + k * 2 + 0, (UInt16)JOIN(s0, (UInt32)r[k + 0], S)) \
-        SetUi16(e + k * 2 + 2, (UInt16)JOIN(s1, (UInt32)r[k + 1], S)) \
-        SetUi16(e + k * 2 + 4, (UInt16)JOIN(s2, (UInt32)r[k + 2], S)) \
-        SetUi16(e + k * 2 + 6, (UInt16)JOIN(s3, (UInt32)r[k + 3], S)) \
+        unsigned rr; \
+        if (hEnd[0] - h0 < 8 || hEnd[1] - h1 < 8 || hEnd[2] - h2 < 8 || hEnd[3] - h3 < 8) \
+          break; \
+        REFILL_FAST(h0, b0, c0) \
+        REFILL_FAST(h1, b1, c1) \
+        REFILL_FAST(h2, b2, c2) \
+        REFILL_FAST(h3, b3, c3) \
+        for (rr = 0; rr < 4; rr++) \
+        { \
+          unsigned s0, s1, s2, s3; \
+          const size_t kk = k + rr * 4; \
+          DECODE_SYM(b0, c0, s0) \
+          DECODE_SYM(b1, c1, s1) \
+          DECODE_SYM(b2, c2, s2) \
+          DECODE_SYM(b3, c3, s3) \
+          STORE(kk + 0, s0) \
+          STORE(kk + 1, s1) \
+          STORE(kk + 2, s2) \
+          STORE(kk + 3, s3) \
+        } \
       } \
+      hp[0] = h0; hp[1] = h1; hp[2] = h2; hp[3] = h3; \
+      bits[0] = b0; bits[1] = b1; bits[2] = b2; bits[3] = b3; \
+      cnt[0] = c0; cnt[1] = c1; cnt[2] = c2; cnt[3] = c3; \
+    }
+
+    /* the last elements, one at a time, with a careful refill near the stream end */
+    #define DECODE_TAIL(STORE) \
       for (; k < n; k++) \
       { \
         unsigned s0; \
-        REFILL \
-        DECODE_SYM(s0) \
-        SetUi16(e + k * 2, (UInt16)JOIN(s0, (UInt32)r[k], S)) \
-      } \
-    }
-
-    if (s == 7)
-      DECODE_LOOP_2(7)
-    else if (s == 8)
-      DECODE_LOOP_2(8)
-    else
-      for (k = 0; k < n; k++)
-      {
-        unsigned s0;
-        UInt32 rv;
-        REFILL
-        DECODE_SYM(s0)
-        rv = (UInt32)r[k * 3] | ((UInt32)r[k * 3 + 1] << 8) | ((UInt32)r[k * 3 + 2] << 16);
-        SetUi32(e + k * 4, JOIN(s0, rv, 23))
+        j = (unsigned)k & 3; \
+        if (hEnd[j] - hp[j] >= 8) \
+          REFILL_FAST(hp[j], bits[j], cnt[j]) \
+        else \
+          while (cnt[j] <= 56) \
+          { \
+            if (hp[j] != hEnd[j]) \
+              bits[j] |= (UInt64)*hp[j]++ << (56 - cnt[j]); \
+            else \
+              pad[j]++; \
+            cnt[j] += 8; \
+          } \
+        DECODE_SYM(bits[j], cnt[j], s0) \
+        STORE(k, s0) \
       }
 
+    #define STORE_BF16(i, sym)  SetUi16(e + (i) * 2, (UInt16)JOIN(sym, (UInt32)r[i], 7))
+    #define STORE_FP16(i, sym)  SetUi16(e + (i) * 2, (UInt16)JOIN(sym, (UInt32)r[i], 8))
+    #define STORE_FP32(i, sym) \
+      SetUi32(e + (i) * 4, JOIN(sym, (UInt32)r[(i) * 3] | ((UInt32)r[(i) * 3 + 1] << 8) \
+          | ((UInt32)r[(i) * 3 + 2] << 16), 23))
+
+    /* separate loops with a constant shift: JOIN() becomes a few instructions */
+    if (s == 7)
     {
-      /* bits used by the n codes: everything loaded minus what is left in (bits) */
-      const UInt64 used = ((UInt64)(size_t)(h - (hEnd - huffSize)) + padBytes) * 8 - cnt;
-      if (((used + 7) >> 3) != huffSize)
+      DECODE_MAIN(STORE_BF16)
+      DECODE_TAIL(STORE_BF16)
+    }
+    else if (s == 8)
+    {
+      DECODE_MAIN(STORE_FP16)
+      DECODE_TAIL(STORE_FP16)
+    }
+    else
+    {
+      DECODE_MAIN(STORE_FP32)
+      DECODE_TAIL(STORE_FP32)
+    }
+
+    /* each stream: the bits used by its codes (all loaded minus those left) fill exactly
+       its declared size */
+    for (j = 0; j < kNumStreams; j++)
+    {
+      const UInt64 used = ((UInt64)(size_t)(hp[j] - hStart[j]) + pad[j]) * 8 - cnt[j];
+      if (((used + 7) >> 3) != sizes[j])
         return SZ_ERROR_DATA;
     }
     *srcUsed = (size_t)(r + n * (w - 1) - src);
