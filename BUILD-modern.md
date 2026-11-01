@@ -174,6 +174,8 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 - `tests/update_growing.{cpp,py}`: file che cambiano dimensione durante la compressione
   (una callback dichiara una dimensione e fornisce dati di un'altra, fino a 140 MiB):
   archivi identici con `-mpfc=off/on`, integri, con la dimensione reale.
+- `fuzz_regress`: riesegue gli input che il fuzzing aveva trasformato in crash, leak o
+  allocazioni enormi (vedi sotto).
 
 Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,
 `thread` per le race condition. Si usano in una directory di build separata:
@@ -182,6 +184,25 @@ Sanitizer (`SEVENZIP_SANITIZE`): `address,undefined` per gli errori di memoria,
 cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSEVENZIP_SANITIZE=thread
 cmake --build build-tsan -j && ctest --test-dir build-tsan --output-on-failure
 ```
+
+## Fuzzing (design 0007)
+
+Harness libFuzzer per i gestori di tutti i formati (`tests/fuzz/fuzz_archive.cpp`):
+apre l'input, legge le proprietà degli elementi e li estrae in modalità test. Richiede
+Clang e una directory di build dedicata:
+
+```sh
+CC=clang-20 CXX=clang++-20 cmake -S . -B build-fuzz -DSEVENZIP_FUZZ=ON -DSEVENZIP_ASM=OFF \
+  -DSEVENZIP_SANITIZE=address,undefined,fuzzer-no-link -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build-fuzz -j --target fuzz_archive
+tools/fuzz/make-seeds.sh build/7zz ~/devtools/fuzz/seeds          # archivi semi
+tools/fuzz/run-campaign.sh build-fuzz/tests/fuzz_archive ~/devtools/fuzz 900   # 15 min per formato
+FUZZ_FORMAT=wim build-fuzz/tests/fuzz_archive <input>             # riproduce un artefatto
+```
+
+Ogni input che ha trovato un bug va in `tests/fuzz/regress/<formato>/`: il test CTest
+`fuzz_regress` (programma `fuzz_replay`, lo stesso harness senza libFuzzer) li riesegue
+in ogni build; con ASan le allocazioni oltre 1 GiB sono errori.
 
 ## Test e benchmark (`tools/bench/`)
 

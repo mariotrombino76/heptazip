@@ -148,6 +148,34 @@ Z7_COM7F_IMF(CDynBufSeqOutStream::Write(const void *data, UInt32 size, UInt32 *p
   return S_OK;
 }
 
+Z7_COM7F_IMF(CGrowingBufSeqOutStream::Write(const void *data, UInt32 size, UInt32 *processedSize))
+{
+  if (processedSize)
+    *processedSize = 0;
+  size_t rem = _maxSize - _size;
+  if (rem > size)
+    rem = (size_t)size;
+  if (rem == 0)
+    return size == 0 ? S_OK : E_FAIL;
+  const size_t need = _size + rem;
+  if (need > _buf->Size())
+  {
+    const size_t kStartSize = (size_t)1 << 20;
+    size_t next = _buf->Size() < kStartSize ? kStartSize : _buf->Size() * 2;
+    if (next < need)
+      next = need;
+    if (next > _maxSize)
+      next = _maxSize;
+    try { _buf->ChangeSize_KeepData(next, _size); }
+    catch(...) { return E_OUTOFMEMORY; }
+  }
+  memcpy((Byte *)*_buf + _size, data, rem);
+  _size = need;
+  if (processedSize)
+    *processedSize = (UInt32)rem;
+  return S_OK;
+}
+
 Z7_COM7F_IMF(CBufPtrSeqOutStream::Write(const void *data, UInt32 size, UInt32 *processedSize))
 {
   size_t rem = _size - _pos;

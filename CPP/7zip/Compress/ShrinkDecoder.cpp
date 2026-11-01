@@ -13,7 +13,8 @@ namespace NCompress {
 namespace NShrink {
 
 #ifdef MY_CPU_LE_UNALIGN
-#define GetUi24or32(p)      (*(const UInt32 *)(const void *)(p))
+// 7zip-modern: memcpy load: (p) is at any byte offset (misaligned load found by fuzzing).
+#define GetUi24or32(p)      Z7_LoadNative32(p)
 #else
 #define GetUi24or32(p) ( \
              ((const Byte *)(p))[0]        | \

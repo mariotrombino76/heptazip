@@ -423,11 +423,13 @@ HRESULT CUnpacker::UnpackData(IInStream *inStream,
   // unchecked (up to 2^56 bytes from a corrupted header; found by fuzzing).
   if (MemUsage > MemUsage_Limit || unpackSize64 > MemUsage_Limit - MemUsage)
     return E_OUTOFMEMORY;
-  buf.Alloc(size);
-
-  CMyComPtr2_Create<ISequentialOutStream, CBufPtrSeqOutStream> outStream;
-  outStream->Init((Byte *)buf, size);
-  return Unpack(inStream, resource, header, db, outStream, NULL, digest);
+  // 7zip-modern: even under the limit (31/32 of RAM by default) the size can be a few
+  // GB from a file of a few KB: the buffer grows with the decoded data.
+  CMyComPtr2_Create<ISequentialOutStream, CGrowingBufSeqOutStream> outStream;
+  outStream->Init(&buf, size);
+  RINOK(Unpack(inStream, resource, header, db, outStream, NULL, digest))
+  // Unpack() returns S_OK only after writing the whole resource: then buf.Size() == size.
+  return outStream->GetSize() == size ? S_OK : S_FALSE;
 }
 
 

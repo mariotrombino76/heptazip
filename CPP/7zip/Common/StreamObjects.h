@@ -89,6 +89,31 @@ public:
 };
 
 
+/* 7zip-modern: writes up to (maxSize) bytes into a CByteBuffer that grows (1 MiB, then
+   doubling, never beyond maxSize) only while data arrive. For outputs whose size comes
+   from the archive header: a corrupted header cannot make the handler allocate gigabytes
+   before any data are decoded (found by fuzzing). When exactly maxSize bytes were
+   written, the buffer has size maxSize: the last step allocates maxSize, no final copy.
+   Writing beyond maxSize returns E_FAIL, like CBufPtrSeqOutStream. */
+Z7_CLASS_IMP_COM_1(
+  CGrowingBufSeqOutStream
+  , ISequentialOutStream
+)
+  CByteBuffer *_buf;
+  size_t _size;
+  size_t _maxSize;
+public:
+  void Init(CByteBuffer *buf, size_t maxSize)
+  {
+    _buf = buf;
+    _buf->Free();
+    _size = 0;
+    _maxSize = maxSize;
+  }
+  size_t GetSize() const { return _size; }
+};
+
+
 Z7_CLASS_IMP_COM_1(
   CBufPtrSeqOutStream
   , ISequentialOutStream

@@ -1,7 +1,7 @@
 // fuzz_archive.cpp -- harness libFuzzer per i gestori dei formati di archivio (design 0007)
 //
 // Per ogni input: apre i dati con il gestore del formato scelto, legge le proprieta' di
-// ogni elemento ed estrae tutto in modalita' test (i dati decompressi sono scartati).
+// ogni elemento ed estrae tutto verso uno stream che scarta i dati (fino a 256 MiB).
 // Con ASan+UBSan ogni accesso fuori dai limiti o comportamento indefinito diventa un
 // crash riproducibile.
 //
@@ -46,6 +46,12 @@ namespace {
 
 const UInt64 kMemLimit = (UInt64)512 << 20;
 
+// Byte estratti per input: oltre, la scrittura fallisce e l'estrazione si ferma. Le
+// immagini disco (sparse, qcow, vhd...) possono descrivere legittimamente dischi di
+// terabyte fatti di zeri in poche decine di byte: senza limite sarebbero timeout, non bug.
+const UInt64 kMaxOutputPerInput = (UInt64)256 << 20;
+UInt64 g_OutputTotal;
+
 Z7_CLASS_IMP_COM_1(
   CNullOutStream
   , ISequentialOutStream
@@ -54,6 +60,11 @@ Z7_CLASS_IMP_COM_1(
 
 Z7_COM7F_IMF(CNullOutStream::Write(const void *, UInt32 size, UInt32 *processedSize))
 {
+  if (processedSize)
+    *processedSize = 0;
+  if (g_OutputTotal + size > kMaxOutputPerInput)
+    return E_FAIL;
+  g_OutputTotal += size;
   if (processedSize)
     *processedSize = size;
   return S_OK;
@@ -159,6 +170,7 @@ extern "C" int LLVMFuzzerInitialize(int *, char ***)
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
+  g_OutputTotal = 0;
   CMyComPtr<IInArchive> archive;
   if (g_Codecs->CreateInArchive((unsigned)g_FormatIndex, archive) != S_OK || !archive)
     return 0;
@@ -185,7 +197,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         archive->GetProperty(i, kProps[k], &prop);
       }
     CMyComPtr<IArchiveExtractCallback> extractCallback = new CExtractCallback;
-    archive->Extract(NULL, (UInt32)(Int32)-1, 1 /* test */, extractCallback);
+    // estrazione (non test) verso CNullOutStream: i dati passano tutti dallo stream, che
+    // applica kMaxOutputPerInput (in modalita' test molti gestori non chiedono lo stream)
+    archive->Extract(NULL, (UInt32)(Int32)-1, 0, extractCallback);
   }
   archive->Close();
   return 0;
