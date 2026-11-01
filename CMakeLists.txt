@@ -29,9 +29,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -DNDEBUG" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -DNDEBUG" CACHE STRING "")
 
-project(SevenZipModern
+project(Tensor7
   VERSION 26.05
-  DESCRIPTION "7-Zip modern fork"
+  DESCRIPTION "Tensor7, fork of 7-Zip 26.05"
   LANGUAGES C CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -245,7 +245,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Riepilogo configurazione
 # ---------------------------------------------------------------------------
-message(STATUS "7-Zip modern: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
+message(STATUS "Tensor7: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
                "native=${SEVENZIP_NATIVE} lto=${SEVENZIP_LTO} asm=${SEVENZIP_ASM} "
                "pgo=${SEVENZIP_PGO} c++=${SEVENZIP_CXX_STANDARD} "
                "sanitize=${SEVENZIP_SANITIZE} tests=${SEVENZIP_BUILD_TESTS} "

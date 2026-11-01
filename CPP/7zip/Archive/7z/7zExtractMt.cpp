@@ -34,7 +34,7 @@ static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 strea
    frame. The properties don't contain the window: we use the largest window of
    the standard levels (2^27, level 22). Frames with bigger windows (long mode,
    custom window) and without content size can use more memory than estimated.
-   The 7-Zip-modern encoder stores the content size only for folders up to
+   The Tensor7 encoder stores the content size only for folders up to
    128 KiB (compressed in one call); bigger frames use the window of the level,
    at most 2^27. */
 static const UInt64 kMem_Zstd = (UInt64)1 << 27;
