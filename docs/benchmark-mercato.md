@@ -217,17 +217,21 @@ per `.safetensors`/`.gguf` (`7zz a archivio.7z model.safetensors`, senza opzioni
 
 ### Modelli quantizzati GGUF (2026-11-01)
 
-Blocchi quantizzati del metodo FLOAT (design 0008 §3.6), scelti in automatico per i GGUF
-Q4_0, Q8_0, Q4_K_M/S, Q5_K_M/S, Q6_K. `7zz a` senza opzioni, 20 thread:
+Blocchi quantizzati del metodo FLOAT (design 0008 §3.6-3.7: Huffman per Q4_0 e Q8_0,
+modello a contesti con rANS per i K-quant), scelti in automatico per i GGUF Q4_0, Q8_0,
+Q4_K_M/S, Q5_K_M/S, Q6_K. `7zz a` senza opzioni, 20 thread:
 
 | Modello | 7zz (FLOAT) | LZMA2 `-mx5` | zstd `-19 -T0` | xz `-9 -T0` |
 |---|---|---|---|---|
-| qwen3-4b Q4_K_M (2,5 GB) | **95,65%**, 2,6 s / 1,4 s | 97,83%, 55 s / 5,9 s | 97,61%, 106 s | 97,88% (`-6`), 91 s |
-| DeepHat-V1-7B Q4_K_M (4,7 GB) | **95,48%**, 5,8 s / 2,6 s | 97,81%, 106 s / 10,7 s | – | – |
-| Qwen3-0.6B Q4_K_M | **95,26%** | 97,16% | 96,82% | 97,13% |
-| Qwen3-0.6B Q5_K_M | **96,27%** | 98,55% | 98,42% | 98,55% |
-| Qwen3-0.6B Q6_K | **95,87%** | 98,66% | 98,34% | 98,67% |
+| qwen3-4b Q4_K_M (2,5 GB) | **93,69%**, 3,5 s / 1,6 s | 97,83%, 55 s / 5,9 s | 97,61%, 106 s | 97,88% (`-6`), 91 s |
+| DeepHat-V1-7B Q4_K_M (4,7 GB) | **93,20%**, 6,6 s / 2,9 s | 97,81%, 106 s / 10,7 s | – | – |
+| Qwen3-0.6B Q4_K_M | **93,57%** | 97,16% | 96,82% | 97,13% |
+| Qwen3-0.6B Q5_K_M | **94,63%** | 98,55% | 98,42% | 98,55% |
+| Qwen3-0.6B Q6_K | **95,19%** | 98,66% | 98,34% | 98,67% |
 | Qwen3-0.6B Q8_0 | **93,74%** | 96,02% | 95,17% | 95,98% |
+| Qwen3-0.6B Q4_0 | **91,08%** | – | – | – |
 
-(tempi: compressione / decompressione). Più piccolo di 1,4-2,8 punti del migliore dei
-concorrenti, e più veloce di tutti in entrambe le direzioni.
+(tempi: compressione / decompressione). Più piccolo di 1,4-4,6 punti del migliore dei
+concorrenti, e più veloce di tutti in entrambe le direzioni. Il modello a contesti
+(mode 4) vale 1,7-2,3 punti sui Q4_K/Q5_K rispetto a Huffman (mode 3: qwen3-4b era al
+95,65%, DeepHat al 95,48%), 0,7 sui Q6_K.

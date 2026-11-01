@@ -8,6 +8,7 @@ The block format is described in FloatPlane.h. */
 
 #include "CpuArch.h"
 #include "FloatPlane.h"
+#include "FloatQuant.h"
 #include "HuffEnc.h"
 
 #define kMaxK        2                   /* mantissa bits in the Huffman symbol: 0..2 */
@@ -59,6 +60,7 @@ static UInt32 LoadElem(const Byte *p, unsigned w)
 #define MODE_QUANT  3
 #define kQuantHeaderSize  (1 + 4 + 2)   /* mode, outLen, qtype, phase */
 #define kQSampleSize  ((size_t)1 << 16) /* to find type and phase */
+#define kQuantCtxOnly ((size_t)1 << 18) /* from this block size, mode 4 without mode 3 */
 #define kMaxQFields  4
 
 /* A field of the struct is one Huffman-coded sequence of symbols:
@@ -645,6 +647,8 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
   size_t splitTotal = storedTotal;
   CQuantPlan qplan;
   size_t quantTotal = storedTotal;
+  CFloatQuantPlan cplan;
+  size_t ctxTotal = storedTotal;
   unsigned t;
   int haveCandidate = 0;
 
@@ -684,11 +688,21 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     unsigned qType = 0, qPhase = 0;
     if (Detect_Quant(src, srcLen, &qType, &qPhase))
     {
-      Plan_Quant(src, srcLen, qType, qPhase, &qplan);
-      quantTotal = qplan.total;
-      if (quantTotal < storedTotal)
+      size_t qBest;
+      /* the K-quants with the context model (mode 4); the Huffman code (mode 3) only for
+         the other types and in small blocks, where the tables of the contexts can make
+         mode 4 larger (from 256 KiB mode 4 wins: about 1.7 points on Q4_K / Q5_K) */
+      if (FloatQuant_Plan(src, srcLen, qType, qPhase, &cplan))
+        ctxTotal = cplan.total;
+      if (ctxTotal == storedTotal || srcLen < kQuantCtxOnly)
       {
-        const UInt64 qCost = ((UInt64)quantTotal * 8 << 16) / srcLen;
+        Plan_Quant(src, srcLen, qType, qPhase, &qplan);
+        quantTotal = qplan.total;
+      }
+      qBest = ctxTotal < quantTotal ? ctxTotal : quantTotal;
+      if (qBest < storedTotal)
+      {
+        const UInt64 qCost = ((UInt64)qBest * 8 << 16) / srcLen;
         if (qCost < bestCost)
         {
           bestCost = qCost;         /* the bar for the zstd probe */
@@ -739,6 +753,13 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     }
   }
 
+  if (ctxTotal < quantTotal && ctxTotal < storedTotal && ctxTotal < splitTotal && ctxTotal < lzTotal)
+  {
+    /* the size of the plan is an estimate: the block is written if it fits */
+    const size_t size = FloatQuant_Write(src, srcLen, dest, storedTotal - 1, &cplan);
+    if (size != 0)
+      return size;
+  }
   if (quantTotal < storedTotal && quantTotal < splitTotal && quantTotal < lzTotal)
     return Write_Quant(src, srcLen, dest, &qplan);
   if (lzTotal < storedTotal && lzTotal <= splitTotal)
@@ -763,7 +784,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
 SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen)
 {
   UInt32 len;
-  if (srcLen < 5 || src[0] > MODE_QUANT)
+  if (srcLen < 5 || src[0] > FLOAT_QUANT_MODE)
     return SZ_ERROR_DATA;
   len = GetUi32(src + 1);
   if (len == 0 || len > FLOAT_PLANE_BLOCK_MAX)
@@ -892,6 +913,8 @@ SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
     *blockSize = kLzHeaderSize + lzSize;
     return SZ_OK;
   }
+  if (src[0] == FLOAT_QUANT_MODE)
+    return FloatQuant_GetBlockSize(src, srcLen, outLen, blockSize);
   if (src[0] == MODE_QUANT)
   {
     CQuantHeader h;
@@ -1865,6 +1888,8 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
 
   if (src[0] == MODE_QUANT)
     return Decode_Quant(src, srcLen, dest, outLen, srcUsed);
+  if (src[0] == FLOAT_QUANT_MODE)
+    return FloatQuant_Decode(src, srcLen, dest, outLen, srcUsed, g_SimdEnabled);
 
   {
     UInt16 table[(size_t)1 << kTableBits];

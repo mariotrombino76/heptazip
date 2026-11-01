@@ -309,33 +309,57 @@ static void FillQStruct(Byte *p, unsigned qtype)
       break;
     case kQ4_K:
     case kQ5_K:
-      PutFp16(p, 0.001f + 0.002f * (float)(Rnd32() & 255) / 256.0f);
-      PutFp16(p + 2, 0.002f + 0.002f * (float)(Rnd32() & 255) / 256.0f);
-      for (v = 0; v < 12; v++)
-        p[4 + v] = (Byte)(QValue(63) | (Rnd32() & 3) << 6);
+    {
+      /* come la quantizzazione di llama.cpp: i valori di un sotto-blocco stanno attorno
+         al suo punto zero q0 = dmin * m / (d * sc), il valore del peso 0 */
+      const unsigned nmax = qtype == kQ4_K ? 15 : 31;
+      const float d = 0.001f + 0.002f * (float)(Rnd32() & 255) / 256.0f;
+      const float dmin = (float)nmax * (0.0005f + 0.0005f * (float)(Rnd32() & 255) / 256.0f);
+      unsigned sc[8], mn[8];
+      PutFp16(p, d);
+      PutFp16(p + 2, dmin);
+      for (v = 0; v < 8; v++)
+      {
+        /* punto zero voluto tra 2 e nmax - 2 */
+        const float q0 = 2.0f + (float)(nmax - 4) * (float)(Rnd32() & 255) / 256.0f;
+        const int m = (int)(q0 * d * (float)(sc[v] = 8 + QValue(32)) / dmin + 0.5f);
+        mn[v] = m > 63 ? 63 : (unsigned)m;
+      }
+      for (v = 0; v < 4; v++)   /* scales[12] di ggml (get_scale_min_k4) */
+      {
+        p[4 + v] = (Byte)(sc[v] | ((sc[v + 4] >> 4) << 6));
+        p[8 + v] = (Byte)(mn[v] | ((mn[v + 4] >> 4) << 6));
+        p[12 + v] = (Byte)((sc[v + 4] & 15) | ((mn[v + 4] & 15) << 4));
+      }
       for (v = 0; v < 256; v++)
       {
         const unsigned c = v >> 6, h = (v >> 5) & 1, l = v & 31;
+        const float q0 = dmin * (float)mn[v >> 5] / (d * (float)sc[v >> 5]);
+        const int qi = (int)(q0 + Gauss((float)nmax / 5.0f) + 0.5f);
+        const unsigned q = qi < 0 ? 0 : qi > (int)nmax ? nmax : (unsigned)qi;
         if (qtype == kQ4_K)   /* qs[32c + l]: valori 64c + l e 64c + 32 + l */
-          p[16 + 32 * c + l] |= (Byte)(QValue(15) << (4 * h));
+          p[16 + 32 * c + l] |= (Byte)(q << (4 * h));
         else
         {
-          const unsigned q = QValue(31);
           p[48 + 32 * c + l] |= (Byte)((q & 15) << (4 * h));
           p[16 + l] |= (Byte)((q >> 4) << (2 * c + h));
         }
       }
       break;
+    }
     default:   /* Q6_K */
+      /* i valori di un sotto-blocco di 16 sono piu' larghi se la sua scala e' grande */
+      for (v = 0; v < 16; v++)
+        p[192 + v] = (Byte)(Int32)Gauss(40.0f);
       for (v = 0; v < 256; v++)
       {
         const unsigned h = v >> 7, c = (v >> 5) & 3, l = v & 31;
-        const unsigned q = QValue(63);
+        const int sc = (int)(signed char)p[192 + v / 16];
+        const int qi = 32 + (int)(Gauss(2.0f + (float)(sc < 0 ? -sc : sc) / 8.0f));
+        const unsigned q = qi < 0 ? 0 : qi > 63 ? 63 : (unsigned)qi;
         p[64 * h + 32 * (c & 1) + l] |= (Byte)((q & 15) << (4 * (c >> 1)));
         p[128 + 32 * h + l] |= (Byte)((q >> 4) << (2 * c));
       }
-      for (v = 0; v < 16; v++)
-        p[192 + v] = (Byte)(Int32)Gauss(20.0f);
       PutFp16(p + 208, 0.0005f + 0.001f * (float)(Rnd32() & 255) / 256.0f);
       break;
   }
@@ -378,10 +402,17 @@ static void Test_Quant(void)
         CHECK(FloatPlane_GetBlockSize(g_Enc, encLen, &blockSize) == SZ_OK && blockSize == encLen);
         CHECK(encLen < size);
         /* nei blocchi piccoli (qualche KB) le tabelle dei campi (~430-600 byte) possono
-           far vincere zstd */
+           far vincere zstd; fino a 256 KiB le tabelle dei contesti (mode 4) possono far
+           vincere Huffman (mode 3) */
         if (size < ((size_t)1 << 16))
           continue;
-        CHECK(g_Enc[0] == 3);
+        if (size < ((size_t)1 << 18) && qtype >= kQ4_K)
+        {
+          CHECK(g_Enc[0] == 3 || g_Enc[0] == 4);
+          continue;
+        }
+        /* i K-quant con il modello a contesti (mode 4), Q4_0 e Q8_0 con Huffman (mode 3) */
+        CHECK(g_Enc[0] == (qtype >= kQ4_K ? 4 : 3));
         CHECK(g_Enc[5] == qtype);
         CHECK(g_Enc[6] == phases[pi]);
         if (ci == 2 && pi == 1)
@@ -396,14 +427,17 @@ static void Test_QuantCorruption(void)
   unsigned qtype;
   for (qtype = 0; qtype < 5; qtype++)
   {
-    /* 16 KiB: le tabelle di Huffman dei campi (fino a ~600 byte) devono rendere */
-    const size_t size = FillQuant(g_Src, 16 * 1024 / kQSize[qtype], qtype, 3, 5);
+    /* 16 KiB: le tabelle di Huffman dei campi (fino a ~600 byte) devono rendere; i
+       K-quant con il modello a contesti (mode 4) da 256 KiB */
+    const size_t size = FillQuant(g_Src, (qtype >= kQ4_K ? 256 : 16) * 1024 / kQSize[qtype],
+        qtype, 3, 5);
     size_t encLen, pos, used;
     SRes res;
     encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc, LZ);
-    CHECK(g_Enc[0] == 3);
-    /* ogni byte dell'intestazione, poi un byte ogni 7 dei flussi */
-    for (pos = 0; pos < encLen; pos += pos < 1100 ? 1 : 7)
+    CHECK(g_Enc[0] == (qtype >= kQ4_K ? 4 : 3));
+    /* ogni byte dell'intestazione e delle tabelle, poi un byte ogni 7 (ogni 97 nei
+       flussi dei blocchi grandi) */
+    for (pos = 0; pos < encLen; pos += pos < 1100 ? 1 : encLen > 100000 ? 97 : 7)
     {
       static const Byte deltas[] = { 1, 0x80, 0xFF };
       unsigned d;
@@ -417,7 +451,7 @@ static void Test_QuantCorruption(void)
         g_Enc[pos] ^= deltas[d];
       }
     }
-    for (pos = 0; pos < encLen; pos++)
+    for (pos = 0; pos < encLen; pos += encLen > 100000 ? 61 : 1)
     {
       res = FloatPlane_DecodeBlock(g_Enc, pos, g_Dec, FLOAT_PLANE_BLOCK_MAX, &used, LZ);
       CHECK(res == SZ_ERROR_INPUT_EOF || res == SZ_ERROR_DATA);
@@ -440,7 +474,7 @@ int main(void)
   Test_Quant();
   FloatPlane_SetSimd(True);
   Test_RoundTrips();
-  printf("blocchi quantizzati (mode 3), 1 MiB:\n");
+  printf("blocchi quantizzati (mode 3 e 4), 1 MiB:\n");
   Test_Quant();
   Test_QuantCorruption();
   printf("scelta di tipo e fase, blocco da 1 MiB:\n");

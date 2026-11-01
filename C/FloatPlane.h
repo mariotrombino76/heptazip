@@ -34,9 +34,15 @@ the speed of a Huffman coder. The structs (types of ggml-common.h):
   bit 4h, bit 4 in qh[l] at bit 2c + h. Value v of Q6_K: h = v / 128, c = (v / 32) % 4,
   l = v % 32; low 4 bits in ql[64h + 32(c % 2) + l] at bit 4(c / 2), bits 4-5 in
   qh[32h + l] at bit 2c (as dequantize_row_q5_K / q6_K of ggml).
+Mode 4 codes the K-quants (Q4_K, Q5_K, Q6_K) with a context model: rANS with one
+frequency table per context, where the context of a quantized value is known from the
+fields decoded before it: in Q4_K / Q5_K the zero point of its sub-block (the quantized
+value of the weight 0: the values cluster around it), in Q6_K the scale of its sub-block.
+About 1.7 points smaller than mode 3 on Q4_K / Q5_K models, 0.7 on Q6_K (C/FloatQuant.c).
 
 Block format (all integers little-endian):
-  u8  mode                   0 = stored, 1 = split, 2 = zstd, 3 = quantized
+  u8  mode                   0 = stored, 1 = split, 2 = zstd, 3 = quantized,
+                             4 = quantized with contexts
   u32 outLen                 decoded size of the block, 1 .. FLOAT_PLANE_BLOCK_MAX
   mode 0:  outLen raw bytes
   mode 2:
@@ -62,6 +68,40 @@ Block format (all integers little-endian):
     for each field: numSyms / 2 bytes of code lengths (as mode 1), u32 huffSize[4]
     for each field: 4 streams, as mode 1: symbol i of the field (struct i / w, symbol
                              i % w of the struct) in stream i % 4
+  mode 4:
+    u8  qtype                2 .. 4 (Q4_K, Q5_K, Q6_K), struct size S
+    u8  phase                as mode 3; n structs (n >= 1), tail
+    phase raw bytes, tail raw bytes
+    for each field: u32 tabSize, u32 streamSize
+    for each field: tabSize bytes of frequency tables, then streamSize bytes of rANS
+  The fields, in coding order (symbols per struct, alphabet, precision P, contexts):
+    Q4_K, Q5_K: low bytes of d, dmin (2, 256, 12, ctx = which of the two); high bytes of
+      d, dmin (2, 256, 12, which); the scales sc_j of scales[12] (8, 64, 10, 1); the mins
+      m_j (8, 64, 10, sc_j >> 2); the values (256: Q4_K 16, P 9; Q5_K 32, P 9), value v
+      in the sub-block j = v / 32 with context 4 * b + (sc_j >> 4), b = min(31,
+      floor(k * q0)), q0 = dmin * m_j / (d * sc_j), k = 2 (Q4_K) or 1 (Q5_K), b = 31 if
+      d * sc_j = 0; q0 from the fp16 bits with exact integer arithmetic (ZeroBucket in
+      FloatQuant.c). Value v of Q4_K: low or high nibble (h = (v / 32) % 2) of
+      qs[32(v / 64) + v % 32]; of Q5_K as in mode 3. sc_j, m_j: get_scale_min_k4 of ggml.
+    Q6_K: scales[16] (16, 256, 12, 1); low byte of d (1, 256, 12, 1); high byte of d
+      (1, 256, 12, 1); the values (256, 64, 11, min(15, |scales[v / 16]| >> 3)).
+  Frequency tables of a field: per context one bit (1 = used), and if used, for each
+  symbol its level L (0 = absent, else a frequency of about 2^((L - 1) / 8)): L minus the
+  level of the previous symbol (0 before the first), zigzag (d >= 0: 2d, else -2d - 1),
+  plus 1 as Elias gamma (n - 1 zero bits, a 1, the n - 1 low bits; at most 9 bits); bits
+  LSB first, zero padding to a byte. L <= 185. The frequencies f (sum 2^P) of a context:
+  a = mant[(L - 1) % 8] << ((L - 1) / 8) with mant = 256 279 304 332 362 395 431 470,
+  f = max(1, floor(a * 2^P / sum(a))) for the present symbols; then, while the sum is not
+  2^P, the first symbol with the largest f takes the whole difference if the sum is
+  smaller, else gives back as much as it can keeping f >= 1. A context that is not used
+  decodes symbol 0 with f = 2^P.
+  rANS stream of a field: N states (u32, in [2^15, 2^31)): N = 64 for the values, 8 for
+  the other fields; then 16-bit words. The symbols of the field, struct by struct, in the
+  order above: symbol i is decoded by state x = state[i % N]: slot = x % 2^P, s the symbol
+  with cum[s] <= slot < cum[s] + f[s] (cum: the sum of the frequencies of the symbols
+  before s), x = f[s] * (x >> P) + slot - cum[s], then if x < 2^15, x = (x << 16) | the
+  next word. Decoding rejects a stream that does not end with every state at 2^15 and all
+  its words used.
   Canonical codes: shorter codes first, then by symbol value (as in Deflate).
   Decoding rejects lengths > 12, an over-subscribed code, a bit pattern that is not a
   code, and a huffSize[j] different from the bytes the codes of stream j actually use.

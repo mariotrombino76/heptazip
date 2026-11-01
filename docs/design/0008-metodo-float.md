@@ -242,8 +242,8 @@ Scelte misurate (Qwen3-4B Q4_K_M, `tools/bench/gguf_entropy.py` e prototipo):
   contro l'entropia del 96,6%; un codice per nibble perderebbe di più;
 - i valori a 5 e 6 bit ricomposti dai loro bit sparsi: Q6_K 96,5% contro 97,6% a byte,
   Q5_K 96,05% contro 97,0%;
-- il contesto aiuta poco: i valori Q4 dati scala e minimo del sotto-blocco 3,815 bit
-  contro 3,866 (servirebbe un codificatore aritmetico);
+- il contesto, misurato allora con scala e minimo grezzi (3,815 contro 3,866 bit),
+  sembrava valere poco: con il punto zero del sotto-blocco vale molto di più (§3.7);
 - una sola griglia (tipo, fase) per blocco: i blocchi a cavallo di due tensori sono
   l'1,1-2,7% dei dati, la perdita ~0,05 punti.
 
@@ -294,6 +294,68 @@ compressione 18-21 volte e decompressione 4 volte più veloci di LZMA2. Qwen3-0.
 7zz di default: Q4_K_M 95,26% (LZMA2 97,16%, zstd -19 96,82%, xz -9 97,13%), Q5_K_M
 96,27% (98,55 / 98,42 / 98,55), Q6_K 95,87% (98,66 / 98,34 / 98,67), Q8_0 93,74%
 (96,02 / 95,17 / 95,98).
+
+### 3.7 Modello a contesti per i K-quant (mode 4)
+
+Nei Q4_K/Q5_K il peso è `d·sc_j·q − dmin·m_j`: llama.cpp sceglie scala e minimo del
+sotto-blocco j (32 valori) in modo che i valori coprano 0..15 (0..31), e i pesi, che
+stanno attorno a 0, si addensano attorno al **punto zero** `q0 = dmin·m_j / (d·sc_j)`,
+il valore quantizzato del peso 0. Il decoder conosce q0 prima dei valori (d, dmin e le
+scale sono campi precedenti), quindi può usarlo come contesto. Entropia dei valori Q4
+dei tensori Q4_K di Qwen3-0.6B Q4_K_M (prototipo Python, blocchi da 1 MiB):
+
+| Modello dei valori Q4 (302 MB di Q4_K) | MB |
+|---|---|
+| Huffman sui byte (mode 3) | 260,32 |
+| entropia dei byte (rANS senza contesti) | 259,37 |
+| Huffman per contesto ⌊2·q0⌋ (32 contesti) | 257,27 |
+| entropia per contesto ⌊2·q0⌋ | 255,03 |
+| entropia per contesto ⌊2·q0⌋, sc_j >> 4 (128 contesti) | 254,62 |
+| contesto scala e minimo grezzi (4096 contesti) | 255,74 |
+
+Huffman per contesto perde metà del guadagno (alfabeti di 16 simboli): serve rANS. Le
+scale e i minimi a 6 bit separati invece dei 12 byte impacchettati: 22,50 → 21,30 MB; il
+minimo dato `sc_j >> 2`: 20,40 MB (la catena tra scale successive darebbe solo 0,16 MB
+in più e serializza la decodifica). Nei Q6_K il contesto è `|scala| >> 3` del
+sotto-blocco di 16 (−0,4%); nei Q4_0 e Q8_0 i contesti valgono 0,1-0,4% e restano a
+Huffman.
+
+**Formato** (FloatPlane.h): per campo, tabelle delle frequenze (un livello per simbolo a
+1/8 di ottava, delta zigzag in Elias gamma: ~800 byte per blocco da 1 MiB; la
+quantizzazione dei livelli costa ~0,01%) e un flusso rANS a 32 bit con parole da 16 bit
+(stati in [2^15, 2^31): l'encoder usa i reciproci di rans_byte, esatti sotto 2^31).
+Precisione P = 9 per i valori Q4/Q5 (contro l'entropia: +0,003%), 10 per scale e minimi,
+11 per i Q6, 12 per i byte. Il calcolo di q0 è intero ed esatto sui bit fp16 (nessuna
+dipendenza dal virgola mobile della piattaforma).
+
+**Stati.** I valori usano 64 stati intrecciati, gli altri campi 8: con 8 stati il
+decoder scalare si ferma a ~440 MB/s (catena di dipendenze e registri), il decoder AVX2
+tiene 8 vettori di 8 stati in volo: per vettore due gather (il simbolo da una tabella di
+byte con letture da 4 byte, poi frequenza e cumulata), la rinormalizzazione senza salti
+(maschera → indice di permutazione delle parole del flusso). 32 stati davano 670 MB/s,
+64 ne danno ~800; i 256 byte di stati in più per blocco costano 0,01%. GCC eliminava la
+sorgente zero dei gather a maschera piena e raccoglieva in un registro del giro
+precedente (una dipendenza tra i giri: 372 → 533 MB/s con la maschera resa opaca).
+
+Qwen3-0.6B, un core (nucleo; GCC, la build di default / clang):
+
+| GGUF | mode 3 | mode 4 | decompressione | compressione |
+|---|---|---|---|---|
+| Q4_K_M | 95,79% | **94,06%** | 737 / 759 MB/s (mode 3: 947) | 238 / 257 MB/s |
+| Q5_K_M | 96,74% | **95,06%** | 799 / 842 MB/s (805) | 255 / 280 MB/s |
+| Q6_K | 96,31% | **95,58%** | 936 / 1027 MB/s (806) | 303 / 329 MB/s |
+
+Nell'archivio (`7zz a` senza opzioni, 20 thread; compressione / `7zz t`):
+
+| Modello | mode 3 | **mode 4** | LZMA2 `-mx5` |
+|---|---|---|---|
+| qwen3-4b Q4_K_M (2,5 GB) | 95,65%, 2,6 s / 1,4 s | **93,69%**, 3,5 s / 1,6 s | 97,83%, 55 s / 5,9 s |
+| DeepHat-V1-7B Q4_K_M (4,7 GB) | 95,48%, 5,8 s / 2,6 s | **93,20%**, 6,6 s / 2,9 s | 97,81%, 106 s / 10,7 s |
+| Qwen3-0.6B Q4_K_M / Q5_K_M / Q6_K | 95,26 / 96,27 / 95,87% | **93,57 / 94,63 / 95,19%** | 97,16 / 98,55 / 98,66% |
+
+Estrazione a un thread: 620 MB/s (qwen3-4b). L'encoder pianifica solo il mode 4 per i
+K-quant da 256 KiB in su; sotto confronta anche il mode 3 (le tabelle dei contesti
+possono pesare più del guadagno).
 
 ## 4. Risultati
 
@@ -355,7 +417,11 @@ in decompressione), sono solo indicative.
   FLOAT. Archivi identici con `-mpfc=off/on`, estrazione corretta.
 - `tests/fuzz/fuzz_float.c` (libFuzzer, con zstd reale): round-trip di qualunque input,
   decodifica di qualunque input (2 x 20 minuti, 4,5 milioni di esecuzioni, nessun
-  problema).
+  problema); per il mode 4, semi da tensori reali Q4_K/Q5_K/Q6_K e 1,78 milioni di
+  esecuzioni (16 worker, 25 minuti) con il confronto tra decoder AVX2 e scalare.
+- Mode 4 nei test unitari: K-quant sintetici quantizzati come llama.cpp (valori attorno
+  al punto zero), round-trip con e senza AVX2, ogni byte di intestazione e tabelle
+  corrotto, troncamenti; ASan + UBSan; ARM64 (qemu, decoder scalare).
 - Interoperabilità: un archivio con blocchi zstd si estrae con una build senza encoder
   zstd; quella build produce archivi senza modo 2, estratti dalla build normale.
 - Multi-thread: archivi identici con 1, 4 e 20 thread; 300 archivi corrotti a caso
@@ -364,10 +430,10 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Quantizzati: un modello con contesto (i valori a 4 bit dato scala e minimo del
-  sotto-blocco: 3,866 → 3,815 bit) varrebbe circa mezzo punto, con un codificatore
-  aritmetico; i tipi IQ* e Q2_K/Q3_K non sono ancora coperti.
+- Quantizzati: Q4_0 e Q8_0 in rANS (~0,3 punti su Q4_0); i tipi IQ* e Q2_K/Q3_K non
+  sono ancora coperti; un encoder rANS AVX2 (oggi ~240 MB/s a thread contro ~650 del
+  mode 3).
 - Estrazione multi-thread: oltre ~2,2 GB/s il limite è la pipeline (thread chiamante,
   copie, CRC), non il decoder.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
-- v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.
+- v2 con rANS anche per i float: da valutare contro il costo in velocità.
