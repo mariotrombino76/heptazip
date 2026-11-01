@@ -91,8 +91,9 @@ SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize);
 SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t destLen, size_t *srcUsed,
     const CFloatPlaneLz *lz);
 
-/* SIMD (AVX2) in the decoder: on by default where the CPU has it. Tests and benchmarks
-   can turn it off to check the scalar code (not thread-safe: set it before decoding). */
+/* Fast paths of the decoder: on by default (SIMD where the CPU has it, two symbols per
+   table lookup). Tests and benchmarks can turn them off to get the reference decoder:
+   scalar code, one symbol per lookup (not thread-safe: set it before decoding). */
 void FloatPlane_SetSimd(BoolInt enable);
 
 EXTERN_C_END

@@ -154,22 +154,42 @@ Due fasi per gruppi di 2048 elementi:
 
 1. **simboli**: i 4 flussi di Huffman in un buffer da 4 KB (cache L1). È scalare per
    natura (ogni simbolo dipende dallo shift del precedente nel suo flusso); i 4 flussi
-   vanno in parallelo. Da sola: ~2300 MB/s di pesi BF16 su un core.
-2. **ricomposizione**: elementi dai simboli e dal piano r impacchettato. Con AVX2 (scelto a
-   runtime con `CPU_IsSupported_AVX2()`) 16 elementi per iterazione:
-   - un load da 32 byte dei simboli e uno da 16 byte dei 16 campi di r, copiato nelle due
-     metà;
-   - `vpshufb` porta in ogni lane i 2 byte del suo campo, e lo shift diverso per lane
-     (AVX2 non ha `vpsrlvw`) è una moltiplicazione per 2^(8 - sh) seguita da uno shift di 8;
-   - JOIN con shift costanti e uno store da 32 byte.
+   vanno in parallelo, ognuno al proprio ritmo. Oltre alla tabella dei codici (12 bit →
+   un simbolo) il decoder costruisce per ogni blocco una **tabella doppia** (come Huff0
+   "X2"): quando due codici stanno nei 12 bit letti, un solo accesso dà due simboli. I
+   codici medi sono di 2-5 bit, quindi quasi ogni accesso ne dà due: la catena di
+   latenza per simbolo (accesso alla tabella e shift) si dimezza. Il numero di
+   iterazioni sicure (byte rimasti nei flussi, simboli rimasti nel gruppo) è calcolato
+   prima del ciclo, che quindi non ha controlli di fine flusso; vicino alla fine un ciclo
+   a un simbolo per volta finisce ogni flusso.
+2. **ricomposizione**: elementi dai simboli e dal piano r impacchettato, con SIMD:
+   - **AVX2** (x86-64, scelto a runtime con `CPU_IsSupported_AVX2()`):
+     - BF16/FP16, 16 elementi per iterazione: un load da 32 byte dei simboli e uno da 16
+       byte dei 16 campi di r, copiato nelle due metà; `vpshufb` porta in ogni lane i 2
+       byte del suo campo, e lo shift diverso per lane (AVX2 non ha `vpsrlvw`) è una
+       moltiplicazione per 2^(8 - sh) seguita da uno shift di 8;
+     - FP32, 8 elementi: due load da 16 byte (campi 0-3 e 4-7), `vpshufb` porta in ogni
+       lane da 32 bit i 4 byte del suo campo, `vpsrlvd` lo allinea;
+     - JOIN con shift costanti e uno store da 32 byte.
+   - **NEON** (ARM64, sempre presente): stesso schema con `vqtbl1q_u8` (BF16/FP16, 16
+     elementi) e `vqtbl2q_u8` (FP32, 8 elementi su una tabella di 32 byte); `vshlq` con
+     conteggi negativi fa lo shift diverso per lane.
 
-   Senza AVX2 (e per FP32) c'è un ciclo scalare per ogni (tipo, k).
+   Il resto del gruppo (e le CPU x86 senza AVX2) usa un ciclo scalare per ogni (tipo, k).
 
-La versione con un solo ciclo per elemento era a ~1360 MB/s con GCC: l'estrazione scalare
-dei campi impacchettati pesava il 42% del tempo. Con le due fasi e AVX2 il nucleo
-decodifica a ~1980 MB/s, oltre i 1900 del formato senza k. `FloatPlane_SetSimd()` spegne
-il SIMD per i test: il test unitario prova entrambi i percorsi, e il fuzzer confronta SIMD
-e scalare su ogni input (stesso esito, stessi byte).
+Velocità del nucleo (un core, i7-12700H, GCC `-O2` come la build Release):
+
+| Modello | un ciclo per elemento | due fasi + AVX2 BF16/FP16 | + AVX2 FP32 e tabella doppia |
+|---|---|---|---|
+| Qwen3-0.6B (BF16) | ~1360 MB/s | ~1950 MB/s | **~2370 MB/s** |
+| pythia-160m (FP16) | – | ~1950 MB/s | **~2130 MB/s** |
+| gpt2 (FP32) | – | ~2340 MB/s | **~3600 MB/s** |
+
+`FloatPlane_SetSimd(False)` dà il **decoder di riferimento**: ricomposizione scalare e
+un simbolo per accesso. Il test unitario prova entrambi i percorsi, e il fuzzer confronta
+quello veloce con quello di riferimento su ogni input (stesso esito, stessi byte). Il
+codice NEON è provato con la build ARM64 incrociata sotto qemu (`cmake/toolchains/`,
+BUILD-modern.md): suite completa e corpus del fuzzer.
 
 ### 3.5 Scelta automatica
 
@@ -219,13 +239,15 @@ Velocità nell'archivio (CRC compreso), Qwen BF16:
 | | 1 thread | 20 thread |
 |---|---|---|
 | compressione | 475 MB/s | 1500 MB/s |
-| decompressione | 1616 MB/s | 2150 MB/s |
+| decompressione | 1846 MB/s | 2120 MB/s |
 
 Con 7 MB di memoria a thread singolo; con N thread l'archivio è identico byte per byte.
 Storia del decoder a un thread nell'archivio: 750 MB/s con un flusso di Huffman, 1460 con
 4 flussi, 1105 con i bit di mantissa nel simbolo (k, −0,30% di dimensione: costava
-l'estrazione dei campi impacchettati di r), **1616** con le due fasi e AVX2 (§3.4).
-pythia FP16 1785 MB/s, gpt2 FP32 1827 MB/s.
+l'estrazione dei campi impacchettati di r), 1616 con le due fasi e AVX2, **1846** con la
+tabella doppia (§3.4). pythia FP16 1819 MB/s, gpt2 FP32 2664 MB/s (AVX2 anche per FP32).
+Con più thread l'estrazione resta a ~2100-2250 MB/s: il limite è il resto della pipeline
+di estrazione (thread chiamante, copie, CRC), non il decoder.
 
 **ZipNN** 0.5.4 (PyPI) arriva allo stesso rapporto (66,2-66,6%), ma qui non è senza
 perdita: la decompressione restituisce dati diversi dall'originale con ogni

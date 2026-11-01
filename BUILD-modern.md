@@ -51,6 +51,26 @@ cmake -S . -B build-clang20 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=cla
 Con GCC ≥ 16 `-Warray-bounds` non è trattato come errore: segnala falsi positivi
 dovuti alla devirtualizzazione speculativa (vedi `CMakeLists.txt`).
 
+### ARM64 (aarch64)
+
+Il codice compila anche per Linux ARM64 (`-Werror`), con il SIMD NEON nel decoder FLOAT.
+Build incrociata con i test eseguiti da qemu-user (`cmake/toolchains/aarch64-linux-gnu.cmake`):
+
+```sh
+sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user
+cmake -S . -B build-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake \
+      -DCMAKE_BUILD_TYPE=Release
+cmake --build build-arm64 -j"$(nproc)"
+ctest --test-dir build-arm64 -j8     # tutti i test sotto qemu (~13 minuti)
+```
+
+Nei test CTest i programmi ARM64 sono lanciati attraverso l'emulatore, anche quelli
+avviati dagli script Python (`tests/CMakeLists.txt`, `_sz_program`). Senza root si
+possono estrarre i pacchetti `.deb` con `apt-get download` e `dpkg -x` e passare i
+compilatori con `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` (con `-static`, per
+non dipendere dalle librerie ARM64 in `/usr/aarch64-linux-gnu`) e qemu con
+`-DSEVENZIP_QEMU_AARCH64=...`.
+
 ### Assembly x86-64 (consigliato)
 
 Con un assembler disponibile `SEVENZIP_ASM` è attivo di default: decompressione LZMA

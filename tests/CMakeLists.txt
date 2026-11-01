@@ -130,36 +130,59 @@ if(SEVENZIP_SANITIZE MATCHES "undefined")
   list(APPEND _test_env "UBSAN_OPTIONS=print_stacktrace=1")
 endif()
 
+# Cross build (cmake/toolchains/): the programs of the target run through the emulator
+# (qemu-user). Direct tests get it as a prefix (_emu); the Python tests get, for each
+# program, a small script that runs it through the emulator (_sz_program).
+set(_emu "")
+if(CMAKE_CROSSCOMPILING AND CMAKE_CROSSCOMPILING_EMULATOR)
+  set(_emu ${CMAKE_CROSSCOMPILING_EMULATOR})
+endif()
+function(_sz_program var target)
+  if(_emu)
+    list(JOIN _emu " " _e)
+    file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/emu/${target}
+      CONTENT "#!/bin/sh\nexec ${_e} \"$<TARGET_FILE:${target}>\" \"$@\"\n"
+      FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+                       WORLD_READ WORLD_EXECUTE)
+    set(${var} ${CMAKE_CURRENT_BINARY_DIR}/emu/${target} PARENT_SCOPE)
+  else()
+    set(${var} $<TARGET_FILE:${target}> PARENT_SCOPE)
+  endif()
+endfunction()
+_sz_program(_7zz 7zz)
+_sz_program(_extract_trace extract_trace)
+_sz_program(_update_growing update_growing)
+
 add_test(NAME extract_equivalence_mt
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/extract_equivalence.py
-          --7zz $<TARGET_FILE:7zz>
-          --trace-a $<TARGET_FILE:extract_trace>
+          --7zz ${_7zz}
+          --trace-a ${_extract_trace}
           --config-a=-mmt=1
           --config-b=-mmt=on)
 set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
 
-add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zextract_mt>)
+add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_7zextract_mt>)
 set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
-add_test(NAME unit_com_try COMMAND ${_test_launcher} $<TARGET_FILE:unit_com_try>)
+add_test(NAME unit_com_try COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_com_try>)
 set_tests_properties(unit_com_try PROPERTIES TIMEOUT 60 ENVIRONMENT "${_test_env}")
 
-add_test(NAME unit_7zupdate_mt COMMAND ${_test_launcher} $<TARGET_FILE:unit_7zupdate_mt>)
+add_test(NAME unit_7zupdate_mt COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_7zupdate_mt>)
 set_tests_properties(unit_7zupdate_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
 # Compressione parallela dei folder (-mpfc, docs/design/0003): archivi identici byte
 # per byte, stessa console e stesso codice di uscita della compressione sequenziale.
 add_test(NAME update_equivalence_pfc
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/update_equivalence.py
-          --7zz $<TARGET_FILE:7zz>
+          --7zz ${_7zz}
           --config-a=-mpfc=off
           --config-b=-mpfc=on)
 set_tests_properties(update_equivalence_pfc PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
 
 add_test(NAME update_growing
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/update_growing.py
-          --7zz $<TARGET_FILE:7zz>
-          --tool $<TARGET_FILE:update_growing>)
+          --7zz ${_7zz}
+          --tool ${_update_growing})
 set_tests_properties(update_growing PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
 
 # Estrazione parallela dei folder (-mpfd, docs/design/0001): la traccia deve essere
@@ -174,8 +197,8 @@ foreach(_variant IN ITEMS "default;" "lowmem;-mmemuse=28m" "2threads;-mmt=2")
   list(GET _variant 1 _opts)
   add_test(NAME extract_equivalence_pfd_${_name}
     COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/extract_equivalence.py
-            --7zz $<TARGET_FILE:7zz>
-            --trace-a $<TARGET_FILE:extract_trace>
+            --7zz ${_7zz}
+            --trace-a ${_extract_trace}
             "--config-a=-mpfd=off ${_opts}"
             "--config-b=-mpfd=on ${_opts}")
   set_tests_properties(extract_equivalence_pfd_${_name} PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
@@ -185,7 +208,7 @@ endforeach()
 add_executable(unit_crc_clmul unit_crc_clmul.c ${CMAKE_SOURCE_DIR}/C/CpuArch.c)
 target_link_libraries(unit_crc_clmul PRIVATE sevenzip_flags)
 add_test(NAME fuzz_regress
-  COMMAND ${_test_launcher} $<TARGET_FILE:fuzz_replay> ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/regress)
+  COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:fuzz_replay> ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/regress)
 # Con ASan le allocazioni oltre 1 GiB sono errori: cosi' anche gli input "oom-*" (file di
 # pochi byte che chiedevano gigabyte) fanno fallire il test se il bug ritorna.
 set(_fuzz_env "${_test_env}")
@@ -199,14 +222,14 @@ target_link_libraries(unit_float_plane PRIVATE sevenzip_flags Threads::Threads m
 if(TARGET sevenzip_asm)
   add_dependencies(unit_float_plane sevenzip_asm)
 endif()
-add_test(NAME unit_float_plane COMMAND ${_test_launcher} $<TARGET_FILE:unit_float_plane>)
+add_test(NAME unit_float_plane COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_float_plane>)
 set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
-add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} $<TARGET_FILE:unit_crc_clmul>)
+add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
 # Output JSON di "l -json" confrontato con "-slt" (docs/json-output.md).
 add_test(NAME list_json
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/list_json.py
-          --7zz $<TARGET_FILE:7zz>)
+          --7zz ${_7zz})
 set_tests_properties(list_json PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")

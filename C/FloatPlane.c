@@ -534,6 +534,31 @@ static int Build_Table(const Byte *packedLens, unsigned numSyms, UInt16 *table)
   return 1;
 }
 
+/* table2[v] for the next kTableBits bits v: one or two symbols, when two codes fit in
+   the kTableBits bits: sym1 | (sym2 << 10) | (two << 20) | (length of both << 24);
+   0 = the first code is not a code. Built from table[]. */
+#define T2_TWO  ((UInt32)1 << 20)
+
+static void Build_Table2(const UInt16 *table, UInt32 *table2)
+{
+  unsigned v;
+  for (v = 0; v < ((unsigned)1 << kTableBits); v++)
+  {
+    const unsigned t1 = table[v];
+    const unsigned len1 = t1 >> 10;
+    UInt32 x = 0;
+    if (len1 != 0)
+    {
+      const unsigned t2 = table[(v << len1) & (((unsigned)1 << kTableBits) - 1)];
+      const unsigned len2 = t2 >> 10;
+      x = (t1 & 0x3FF) | ((UInt32)len1 << 24);
+      if (len2 != 0 && len1 + len2 <= kTableBits)
+        x = (t1 & 0x3FF) | ((UInt32)(t2 & 0x3FF) << 10) | T2_TWO | ((UInt32)(len1 + len2) << 24);
+    }
+    table2[v] = x;
+  }
+}
+
 /* r of element i, reading only the bytes inside the r plane: the bits of the field are
    always inside, the missing bytes would only give bits above it. */
 static UInt32 Read_R(const Byte *r, size_t rBytes, size_t i, unsigned rb)
@@ -563,6 +588,7 @@ static UInt32 Read_R(const Byte *r, size_t rBytes, size_t i, unsigned rb)
 typedef struct
 {
   const UInt16 *table;
+  const UInt32 *table2;  /* NULL: the reference decoder, one symbol per lookup */
   const Byte *r;       /* the packed r plane */
   size_t rBytes;
   size_t n;            /* elements */
@@ -594,44 +620,26 @@ typedef struct
   C |= 56; \
 }
 
-/* symbols of the elements i0 .. i0 + num - 1 (i0 % 16 == 0) into syms[] */
-static SRes Decode_Syms(CDecState *st, UInt16 *syms, size_t i0, size_t num)
+/* two symbols at most (or one) with table2, to positions o and o + 4 of the stream */
+#define DECODE_SYM2(B, C, o) \
+{ \
+  const UInt32 v = table2[(size_t)((B) >> (64 - kTableBits))]; \
+  const unsigned len = v >> 24; \
+  if (v == 0) \
+    return SZ_ERROR_DATA; \
+  o[0] = (UInt16)(v & 0x3FF); \
+  o[4] = (UInt16)((v >> 10) & 0x3FF); \
+  o += 4 + ((v >> 18) & 4); \
+  B <<= len; \
+  C -= len; \
+}
+
+/* stream j alone, one symbol at a time with careful refill, up to the end of the chunk */
+static SRes Decode_Syms_Tail(CDecState *st, unsigned j, UInt16 *o, const UInt16 *oEnd)
 {
   const UInt16 * const table = st->table;
-  size_t i = 0;
+  for (; o < oEnd; o += kNumStreams)
   {
-    /* fast loop: 16 symbols per iteration, 4 from each stream (<= 48 bits per refill) */
-    const Byte *h0 = st->hp[0], *h1 = st->hp[1], *h2 = st->hp[2], *h3 = st->hp[3];
-    const Byte * const e0 = st->hEnd[0], * const e1 = st->hEnd[1];
-    const Byte * const e2 = st->hEnd[2], * const e3 = st->hEnd[3];
-    UInt64 b0 = st->bits[0], b1 = st->bits[1], b2 = st->bits[2], b3 = st->bits[3];
-    unsigned c0 = st->cnt[0], c1 = st->cnt[1], c2 = st->cnt[2], c3 = st->cnt[3];
-    for (; i + 16 <= num; i += 16)
-    {
-      if (e0 - h0 < 8 || e1 - h1 < 8 || e2 - h2 < 8 || e3 - h3 < 8)
-        break;
-      REFILL_FAST(h0, b0, c0)
-      REFILL_FAST(h1, b1, c1)
-      REFILL_FAST(h2, b2, c2)
-      REFILL_FAST(h3, b3, c3)
-      /* 4 rounds written out: GCC -O2 does not unroll such a loop by itself */
-      DECODE_SYM(b0, c0, syms[i + 0])   DECODE_SYM(b1, c1, syms[i + 1])
-      DECODE_SYM(b2, c2, syms[i + 2])   DECODE_SYM(b3, c3, syms[i + 3])
-      DECODE_SYM(b0, c0, syms[i + 4])   DECODE_SYM(b1, c1, syms[i + 5])
-      DECODE_SYM(b2, c2, syms[i + 6])   DECODE_SYM(b3, c3, syms[i + 7])
-      DECODE_SYM(b0, c0, syms[i + 8])   DECODE_SYM(b1, c1, syms[i + 9])
-      DECODE_SYM(b2, c2, syms[i + 10])  DECODE_SYM(b3, c3, syms[i + 11])
-      DECODE_SYM(b0, c0, syms[i + 12])  DECODE_SYM(b1, c1, syms[i + 13])
-      DECODE_SYM(b2, c2, syms[i + 14])  DECODE_SYM(b3, c3, syms[i + 15])
-    }
-    st->hp[0] = h0; st->hp[1] = h1; st->hp[2] = h2; st->hp[3] = h3;
-    st->bits[0] = b0; st->bits[1] = b1; st->bits[2] = b2; st->bits[3] = b3;
-    st->cnt[0] = c0; st->cnt[1] = c1; st->cnt[2] = c2; st->cnt[3] = c3;
-  }
-  /* near the ends of the streams: one symbol at a time, careful refill */
-  for (; i < num; i++)
-  {
-    const unsigned j = (unsigned)(i0 + i) & 3;
     if (st->hEnd[j] - st->hp[j] >= 8)
       REFILL_FAST(st->hp[j], st->bits[j], st->cnt[j])
     else
@@ -643,9 +651,68 @@ static SRes Decode_Syms(CDecState *st, UInt16 *syms, size_t i0, size_t num)
           st->pad[j]++;
         st->cnt[j] += 8;
       }
-    DECODE_SYM(st->bits[j], st->cnt[j], syms[i])
+    DECODE_SYM(st->bits[j], st->cnt[j], *o)
   }
   return SZ_OK;
+}
+
+/* iterations of the fast loop that stream j can do: each one reads at most 7 bytes (and
+   needs 8 bytes to read) and gives at most 8 symbols, all before the end of the chunk */
+static size_t Fast_Iters(const Byte *h, const Byte *hEnd, const UInt16 *o, const UInt16 *oEnd)
+{
+  size_t a, b;
+  if (hEnd - h < 8 || o >= oEnd)
+    return 0;
+  a = (size_t)(hEnd - h - 8) / 7 + 1;
+  b = ((size_t)(oEnd - o) + kNumStreams - 1) / kNumStreams / 8;
+  return a < b ? a : b;
+}
+
+/* symbols of the elements i0 .. i0 + num - 1 (i0 % 16 == 0) into syms[]: element i of
+   the chunk is in stream i % 4, the streams are decoded each at its own pace */
+static SRes Decode_Syms(CDecState *st, UInt16 *syms, size_t num)
+{
+  const UInt32 * const table2 = st->table2;
+  const UInt16 * const oEnd = syms + num;
+  UInt16 *o0 = syms, *o1 = syms + 1, *o2 = syms + 2, *o3 = syms + 3;
+  if (table2)
+  {
+    /* fast loop: per iteration and stream, a refill (56..63 bits) and 4 lookups of at
+       most 12 bits each; the number of safe iterations is computed in advance */
+    const Byte *h0 = st->hp[0], *h1 = st->hp[1], *h2 = st->hp[2], *h3 = st->hp[3];
+    UInt64 b0 = st->bits[0], b1 = st->bits[1], b2 = st->bits[2], b3 = st->bits[3];
+    unsigned c0 = st->cnt[0], c1 = st->cnt[1], c2 = st->cnt[2], c3 = st->cnt[3];
+    for (;;)
+    {
+      size_t it = Fast_Iters(h0, st->hEnd[0], o0, oEnd), t;
+      t = Fast_Iters(h1, st->hEnd[1], o1, oEnd);  if (it > t) it = t;
+      t = Fast_Iters(h2, st->hEnd[2], o2, oEnd);  if (it > t) it = t;
+      t = Fast_Iters(h3, st->hEnd[3], o3, oEnd);  if (it > t) it = t;
+      if (it == 0)
+        break;
+      do
+      {
+        REFILL_FAST(h0, b0, c0)
+        REFILL_FAST(h1, b1, c1)
+        REFILL_FAST(h2, b2, c2)
+        REFILL_FAST(h3, b3, c3)
+        /* 4 rounds written out: GCC -O2 does not unroll such a loop by itself */
+        DECODE_SYM2(b0, c0, o0)  DECODE_SYM2(b1, c1, o1)  DECODE_SYM2(b2, c2, o2)  DECODE_SYM2(b3, c3, o3)
+        DECODE_SYM2(b0, c0, o0)  DECODE_SYM2(b1, c1, o1)  DECODE_SYM2(b2, c2, o2)  DECODE_SYM2(b3, c3, o3)
+        DECODE_SYM2(b0, c0, o0)  DECODE_SYM2(b1, c1, o1)  DECODE_SYM2(b2, c2, o2)  DECODE_SYM2(b3, c3, o3)
+        DECODE_SYM2(b0, c0, o0)  DECODE_SYM2(b1, c1, o1)  DECODE_SYM2(b2, c2, o2)  DECODE_SYM2(b3, c3, o3)
+      }
+      while (--it);
+    }
+    st->hp[0] = h0; st->hp[1] = h1; st->hp[2] = h2; st->hp[3] = h3;
+    st->bits[0] = b0; st->bits[1] = b1; st->bits[2] = b2; st->bits[3] = b3;
+    st->cnt[0] = c0; st->cnt[1] = c1; st->cnt[2] = c2; st->cnt[3] = c3;
+  }
+  /* near the end of the chunk or of the streams */
+  RINOK(Decode_Syms_Tail(st, 0, o0, oEnd))
+  RINOK(Decode_Syms_Tail(st, 1, o1, oEnd))
+  RINOK(Decode_Syms_Tail(st, 2, o2, oEnd))
+  return Decode_Syms_Tail(st, 3, o3, oEnd);
 }
 
 /* r of element i (RB bits at bit i * RB, little-endian) */
@@ -707,7 +774,7 @@ DEFINE_JOIN(4, 21, 2)
 typedef void (*Func_Join)(const CDecState *st, const UInt16 *syms, size_t i0, size_t num);
 
 
-/* ---------- AVX2 join for 2-byte elements (BF16, FP16) ---------- */
+/* ---------- AVX2 join (BF16, FP16, FP32) ---------- */
 
 #ifdef MY_CPU_X86_OR_AMD64
   #if defined(__clang__) && (__clang_major__ >= 4) \
@@ -789,16 +856,200 @@ DEFINE_JOIN_AVX2(8, 0)    /* FP16 */
 DEFINE_JOIN_AVX2(7, 1)
 DEFINE_JOIN_AVX2(6, 2)
 
+/* FP32, 8 elements per iteration:
+   - 8 symbols: one 16-byte load, zero-extended to 32 bits;
+   - 8 fields of r (RB = 24 - k bits, 8 * RB is a multiple of 8): elements 0..3 from a
+     16-byte load at the first byte of the group, elements 4..7 from a 16-byte load at the
+     byte of field 4 (each field with its shift fits in 4 bytes: 7 + 24 <= 32); vpshufb puts
+     the 4 bytes of field t in lane t, vpsrlvd shifts it by sh_t;
+   - JOIN with constant shifts, one 32-byte store. */
+#define DEFINE_JOIN_AVX2_4(SK, K) \
+static FLOAT_PLANE_ATTRIB_AVX2 void JoinAvx2_4_##SK##_##K(const CDecState *st, const UInt16 *syms, \
+    size_t i0, size_t num) \
+{ \
+  const unsigned RB = R_BITS(4, K); \
+  const unsigned b4 = (4 * RB) >> 3;  /* byte of field 4 in the group */ \
+  const Byte * const r = st->r; \
+  Byte * const e = st->e; \
+  const size_t rBytes = st->rBytes; \
+  Byte shuf[32]; \
+  UInt32 sh[8]; \
+  unsigned t; \
+  size_t i = 0; \
+  __m256i vShuf, vSh; \
+  for (t = 0; t < 8; t++) \
+  { \
+    const unsigned pos = t * RB, b = (pos >> 3) - (t < 4 ? 0 : b4); \
+    unsigned j; \
+    for (j = 0; j < 4; j++) \
+      shuf[t * 4 + j] = (Byte)(b + j); \
+    sh[t] = pos & 7; \
+  } \
+  vShuf = _mm256_loadu_si256((const __m256i *)(const void *)shuf); \
+  vSh = _mm256_loadu_si256((const __m256i *)(const void *)sh); \
+  { \
+    const __m256i vMaskR = _mm256_set1_epi32((int)((1u << RB) - 1)); \
+    const __m256i vMaskLow = _mm256_set1_epi32((int)((1u << (SK)) - 1)); \
+    for (; i + 8 <= num; i += 8) \
+    { \
+      const size_t ii = i0 + i; \
+      const size_t rPos = (ii * RB) >> 3; \
+      __m256i vr, vs, vx; \
+      if (rPos + b4 + 16 > rBytes) \
+        break; \
+      vr = _mm256_inserti128_si256(_mm256_castsi128_si256( \
+          _mm_loadu_si128((const __m128i *)(const void *)(r + rPos))), \
+          _mm_loadu_si128((const __m128i *)(const void *)(r + rPos + b4)), 1); \
+      vr = _mm256_shuffle_epi8(vr, vShuf); \
+      vr = _mm256_and_si256(_mm256_srlv_epi32(vr, vSh), vMaskR); \
+      vs = _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)(const void *)(syms + i))); \
+      vx = _mm256_or_si256( \
+          _mm256_or_si256(_mm256_and_si256(vr, vMaskLow), _mm256_slli_epi32(vs, SK)), \
+          _mm256_slli_epi32(_mm256_srli_epi32(vr, SK), (SK) + 8 + (K))); \
+      _mm256_storeu_si256((__m256i *)(void *)(e + ii * 4), vx); \
+    } \
+  } \
+  if (i < num) \
+    Join_4_##SK##_##K(st, syms + i, i0 + i, num - i); \
+}
+
+DEFINE_JOIN_AVX2_4(23, 0)   /* FP32 */
+DEFINE_JOIN_AVX2_4(22, 1)
+DEFINE_JOIN_AVX2_4(21, 2)
+
+#endif
+
+/* ---------- NEON join (ARM64: BF16, FP16, FP32) ---------- */
+
+#if defined(MY_CPU_ARM64) && (defined(__ARM_NEON) || defined(_MSC_VER))
+#define FLOAT_PLANE_USE_NEON
+
+#include <arm_neon.h>
+
+/* 16 elements of 2 bytes per iteration, as the AVX2 join: one 16-byte load of r (16 * RB
+   <= 128 bits, at a byte boundary), vqtbl1q puts in lane t the 2 bytes that hold field t
+   (indices >= 16 give 0), vshlq with negative counts shifts each lane right by sh_t. */
+#define DEFINE_JOIN_NEON(SK, K) \
+static void JoinNeon_2_##SK##_##K(const CDecState *st, const UInt16 *syms, size_t i0, size_t num) \
+{ \
+  const unsigned RB = R_BITS(2, K); \
+  const Byte * const r = st->r; \
+  Byte * const e = st->e; \
+  const size_t rBytes = st->rBytes; \
+  Byte idx[32]; \
+  int16_t sh[16]; \
+  unsigned t; \
+  size_t i = 0; \
+  for (t = 0; t < 16; t++) \
+  { \
+    const unsigned pos = t * RB, b = pos >> 3; \
+    idx[t * 2] = (Byte)b; \
+    idx[t * 2 + 1] = (Byte)(b + 1); /* 16: zero */ \
+    sh[t] = (int16_t)-(int)(pos & 7); \
+  } \
+  { \
+    const uint8x16_t vIdx0 = vld1q_u8(idx), vIdx1 = vld1q_u8(idx + 16); \
+    const int16x8_t vSh0 = vld1q_s16(sh), vSh1 = vld1q_s16(sh + 8); \
+    const uint16x8_t vMaskR = vdupq_n_u16((UInt16)((1u << RB) - 1)); \
+    const uint16x8_t vMaskLow = vdupq_n_u16((UInt16)((1u << (SK)) - 1)); \
+    for (; i + 16 <= num; i += 16) \
+    { \
+      const size_t ii = i0 + i; \
+      const size_t rPos = (ii * RB) >> 3; \
+      uint8x16_t vr; \
+      uint16x8_t r0, r1, x0, x1; \
+      if (rPos + 16 > rBytes) \
+        break; \
+      vr = vld1q_u8(r + rPos); \
+      r0 = vandq_u16(vshlq_u16(vreinterpretq_u16_u8(vqtbl1q_u8(vr, vIdx0)), vSh0), vMaskR); \
+      r1 = vandq_u16(vshlq_u16(vreinterpretq_u16_u8(vqtbl1q_u8(vr, vIdx1)), vSh1), vMaskR); \
+      x0 = vorrq_u16(vandq_u16(r0, vMaskLow), vshlq_n_u16(vld1q_u16(syms + i), SK)); \
+      x1 = vorrq_u16(vandq_u16(r1, vMaskLow), vshlq_n_u16(vld1q_u16(syms + i + 8), SK)); \
+      if ((SK) + 8 + (K) < 16) /* else r has no bits above the symbol */ \
+      { \
+        x0 = vorrq_u16(x0, vshlq_n_u16(vshrq_n_u16(r0, SK), ((SK) + 8 + (K)) & 15)); \
+        x1 = vorrq_u16(x1, vshlq_n_u16(vshrq_n_u16(r1, SK), ((SK) + 8 + (K)) & 15)); \
+      } \
+      vst1q_u16((UInt16 *)(void *)(e + ii * 2), x0); \
+      vst1q_u16((UInt16 *)(void *)(e + ii * 2 + 16), x1); \
+    } \
+  } \
+  if (i < num) \
+    Join_2_##SK##_##K(st, syms + i, i0 + i, num - i); \
+}
+
+/* 8 elements of 4 bytes per iteration: the RB (22..24) bytes of r from a 32-byte table
+   (two 16-byte loads), vqtbl2q puts in lane t the 4 bytes that hold field t. */
+#define DEFINE_JOIN_NEON_4(SK, K) \
+static void JoinNeon_4_##SK##_##K(const CDecState *st, const UInt16 *syms, size_t i0, size_t num) \
+{ \
+  const unsigned RB = R_BITS(4, K); \
+  const Byte * const r = st->r; \
+  Byte * const e = st->e; \
+  const size_t rBytes = st->rBytes; \
+  Byte idx[32]; \
+  int32_t sh[8]; \
+  unsigned t; \
+  size_t i = 0; \
+  for (t = 0; t < 8; t++) \
+  { \
+    const unsigned pos = t * RB; \
+    unsigned j; \
+    for (j = 0; j < 4; j++) \
+      idx[t * 4 + j] = (Byte)((pos >> 3) + j); \
+    sh[t] = -(int32_t)(pos & 7); \
+  } \
+  { \
+    const uint8x16_t vIdx0 = vld1q_u8(idx), vIdx1 = vld1q_u8(idx + 16); \
+    const int32x4_t vSh0 = vld1q_s32(sh), vSh1 = vld1q_s32(sh + 4); \
+    const uint32x4_t vMaskR = vdupq_n_u32(((UInt32)1 << RB) - 1); \
+    const uint32x4_t vMaskLow = vdupq_n_u32(((UInt32)1 << (SK)) - 1); \
+    for (; i + 8 <= num; i += 8) \
+    { \
+      const size_t ii = i0 + i; \
+      const size_t rPos = (ii * RB) >> 3; \
+      uint8x16x2_t vr; \
+      uint16x8_t vs; \
+      uint32x4_t r0, r1, x0, x1; \
+      if (rPos + 32 > rBytes) \
+        break; \
+      vr.val[0] = vld1q_u8(r + rPos); \
+      vr.val[1] = vld1q_u8(r + rPos + 16); \
+      r0 = vandq_u32(vshlq_u32(vreinterpretq_u32_u8(vqtbl2q_u8(vr, vIdx0)), vSh0), vMaskR); \
+      r1 = vandq_u32(vshlq_u32(vreinterpretq_u32_u8(vqtbl2q_u8(vr, vIdx1)), vSh1), vMaskR); \
+      vs = vld1q_u16(syms + i); \
+      x0 = vorrq_u32(vorrq_u32(vandq_u32(r0, vMaskLow), vshlq_n_u32(vmovl_u16(vget_low_u16(vs)), SK)), \
+          vshlq_n_u32(vshrq_n_u32(r0, SK), (SK) + 8 + (K))); \
+      x1 = vorrq_u32(vorrq_u32(vandq_u32(r1, vMaskLow), vshlq_n_u32(vmovl_u16(vget_high_u16(vs)), SK)), \
+          vshlq_n_u32(vshrq_n_u32(r1, SK), (SK) + 8 + (K))); \
+      vst1q_u32((UInt32 *)(void *)(e + ii * 4), x0); \
+      vst1q_u32((UInt32 *)(void *)(e + ii * 4 + 16), x1); \
+    } \
+  } \
+  if (i < num) \
+    Join_4_##SK##_##K(st, syms + i, i0 + i, num - i); \
+}
+
+DEFINE_JOIN_NEON(7, 0)    /* BF16 */
+DEFINE_JOIN_NEON(6, 1)
+DEFINE_JOIN_NEON(5, 2)
+DEFINE_JOIN_NEON(8, 0)    /* FP16 */
+DEFINE_JOIN_NEON(7, 1)
+DEFINE_JOIN_NEON(6, 2)
+DEFINE_JOIN_NEON_4(23, 0) /* FP32 */
+DEFINE_JOIN_NEON_4(22, 1)
+DEFINE_JOIN_NEON_4(21, 2)
+
 #endif
 
 static SRes Decode_Elements(CDecState *st, Func_Join join)
 {
-  UInt16 syms[kChunk];
+  UInt16 syms[kChunk + 8];   /* + 8: the second symbol of a lookup past the end */
   size_t i0;
   for (i0 = 0; i0 < st->n; i0 += kChunk)
   {
     const size_t num = st->n - i0 < kChunk ? st->n - i0 : kChunk;
-    RINOK(Decode_Syms(st, syms, i0, num))
+    RINOK(Decode_Syms(st, syms, num))
     join(st, syms, i0, num);
   }
   return SZ_OK;
@@ -817,7 +1068,16 @@ static const Func_Join g_JoinsAvx2[9] =
 {
   JoinAvx2_2_7_0, JoinAvx2_2_6_1, JoinAvx2_2_5_2,
   JoinAvx2_2_8_0, JoinAvx2_2_7_1, JoinAvx2_2_6_2,
-  Join_4_23_0, Join_4_22_1, Join_4_21_2    /* FP32: scalar */
+  JoinAvx2_4_23_0, JoinAvx2_4_22_1, JoinAvx2_4_21_2
+};
+#endif
+
+#ifdef FLOAT_PLANE_USE_NEON
+static const Func_Join g_JoinsNeon[9] =
+{
+  JoinNeon_2_7_0, JoinNeon_2_6_1, JoinNeon_2_5_2,
+  JoinNeon_2_8_0, JoinNeon_2_7_1, JoinNeon_2_6_2,
+  JoinNeon_4_23_0, JoinNeon_4_22_1, JoinNeon_4_21_2
 };
 #endif
 
@@ -833,6 +1093,10 @@ static Func_Join Get_Join(unsigned index)
   #ifdef FLOAT_PLANE_USE_AVX2
   if (g_SimdEnabled && CPU_IsSupported_AVX2())
     return g_JoinsAvx2[index];
+  #endif
+  #ifdef FLOAT_PLANE_USE_NEON
+  if (g_SimdEnabled)   /* NEON: always in ARM64 */
+    return g_JoinsNeon[index];
   #endif
   return g_Joins[index];
 }
@@ -878,6 +1142,7 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
 
   {
     UInt16 table[(size_t)1 << kTableBits];
+    UInt32 table2[(size_t)1 << kTableBits];
     CSplitHeader hd;
     CDecState st;
     unsigned j;
@@ -911,6 +1176,12 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
       st.pad[j] = 0;
     }
     st.table = table;
+    st.table2 = NULL;
+    if (g_SimdEnabled)
+    {
+      Build_Table2(table, table2);
+      st.table2 = table2;
+    }
     st.r = p;
     st.rBytes = rBytes;
     st.n = n;
