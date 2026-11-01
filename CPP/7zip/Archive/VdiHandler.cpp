@@ -370,6 +370,14 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback * /* openCallbac
     return E_OUTOFMEMORY;
   }
 
+  // 7zip-modern: the table is read whole from the file: check it is there before
+  // allocating (totalBlocks comes from the header, up to 16 GiB of table).
+  {
+    UInt64 fileSize;
+    RINOK(InStream_GetSize_SeekToEnd(stream, fileSize))
+    if (tableOffset > fileSize || numBytes > fileSize - tableOffset)
+      return S_FALSE;
+  }
   _table.Alloc(numBytes);
   RINOK(InStream_SeekSet(stream, tableOffset))
   RINOK(ReadStream_FALSE(stream, _table, numBytes))

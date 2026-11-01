@@ -66,9 +66,37 @@ add_executable(unit_com_try
   ${SEVENZIP_ZSTD_OBJECTS})
 target_link_libraries(unit_com_try PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
+# Fuzzing dei gestori di archivio (design 0007). fuzz_replay e' lo stesso harness senza
+# libFuzzer: riesegue gli input che avevano trovato bug (tests/fuzz/regress/<formato>/).
+add_executable(fuzz_replay
+  fuzz/fuzz_archive.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
+target_compile_definitions(fuzz_replay PRIVATE FUZZ_REPLAY)
+target_link_libraries(fuzz_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+
+# fuzz_archive (libFuzzer) non e' un test di CTest: si lancia con tools/fuzz/run-campaign.sh.
+set(_fuzz_targets "")
+if(SEVENZIP_FUZZ)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR NOT SEVENZIP_SANITIZE MATCHES "fuzzer-no-link")
+    message(FATAL_ERROR "SEVENZIP_FUZZ richiede Clang e SEVENZIP_SANITIZE con fuzzer-no-link")
+  endif()
+  add_executable(fuzz_archive
+    fuzz/fuzz_archive.cpp
+    $<TARGET_OBJECTS:sevenzip_c>
+    $<TARGET_OBJECTS:sevenzip_cpp>
+    ${SEVENZIP_ASM_OBJECTS}
+    ${SEVENZIP_ZSTD_OBJECTS})
+  target_link_libraries(fuzz_archive PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+  target_link_options(fuzz_archive PRIVATE -fsanitize=fuzzer)
+  set(_fuzz_targets fuzz_archive)
+endif()
+
 # Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
 if(TARGET sevenzip_asm)
-  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt unit_com_try)
+  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt unit_com_try fuzz_replay ${_fuzz_targets})
     add_dependencies(${_t} sevenzip_asm)
   endforeach()
 endif()
@@ -151,6 +179,14 @@ endforeach()
 # CRC32 con PCLMULQDQ (C/7zCrcClmul.h) contro un CRC32 di riferimento indipendente.
 add_executable(unit_crc_clmul unit_crc_clmul.c ${CMAKE_SOURCE_DIR}/C/CpuArch.c)
 target_link_libraries(unit_crc_clmul PRIVATE sevenzip_flags)
+add_test(NAME fuzz_regress
+  COMMAND ${_test_launcher} $<TARGET_FILE:fuzz_replay> ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/regress)
+# Con ASan le allocazioni oltre 1 GiB sono errori: cosi' anche gli input "oom-*" (file di
+# pochi byte che chiedevano gigabyte) fanno fallire il test se il bug ritorna.
+set(_fuzz_env "${_test_env}")
+list(TRANSFORM _fuzz_env REPLACE "^ASAN_OPTIONS=(.*)" "ASAN_OPTIONS=\\1:max_allocation_size_mb=1024")
+set_tests_properties(fuzz_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_fuzz_env}")
+
 add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 

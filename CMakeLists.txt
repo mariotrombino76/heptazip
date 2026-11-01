@@ -63,6 +63,11 @@ if(NOT SEVENZIP_ASM AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" 
   message(STATUS "Nessun assembler (asmc/uasm/jwasm): build in C puro, decompressione LZMA piu' lenta")
 endif()
 option(SEVENZIP_WERROR "Tratta i warning come errori (come upstream)" ON)
+# Fuzzing (design 0007): harness libFuzzer in tests/fuzz. Richiede Clang e
+# SEVENZIP_SANITIZE con fuzzer-no-link, es.:
+#   CC=clang-20 CXX=clang++-20 cmake -B build-fuzz -DSEVENZIP_FUZZ=ON \
+#     -DSEVENZIP_SANITIZE=address,undefined,fuzzer-no-link -DCMAKE_BUILD_TYPE=RelWithDebInfo
+option(SEVENZIP_FUZZ "Compila gli harness libFuzzer (tests/fuzz)" OFF)
 option(SEVENZIP_STRIP "Rimuove i simboli dal binario in Release (come upstream: -s)" ON)
 set(SEVENZIP_PGO "OFF" CACHE STRING "Profile-guided optimization: OFF, GEN, USE")
 set_property(CACHE SEVENZIP_PGO PROPERTY STRINGS OFF GEN USE)

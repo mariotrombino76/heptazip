@@ -5910,7 +5910,8 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
   if (FirstHeader.HeaderSize == 0)
     return S_FALSE;
 
-  _data.Alloc(FirstHeader.HeaderSize);
+  // 7zip-modern: _data is filled below with ReadToBuffer_Growing(): HeaderSize comes
+  // from the file (up to 4 GiB) and is allocated only while the data are there.
   _size = (size_t)FirstHeader.HeaderSize;
 
   Decoder.Method = Method;
@@ -5936,12 +5937,8 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
       if (Get32((const Byte *)buf) != FirstHeader.HeaderSize)
         return S_FALSE;
     }
-    {
-      size_t processedSize = FirstHeader.HeaderSize;
-      RINOK(Decoder.Read(_data, &processedSize))
-      if (processedSize != FirstHeader.HeaderSize)
-        return S_FALSE;
-    }
+    RINOK(ReadToBuffer_Growing(_data, FirstHeader.HeaderSize,
+        [this](void *data, size_t *size) { return Decoder.Read(data, size); }))
     
     #ifdef NSIS_SCRIPT
     if (IsSolid)
@@ -5957,10 +5954,9 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
   }
   else
   {
-    size_t processedSize = FirstHeader.HeaderSize;
-    RINOK(ReadStream(_stream, (Byte *)_data, &processedSize))
-    if (processedSize < FirstHeader.HeaderSize)
-      return S_FALSE;
+    ISequentialInStream *stream = _stream;
+    RINOK(ReadToBuffer_Growing(_data, FirstHeader.HeaderSize,
+        [stream](void *data, size_t *size) { return ReadStream(stream, data, size); }))
   }
 
   #ifdef NUM_SPEED_TESTS

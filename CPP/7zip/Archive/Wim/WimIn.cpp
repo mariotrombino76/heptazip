@@ -418,6 +418,11 @@ HRESULT CUnpacker::UnpackData(IInStream *inStream,
   const size_t size = (size_t)unpackSize64;
   if (size != unpackSize64)
     return E_OUTOFMEMORY;
+  // 7zip-modern: the callers check resource.UnpackSize against the memory limit, but
+  // for a solid resource the real size comes from db->Solids[] and was allocated
+  // unchecked (up to 2^56 bytes from a corrupted header; found by fuzzing).
+  if (MemUsage > MemUsage_Limit || unpackSize64 > MemUsage_Limit - MemUsage)
+    return E_OUTOFMEMORY;
   buf.Alloc(size);
 
   CMyComPtr2_Create<ISequentialOutStream, CBufPtrSeqOutStream> outStream;
@@ -1120,9 +1125,12 @@ HRESULT ReadHeader(IInStream *inStream, CHeader &h, UInt64 &phySize)
 
 HRESULT CDatabase::OpenXml(IInStream *inStream, const CHeader &h, CByteBuffer &xml)
 {
-  if (h.XmlResource.UnpackSize >= 1u << 26)
+  // 7zip-modern: limit the size that UnpackData() allocates (for a solid resource
+  // it is not h.XmlResource.UnpackSize but the size of the solid block).
+  const UInt64 xmlSize = Get_UnpackSize_of_Resource(h.XmlResource);
+  if (xmlSize >= 1u << 26)
     return E_OUTOFMEMORY;
-  RINOK(UpdateMemUsage(h.XmlResource.UnpackSize * 4))
+  RINOK(UpdateMemUsage(xmlSize * 4))
   CUnpacker unpacker;
   unpacker.MemUsage = MemUsage;
   unpacker.MemUsage_Limit = MemUsage_Limit;

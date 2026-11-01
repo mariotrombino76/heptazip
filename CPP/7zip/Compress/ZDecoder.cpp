@@ -12,8 +12,10 @@
 #include "ZDecoder.h"
 
 #ifdef MY_CPU_LE_UNALIGN
-#define GetUi24or32(p)      (*(const UInt32 *)(const void *)(p))
-#define GetUi24or32_TOP(p)  (*(const UInt32 *)(const void *)(p))
+// 7zip-modern: memcpy load (Z7_LoadNative32): (p) is at any byte offset, and a
+// misaligned load through a UInt32 pointer is undefined behaviour (found by fuzzing).
+#define GetUi24or32(p)      Z7_LoadNative32(p)
+#define GetUi24or32_TOP(p)  Z7_LoadNative32(p)
 #else
 #define GetUi24or32(p) ( \
              ((const Byte *)(p))[0]        | \

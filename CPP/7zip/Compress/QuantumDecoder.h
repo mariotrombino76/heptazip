@@ -3,6 +3,8 @@
 #ifndef ZIP7_INC_COMPRESS_QUANTUM_DECODER_H
 #define ZIP7_INC_COMPRESS_QUANTUM_DECODER_H
 
+#include "../../../C/Alloc.h"
+
 #include "../../Common/MyTypes.h"
 
 namespace NCompress {
@@ -47,11 +49,14 @@ class CDecoder
 
   void Init();
   HRESULT CodeSpec(const Byte *inData, size_t inSize, UInt32 outSize);
+  Z7_CLASS_NO_COPY(CDecoder)
 public:
   HRESULT Code(const Byte *inData, size_t inSize, UInt32 outSize, bool keepHistory);
   HRESULT SetParams(unsigned numDictBits);
 
   CDecoder(): _win(NULL), _numDictBits(0) {}
+  // 7zip-modern: the window from SetParams() was never freed (leak found by fuzzing).
+  ~CDecoder() { MidFree(_win); }
   const Byte * GetDataPtr() const { return _win + _winPos; }
 };
 
