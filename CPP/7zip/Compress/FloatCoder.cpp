@@ -303,7 +303,11 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
 Z7_COM7F_IMF(CDecoder::Code(ISequentialInStream *inStream, ISequentialOutStream *outStream,
     const UInt64 * /* inSize */, const UInt64 *outSize, ICompressProgressInfo *progress))
 {
-  const HRESULT res = Code2(inStream, outStream, outSize, progress);
+  // Code() is throw(): an allocation failure (std::bad_alloc from the slot buffers)
+  // must become E_OUTOFMEMORY, not std::terminate(). Stop() also runs after a throw.
+  HRESULT res;
+  try { res = Code2(inStream, outStream, outSize, progress); }
+  catch (...) { res = E_OUTOFMEMORY; }
   _ring.Stop();
   return res;
 }
@@ -437,7 +441,10 @@ HRESULT CEncoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
 Z7_COM7F_IMF(CEncoder::Code(ISequentialInStream *inStream, ISequentialOutStream *outStream,
     const UInt64 * /* inSize */, const UInt64 * /* outSize */, ICompressProgressInfo *progress))
 {
-  const HRESULT res = Code2(inStream, outStream, progress);
+  // As CDecoder::Code(): no exception may leave a throw() method.
+  HRESULT res;
+  try { res = Code2(inStream, outStream, progress); }
+  catch (...) { res = E_OUTOFMEMORY; }
   _ring.Stop();
   return res;
 }

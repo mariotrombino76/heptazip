@@ -682,6 +682,13 @@ HRESULT CDatabase::Open(IInStream *inStream)
   if (numFatItems == 0 || (numFatItems >> ssb2) != numSectorsForFAT)
     return S_FALSE;
 
+  UInt64 fileSize;
+  RINOK(InStream_GetSize_SeekToEnd(inStream, fileSize))
+  // Tensor7: the FAT sectors are in the file. With 4 KiB sectors the header alone
+  // could ask for 4 G FAT items, allocated below before any check (found by fuzzing).
+  if (numSectorsForFAT > (fileSize >> sectorSizeBits))
+    return S_FALSE;
+
   const size_t sectSize = (size_t)1 << sectorSizeBits;
   CByteArr sect(sectSize);
   CByteArr used(numFatItems);
@@ -693,8 +700,6 @@ HRESULT CDatabase::Open(IInStream *inStream)
   memset(used, 0, numFatItems);
   UInt32 *fat;
 
-  UInt64 fileSize;
-  RINOK(InStream_GetSize_SeekToEnd(inStream, fileSize))
 #if 0
   UInt32 numFatItems_Small = numFatItems;
   {

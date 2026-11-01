@@ -1187,6 +1187,12 @@ static SRes Huf_DecodeTable(CZstdDecHufTable *const p, CInBufPair *const in)
           return SZ_ERROR_DATA;
       }
       // src += (unsigned)accuracy >> 2; } while (--yyy);
+      /* Tensor7: a bit stream whose padding byte is the only byte (bitOffset == 0)
+         ends before the first weight: with (numSyms == 0) the sum below read
+         weights[1], never written (stack data). The reference decoder rejects a
+         table without weights as corrupted. */
+      if (numSyms == 0)
+        return SZ_ERROR_DATA;
     }
   }
   

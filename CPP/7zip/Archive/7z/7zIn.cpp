@@ -673,8 +673,8 @@ void CInArchive::Read_UInt32_Vector(CUInt32DefVector &v)
 {
   const unsigned numItems = v.Defs.Size();
   v.Vals.ClearAndSetSize(numItems);
-  UInt32 *p = &v.Vals[0];
-  const bool *defs = &v.Defs[0];
+  UInt32 *p = v.Vals.NonConstData();
+  const bool *defs = v.Defs.ConstData();
   for (unsigned i = 0; i < numItems; i++)
   {
     UInt32 a = 0;
@@ -1155,12 +1155,15 @@ void CInArchive::ReadStreamsInfo(
     ThrowIncorrect();
 }
 
+/* Tensor7: these readers take the data pointer with NonConstData()/ConstData(): with
+   (numItems == 0) the vector has no buffer and &v[0] bound a reference to NULL
+   (undefined behaviour, reported by UBSan on a crafted header). */
 void CInArchive::ReadBoolVector(unsigned numItems, CBoolVector &v)
 {
   v.ClearAndSetSize(numItems);
   Byte b = 0;
   Byte mask = 0;
-  bool *p = &v[0];
+  bool *p = v.NonConstData();
   for (unsigned i = 0; i < numItems; i++)
   {
     if (mask == 0)
@@ -1182,7 +1185,7 @@ void CInArchive::ReadBoolVector2(unsigned numItems, CBoolVector &v)
     return;
   }
   v.ClearAndSetSize(numItems);
-  bool *p = &v[0];
+  bool *p = v.NonConstData();
   for (unsigned i = 0; i < numItems; i++)
     p[i] = true;
 }
@@ -1196,8 +1199,8 @@ void CInArchive::ReadUInt64DefVector(const CObjectVector<CByteBuffer> &dataVecto
   streamSwitch.Set(this, &dataVector);
   
   v.Vals.ClearAndSetSize(numItems);
-  UInt64 *p = &v.Vals[0];
-  const bool *defs = &v.Defs[0];
+  UInt64 *p = v.Vals.NonConstData();
+  const bool *defs = v.Defs.ConstData();
 
   for (unsigned i = 0; i < numItems; i++)
   {

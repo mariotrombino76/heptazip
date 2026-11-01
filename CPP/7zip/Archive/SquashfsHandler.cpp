@@ -1262,12 +1262,20 @@ HRESULT CHandler::Decompress(ISequentialOutStream *outStream, Byte *outBuf, bool
       SRes sres;
       for (;;)
       {
+        const size_t inPosPrev = state.inPos;
+        const size_t winPosPrev = state.winPos;
         sres = ZstdDec_Decode(_zstd, &state);
         if (sres != SZ_OK)
           break;
         if (state.inLim == state.inPos
             && (state.status == ZSTD_STATUS_NEEDS_MORE_INPUT ||
                 state.status == ZSTD_STATUS_FINISHED_FRAME))
+          break;
+        // Tensor7: a frame larger than the block (outSizeMax) fills the output buffer;
+        // then the decoder returns ZSTD_STATUS_NOT_FINISHED without progress, and
+        // calling it again looped forever (a 4 KB image hung 7-Zip, found by fuzzing).
+        // The status check below reports the error.
+        if (state.inPos == inPosPrev && state.winPos == winPosPrev)
           break;
         // sres = sres;
         // break; // for debug

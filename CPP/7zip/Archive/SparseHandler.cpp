@@ -260,7 +260,8 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openCallback)
 
   _isArc = true;
   // Tensor7: NumChunks comes from the header (up to 4 G entries); the vector grows
-  // as chunk headers are actually read.
+  // as chunk headers are actually read, so the chunks are added with Add(), which
+  // checks the capacity (AddInReserved() here was a heap overflow after 65537 chunks).
   Chunks.Reserve(MyMin(h.NumChunks, (UInt32)1 << 16) + 1);
   UInt64 offset = kHeaderSize;
   UInt32 virtBlock = 0;
@@ -352,7 +353,7 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openCallback)
         return S_FALSE;
 
       virtBlock += numBlocks;
-      Chunks.AddInReserved(c);
+      Chunks.Add(c);
       if (type == CHUNK_TYPE_RAW)
         RINOK(InStream_SeekSet(stream, offset))
     }
@@ -370,7 +371,7 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openCallback)
     c.Construct();
     c.VirtBlock = virtBlock;
     c.PhyOffset = offset;
-    Chunks.AddInReserved(c);
+    Chunks.Add(c);
   }
   _virtSize_fromChunks = (UInt64)virtBlock << _blockSizeLog;
 

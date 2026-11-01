@@ -465,6 +465,11 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
 
     name.Empty();
     // bool isAltStream = false;
+    /* Tensor7: an item that is not in the archive must bring its properties and data:
+       otherwise Update() read db->Files[-1] (or a NULL db) for its name and attributes.
+       7-Zip's UI never does it; a client of the 7z.so API could. */
+    if (ui.IndexInArchive == -1 && (!ui.NewProps || !ui.NewData))
+      return E_INVALIDARG;
     if (ui.IndexInArchive != -1)
     {
       if (!db || (unsigned)ui.IndexInArchive >= db->Files.Size())
