@@ -117,6 +117,21 @@ def make_data(root: Path) -> None:
     gg = b"GGUF" + struct.pack("<IQQ", 3, 0, 1) + kv
     gg += b"\0" * ((-len(gg)) % 32)
     (sub / "tiny-f16.gguf").write_bytes(gg + struct.pack("<65536e", *(r.gauss(0.0, 0.02) for _ in range(65536))))
+    # GGUF Q4_K_M come lo scrive llama-quantize: general.file_type dopo il vocabolario
+    # (oltre i 16 KiB letti dall'analisi), poi strutture Q4_K (blocchi mode 3 di FLOAT)
+    toks = b"".join(gguf_str(b"tok%05d" % i) for i in range(30000))
+    kv = (gguf_str(b"tokenizer.ggml.tokens") + struct.pack("<IIQ", 9, 8, 30000) + toks
+          + gguf_str(b"general.file_type") + struct.pack("<II", 4, 15))   # MOSTLY_Q4_K_M
+    gg = b"GGUF" + struct.pack("<IQQ", 3, 0, 2) + kv
+    gg += b"\0" * ((-len(gg)) % 32)
+    def nib():
+        return max(0, min(15, int(round(r.gauss(7.5, 2.5)))))
+    q4k = bytearray()
+    for _ in range(2000):
+        q4k += struct.pack("<ee", 0.001 + 0.002 * r.random(), 0.002 + 0.002 * r.random())
+        q4k += bytes(max(0, min(63, int(r.gauss(32, 10)))) for _ in range(12))
+        q4k += bytes(nib() | (nib() << 4) for _ in range(128))
+    (sub / "tiny-q4k.gguf").write_bytes(gg + bytes(q4k))
     # eseguibili: per il gruppo dei filtri exe (analisi dell'intestazione ELF)
     elfs = [Path(p) for p in ("/usr/bin/true", "/usr/bin/ls", "/usr/bin/cat") if Path(p).is_file()]
     for i, src in enumerate(elfs):
@@ -207,6 +222,34 @@ def compare(sz, name, base_args, cfg_a, cfg_b, cwd, work, encrypted, failures, s
         failures.append(f"{name}:\n  " + "\n  ".join(problems))
 
 
+def check_auto_float(sz, data: Path, work: Path, failures) -> None:
+    """Senza opzioni i GGUF (F16, e Q4_K_M con la chiave oltre il buffer dell'analisi)
+    vanno al metodo FLOAT, e l'archivio si estrae uguale. (model.safetensors ha tanti
+    tensori U8 quanti BF16: resta a LZMA2.)"""
+    arc = work / "auto-float.7z"
+    rc, out, err = run(sz, ["a", "-t7z", "-bso0", "-bsp0", str(arc), "models"], data)
+    if rc != 0:
+        failures.append(f"auto-float: codice di uscita {rc}: {err[-300:]}")
+        return
+    rc, out, err = run(sz, ["l", "-slt", str(arc)], data)
+    methods = {}
+    path = None
+    for line in out.splitlines():
+        if line.startswith("Path = "):
+            path = line[7:]
+        elif line.startswith("Method = ") and path:
+            methods[Path(path).name] = line[9:]
+    for name in ("tiny-f16.gguf", "tiny-q4k.gguf"):
+        if not methods.get(name, "").startswith("FLOAT"):
+            failures.append(f"auto-float: {name} con metodo {methods.get(name)!r}, atteso FLOAT")
+    out_dir = work / "auto-float.x"
+    rc, _, err = run(sz, ["x", "-bso0", "-bsp0", f"-o{out_dir}", str(arc)], data)
+    if rc != 0 or not same_tree(data / "models", out_dir / "models"):
+        failures.append(f"auto-float: estrazione fallita o diversa (rc={rc})")
+    shutil.rmtree(out_dir, ignore_errors=True)
+    arc.unlink()
+
+
 def same_tree(a: Path, b: Path) -> bool:
     c = filecmp.dircmp(a, b)
     if c.left_only or c.right_only or c.diff_files or c.funny_files:
@@ -238,6 +281,9 @@ def main() -> int:
         big.mkdir()
         make_big(big)
         print(f"A: {' '.join(cfg_a)}\nB: {' '.join(cfg_b)}\nlavoro: {work}")
+        if not args.only or args.only in "auto-float":
+            ncases += 1
+            check_auto_float(sz, data, work, failures)
 
         def case(name, *a, **kw):
             nonlocal ncases

@@ -54,6 +54,57 @@ static UInt32 LoadElem(const Byte *p, unsigned w)
 #define LENS_BYTES(k)  ((size_t)(256 << (k)) / 2)
 
 
+/* ---------- Quantized structs (mode 3): GGUF Q4_0, Q8_0, Q4_K, Q5_K, Q6_K ---------- */
+
+#define MODE_QUANT  3
+#define kQuantHeaderSize  (1 + 4 + 2)   /* mode, outLen, qtype, phase */
+#define kQSampleSize  ((size_t)1 << 16) /* to find type and phase */
+#define kMaxQFields  4
+
+/* A field of the struct is one Huffman-coded sequence of symbols:
+   QF_BYTES: the bytes start + j * step (j < len) of each struct, 256 symbols;
+   QF_Q5, QF_Q6: the 256 quantized values of a Q5_K / Q6_K struct, 5 or 6 bits each,
+     whose low 4 bits and high 1-2 bits are in different bytes (layout in FloatPlane.h): 32 / 64 symbols. */
+#define QF_BYTES  0
+#define QF_Q5     1
+#define QF_Q6     2
+
+typedef struct
+{
+  Byte kind, start, len, step;
+} CQField;
+
+typedef struct
+{
+  unsigned size;       /* bytes of one struct (ggml block of 32 or 256 weights) */
+  unsigned mark[2];    /* high bytes of the fp16 scales d (and dmin): few values in a
+                          tensor; (mark[1] == mark[0]: one scale) */
+  unsigned numFields;
+  CQField f[kMaxQFields];
+} CQType;
+
+/* index = qtype byte of the block; layouts of ggml-common.h */
+static const CQType g_QTypes[] =
+{
+  /* Q4_0: d, qs[16] */
+  {  18, { 1, 1 }, 3, { { QF_BYTES, 0, 1, 1 }, { QF_BYTES, 1, 1, 1 }, { QF_BYTES, 2, 16, 1 } } },
+  /* Q8_0: d, qs[32] */
+  {  34, { 1, 1 }, 3, { { QF_BYTES, 0, 1, 1 }, { QF_BYTES, 1, 1, 1 }, { QF_BYTES, 2, 32, 1 } } },
+  /* Q4_K: d, dmin, scales[12], qs[128]: low bytes of d and dmin, high bytes, ... */
+  { 144, { 1, 3 }, 4, { { QF_BYTES, 0, 2, 2 }, { QF_BYTES, 1, 2, 2 }, { QF_BYTES, 4, 12, 1 },
+                   { QF_BYTES, 16, 128, 1 } } },
+  /* Q5_K: d, dmin, scales[12], qh[32], qs[128] */
+  { 176, { 1, 3 }, 4, { { QF_BYTES, 0, 2, 2 }, { QF_BYTES, 1, 2, 2 }, { QF_BYTES, 4, 12, 1 },
+                   { QF_Q5, 16, 0, 0 } } },
+  /* Q6_K: ql[128], qh[64], scales[16], d */
+  { 210, { 209, 209 }, 4, { { QF_Q6, 0, 0, 0 }, { QF_BYTES, 192, 16, 1 }, { QF_BYTES, 208, 1, 1 },
+                   { QF_BYTES, 209, 1, 1 } } }
+};
+#define kNumQTypes  (sizeof(g_QTypes) / sizeof(g_QTypes[0]))
+
+#define QF_WIDTH(f)     ((f)->kind == QF_BYTES ? (unsigned)(f)->len : 256u)   /* symbols per struct */
+#define QF_NUM_SYMS(f)  ((f)->kind == QF_BYTES ? 256u : (f)->kind == QF_Q5 ? 32u : 64u)
+
 /* ---------- Encoder ---------- */
 
 /* Order-0 cost of the exponent bytes in bits, fixed point (x 2^16): a log2 approximation
@@ -178,6 +229,32 @@ static void Plan_Split(const UInt32 *hist4, unsigned k, size_t n, unsigned w, si
       + huffTotal + R_BYTES(n, R_BITS(w, k));
 }
 
+/* Code writers, MSB first: A has C pending bits in its low bits. ADD_CODE appends a code
+   (at most 12 bits); FLUSH_CODES stores the whole bytes with one 8-byte store while the
+   stream has 8 bytes of room before its end E (the extra bytes are rewritten by the next
+   store), else byte by byte: no branch that depends on the code lengths. C < 8 after a
+   flush: 4 codes between flushes fit in A. */
+#define ADD_CODE(A, C, sym) \
+  { A = (A << lens[sym]) | codes[sym]; C += lens[sym]; }
+#define FLUSH_CODES(A, C, D, E) \
+  { \
+    if ((size_t)((E) - (D)) >= 8) \
+    { \
+      SetBe64(D, (A << 1) << (63 - C))   /* (C may be 0) */ \
+      D += C >> 3; \
+      C &= 7; \
+    } \
+    else \
+      while (C >= 8) { C -= 8; *D++ = (Byte)(A >> C); } \
+  }
+/* the end of a stream: the last bits, zero padding to a byte */
+#define END_CODES(A, C, D) \
+  { \
+    while (C >= 8) { C -= 8; *D++ = (Byte)(A >> C); } \
+    if (C != 0) \
+      *D++ = (Byte)(A << (8 - C)); \
+  }
+
 /* Writes the split block (mode 1) planned by Plan_Split(). */
 static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
     unsigned type, unsigned phase, const CSplitPlan *plan)
@@ -194,8 +271,8 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
   Byte *d = dest;
   Byte *ds[kNumStreams];
   Byte *dr;
-  UInt64 acc[kNumStreams], racc = 0;
-  unsigned cnt[kNumStreams], rcnt = 0;
+  UInt64 racc = 0;
+  unsigned rcnt = 0;
   size_t i;
   unsigned j;
 
@@ -217,22 +294,9 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
   {
     ds[j] = d;
     d += plan->huffSizes[j];
-    acc[j] = 0;
-    cnt[j] = 0;
   }
   dr = d;   /* the packed r plane, written in the same pass as the codes */
 
-  #define PUT_CODE(A, C, D, sym) \
-  { \
-    A = (A << lens[sym]) | codes[sym]; \
-    C += lens[sym]; \
-    if (C >= 32) \
-    { \
-      C -= 32; \
-      SetBe32(D, (UInt32)(A >> C)) \
-      D += 4; \
-    } \
-  }
   /* r: rb bits per element, little-endian bit order */
   #define PUT_R(x) \
   { \
@@ -247,46 +311,53 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
     } \
   }
 
-  /* 4 elements per iteration with the code writers in local variables */
+  /* 16 elements (4 codes per stream) per iteration with the writers in local variables */
   {
     Byte *d0 = ds[0], *d1 = ds[1], *d2 = ds[2], *d3 = ds[3];
+    Byte * const e0 = ds[0] + plan->huffSizes[0], * const e1 = ds[1] + plan->huffSizes[1];
+    Byte * const e2 = ds[2] + plan->huffSizes[2], * const e3 = ds[3] + plan->huffSizes[3];
     UInt64 a0 = 0, a1 = 0, a2 = 0, a3 = 0;
     unsigned c0 = 0, c1 = 0, c2 = 0, c3 = 0;
-    for (i = 0; i + 4 <= n; i += 4)
+    for (i = 0; i + 16 <= n; i += 16)
     {
-      const UInt32 x0 = LoadElem(e + (i + 0) * w, w);
-      const UInt32 x1 = LoadElem(e + (i + 1) * w, w);
-      const UInt32 x2 = LoadElem(e + (i + 2) * w, w);
-      const UInt32 x3 = LoadElem(e + (i + 3) * w, w);
-      PUT_CODE(a0, c0, d0, SPLIT_E(x0, SK, K))
-      PUT_CODE(a1, c1, d1, SPLIT_E(x1, SK, K))
-      PUT_CODE(a2, c2, d2, SPLIT_E(x2, SK, K))
-      PUT_CODE(a3, c3, d3, SPLIT_E(x3, SK, K))
-      PUT_R(x0)
-      PUT_R(x1)
-      PUT_R(x2)
-      PUT_R(x3)
+      unsigned t;
+      for (t = 0; t < 16; t += 4)
+      {
+        const UInt32 x0 = LoadElem(e + (i + t + 0) * w, w);
+        const UInt32 x1 = LoadElem(e + (i + t + 1) * w, w);
+        const UInt32 x2 = LoadElem(e + (i + t + 2) * w, w);
+        const UInt32 x3 = LoadElem(e + (i + t + 3) * w, w);
+        ADD_CODE(a0, c0, SPLIT_E(x0, SK, K))
+        ADD_CODE(a1, c1, SPLIT_E(x1, SK, K))
+        ADD_CODE(a2, c2, SPLIT_E(x2, SK, K))
+        ADD_CODE(a3, c3, SPLIT_E(x3, SK, K))
+        PUT_R(x0)
+        PUT_R(x1)
+        PUT_R(x2)
+        PUT_R(x3)
+      }
+      FLUSH_CODES(a0, c0, d0, e0)
+      FLUSH_CODES(a1, c1, d1, e1)
+      FLUSH_CODES(a2, c2, d2, e2)
+      FLUSH_CODES(a3, c3, d3, e3)
     }
-    ds[0] = d0; ds[1] = d1; ds[2] = d2; ds[3] = d3;
-    acc[0] = a0; acc[1] = a1; acc[2] = a2; acc[3] = a3;
-    cnt[0] = c0; cnt[1] = c1; cnt[2] = c2; cnt[3] = c3;
-  }
-  for (; i < n; i++)
-  {
-    const UInt32 x = LoadElem(e + i * w, w);
-    j = (unsigned)i & 3;
-    PUT_CODE(acc[j], cnt[j], ds[j], SPLIT_E(x, SK, K))
-    PUT_R(x)
-  }
-  for (j = 0; j < kNumStreams; j++)
-  {
-    while (cnt[j] >= 8)
+    for (; i < n; i++)
     {
-      cnt[j] -= 8;
-      *ds[j]++ = (Byte)(acc[j] >> cnt[j]);
+      const UInt32 x = LoadElem(e + i * w, w);
+      const unsigned sym = SPLIT_E(x, SK, K);
+      switch (i & 3)
+      {
+        case 0: ADD_CODE(a0, c0, sym)  FLUSH_CODES(a0, c0, d0, e0)  break;
+        case 1: ADD_CODE(a1, c1, sym)  FLUSH_CODES(a1, c1, d1, e1)  break;
+        case 2: ADD_CODE(a2, c2, sym)  FLUSH_CODES(a2, c2, d2, e2)  break;
+        default: ADD_CODE(a3, c3, sym)  FLUSH_CODES(a3, c3, d3, e3)  break;
+      }
+      PUT_R(x)
     }
-    if (cnt[j] != 0)
-      *ds[j]++ = (Byte)(acc[j] << (8 - cnt[j]));
+    END_CODES(a0, c0, d0)
+    END_CODES(a1, c1, d1)
+    END_CODES(a2, c2, d2)
+    END_CODES(a3, c3, d3)
   }
   while (rcnt > 0)
   {
@@ -297,6 +368,272 @@ static size_t Write_Split(const Byte *src, size_t srcLen, Byte *dest,
   return (size_t)(dr - dest);
 }
 
+/* ---------- Encoder of quantized blocks (mode 3) ---------- */
+
+/* collision probability sum(f^2) / n^2 (16.16) of the bytes b[i * S], i < n; hist[] is
+   all zero before and after */
+static UInt32 Collision(const Byte *b, unsigned S, size_t n, UInt32 *hist)
+{
+  UInt64 sumSq = 0;
+  size_t i;
+  for (i = 0; i < n; i++)
+    sumSq += 2 * (UInt64)hist[b[i * S]]++ + 1;    /* (f + 1)^2 - f^2 */
+  for (i = 0; i < n; i++)
+    hist[b[i * S]] = 0;
+  return (UInt32)((sumSq << 16) / ((UInt64)n * n));
+}
+
+/* (type, phase) of the quantized structs, from a sample: the high bytes of the fp16
+   scales (d, and dmin in Q4_K/Q5_K) take few values in a tensor of quantized weights,
+   while at a wrong period or phase they are quantized values or scale bytes. The measure
+   is the collision probability of these bytes, sum(f^2) / n^2: 1/256 for random bytes,
+   above 1/16 for the scales; the smaller of d and dmin, so that a phase with only one of
+   them in place (2 bytes off in Q4_K, or Q4_0 structs seen as Q4_K: 144 = 8 * 18) loses.
+   Returns 1 if the best candidate is above 1/64 (Renyi entropy below 6 bits). */
+static int Detect_Quant(const Byte *src, size_t srcLen, unsigned *type, unsigned *phase)
+{
+  const size_t sampleLen = srcLen < kQSampleSize ? srcLen : kQSampleSize;
+  UInt32 best = 0;
+  UInt32 hist[256];
+  unsigned t;
+  memset(hist, 0, sizeof(hist));
+  for (t = 0; t < kNumQTypes; t++)
+  {
+    const CQType *qt = &g_QTypes[t];
+    const unsigned S = qt->size;
+    unsigned p;
+    if (sampleLen < (size_t)S * 16)
+      continue;
+    for (p = 0; p < S; p++)
+    {
+      const size_t n = (sampleLen - p - S) / S + 1;   /* whole structs from p */
+      UInt32 c = Collision(src + p + qt->mark[0], S, n, hist);
+      if (c > best && qt->mark[1] != qt->mark[0])
+      {
+        const UInt32 c2 = Collision(src + p + qt->mark[1], S, n, hist);
+        if (c > c2)
+          c = c2;
+      }
+      if (c > best)
+      {
+        best = c;
+        *type = t;
+        *phase = p;
+      }
+    }
+  }
+  return best > ((UInt32)1 << 16) / 64;
+}
+
+/* The symbols of field f of the structs s0 .. s0 + ns - 1 into buf (ns * w symbols).
+   Q5_K / Q6_K values: layout in FloatPlane.h (as Join_QBits). */
+#define kQGather  64   /* structs per call: buf has up to 64 * 256 symbols */
+
+static void Q_Gather(const Byte *p, unsigned S, const CQField *f, size_t ns, UInt16 *buf)
+{
+  size_t s;
+  unsigned l, c;
+  for (s = 0; s < ns; s++, p += S)
+  {
+    if (f->kind == QF_BYTES)
+    {
+      const Byte *b = p + f->start;
+      const unsigned step = f->step;
+      for (l = 0; l < f->len; l++)
+        buf[l] = b[l * step];
+      buf += f->len;
+    }
+    else if (f->kind == QF_Q6)
+    {
+      for (c = 0; c < 2; c++)
+      {
+        const Byte *ql = p + 64 * c, *qh = p + 128 + 32 * c;
+        UInt16 *v = buf + 128 * c;
+        for (l = 0; l < 32; l++)
+        {
+          v[l]      = (UInt16)((ql[l] & 15)      | ((qh[l] & 3) << 4));
+          v[l + 32] = (UInt16)((ql[l + 32] & 15) | (((qh[l] >> 2) & 3) << 4));
+          v[l + 64] = (UInt16)((ql[l] >> 4)      | (((qh[l] >> 4) & 3) << 4));
+          v[l + 96] = (UInt16)((ql[l + 32] >> 4) | ((qh[l] >> 6) << 4));
+        }
+      }
+      buf += 256;
+    }
+    else
+    {
+      const Byte *qh = p + 16, *qs = p + 48;
+      for (c = 0; c < 4; c++)
+        for (l = 0; l < 32; l++)
+        {
+          buf[64 * c + l]      = (UInt16)((qs[32 * c + l] & 15) | (((qh[l] >> (2 * c)) & 1) << 4));
+          buf[64 * c + 32 + l] = (UInt16)((qs[32 * c + l] >> 4) | (((qh[l] >> (2 * c + 1)) & 1) << 4));
+        }
+      buf += 256;
+    }
+  }
+}
+
+typedef struct
+{
+  unsigned type, phase;
+  size_t n, tail;
+  Byte lens[kMaxQFields][256];
+  size_t huffSizes[kMaxQFields][kNumStreams];
+  size_t total;   /* size of the whole quantized block */
+} CQuantPlan;
+
+/* Huffman code of each field and exact block size */
+static void Plan_Quant(const Byte *src, size_t srcLen, unsigned type, unsigned phase, CQuantPlan *plan)
+{
+  const CQType *qt = &g_QTypes[type];
+  const unsigned S = qt->size;
+  const size_t n = (srcLen - phase) / S;
+  UInt16 buf[kQGather * 256];
+  unsigned fi;
+  plan->type = type;
+  plan->phase = phase;
+  plan->n = n;
+  plan->tail = srcLen - phase - n * S;
+  plan->total = kQuantHeaderSize + phase + plan->tail;
+  for (fi = 0; fi < qt->numFields; fi++)
+  {
+    const CQField *f = &qt->f[fi];
+    const unsigned w = QF_WIDTH(f), numSyms = QF_NUM_SYMS(f);
+    UInt32 hist4[kNumStreams][256];
+    UInt32 hist[256];
+    UInt32 pp[256];
+    UInt64 sum = 0;
+    size_t s;
+    unsigned j, sym, sh = 0;
+    memset(hist4, 0, sizeof(hist4));
+    for (s = 0; s < n; s += kQGather)
+    {
+      const size_t ns = n - s < kQGather ? n - s : kQGather;
+      const size_t num = ns * w;
+      size_t k = 0;
+      /* symbol i of the field is in stream i % 4: s * w is a multiple of 4 (kQGather is) */
+      Q_Gather(src + phase + s * S, S, f, ns, buf);
+      for (; k + 4 <= num; k += 4)
+      {
+        hist4[0][buf[k]]++;
+        hist4[1][buf[k + 1]]++;
+        hist4[2][buf[k + 2]]++;
+        hist4[3][buf[k + 3]]++;
+      }
+      for (; k < num; k++)
+        hist4[k & 3][buf[k]]++;
+    }
+    /* Huffman_Generate() needs a sum of frequencies < 4M: scaled down if it is larger
+       (the code is a little worse, the sizes below use the real counts) */
+    for (sym = 0; sym < numSyms; sym++)
+    {
+      hist[sym] = hist4[0][sym] + hist4[1][sym] + hist4[2][sym] + hist4[3][sym];
+      sum += hist[sym];
+    }
+    while ((sum >> sh) + numSyms > Z7_HUFFMAN_FREQS_SUM_MAX)
+      sh++;
+    if (sh != 0)
+      for (sym = 0; sym < numSyms; sym++)
+        if (hist[sym] != 0)
+          hist[sym] = (hist[sym] >> sh) + 1;
+    Huffman_Generate(hist, pp, plan->lens[fi], numSyms, kMaxLen);
+    plan->total += numSyms / 2 + 4 * kNumStreams;
+    for (j = 0; j < kNumStreams; j++)
+    {
+      UInt64 numBits = 0;
+      for (sym = 0; sym < numSyms; sym++)
+        numBits += (UInt64)hist4[j][sym] * plan->lens[fi][sym];
+      plan->huffSizes[fi][j] = (size_t)((numBits + 7) >> 3);
+      plan->total += plan->huffSizes[fi][j];
+    }
+  }
+}
+
+/* Writes the quantized block (mode 3) planned by Plan_Quant(). */
+static size_t Write_Quant(const Byte *src, size_t srcLen, Byte *dest, const CQuantPlan *plan)
+{
+  const CQType *qt = &g_QTypes[plan->type];
+  const unsigned S = qt->size;
+  const size_t n = plan->n, phase = plan->phase, tail = plan->tail;
+  Byte *d = dest;
+  UInt16 buf[kQGather * 256];
+  unsigned fi, j;
+
+  *d++ = MODE_QUANT;
+  SetUi32(d, (UInt32)srcLen)  d += 4;
+  *d++ = (Byte)plan->type;
+  *d++ = (Byte)phase;
+  memcpy(d, src, phase);                    d += phase;
+  memcpy(d, src + srcLen - tail, tail);     d += tail;
+  for (fi = 0; fi < qt->numFields; fi++)
+  {
+    const unsigned numSyms = QF_NUM_SYMS(&qt->f[fi]);
+    for (j = 0; j < numSyms; j += 2)
+      *d++ = (Byte)(plan->lens[fi][j] | (plan->lens[fi][j + 1] << 4));
+    for (j = 0; j < kNumStreams; j++)
+    {
+      SetUi32(d, (UInt32)plan->huffSizes[fi][j])  d += 4;
+    }
+  }
+
+  for (fi = 0; fi < qt->numFields; fi++)
+  {
+    const CQField *f = &qt->f[fi];
+    const unsigned w = QF_WIDTH(f), numSyms = QF_NUM_SYMS(f);
+    const Byte *lens = plan->lens[fi];
+    UInt32 codes[256];
+    Byte *d0, *d1, *d2, *d3, *e0, *e1, *e2, *e3;
+    UInt64 a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    unsigned c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+    size_t s;
+    Canonical_Codes(lens, numSyms, codes);
+    d0 = d;   d += plan->huffSizes[fi][0];   e0 = d;
+    d1 = d;   d += plan->huffSizes[fi][1];   e1 = d;
+    d2 = d;   d += plan->huffSizes[fi][2];   e2 = d;
+    d3 = d;   d += plan->huffSizes[fi][3];   e3 = d;
+    for (s = 0; s < n; s += kQGather)
+    {
+      const size_t ns = n - s < kQGather ? n - s : kQGather;
+      const size_t num = ns * w;
+      size_t k = 0;
+      Q_Gather(src + phase + s * S, S, f, ns, buf);
+      /* symbol k of the buffer is in stream k % 4: s * w is a multiple of 4 */
+      for (; k + 16 <= num; k += 16)
+      {
+        ADD_CODE(a0, c0, buf[k])       ADD_CODE(a1, c1, buf[k + 1])
+        ADD_CODE(a2, c2, buf[k + 2])   ADD_CODE(a3, c3, buf[k + 3])
+        ADD_CODE(a0, c0, buf[k + 4])   ADD_CODE(a1, c1, buf[k + 5])
+        ADD_CODE(a2, c2, buf[k + 6])   ADD_CODE(a3, c3, buf[k + 7])
+        ADD_CODE(a0, c0, buf[k + 8])   ADD_CODE(a1, c1, buf[k + 9])
+        ADD_CODE(a2, c2, buf[k + 10])  ADD_CODE(a3, c3, buf[k + 11])
+        ADD_CODE(a0, c0, buf[k + 12])  ADD_CODE(a1, c1, buf[k + 13])
+        ADD_CODE(a2, c2, buf[k + 14])  ADD_CODE(a3, c3, buf[k + 15])
+        FLUSH_CODES(a0, c0, d0, e0)
+        FLUSH_CODES(a1, c1, d1, e1)
+        FLUSH_CODES(a2, c2, d2, e2)
+        FLUSH_CODES(a3, c3, d3, e3)
+      }
+      for (; k < num; k++)
+      {
+        const unsigned sym = buf[k];
+        switch (k & 3)
+        {
+          case 0: ADD_CODE(a0, c0, sym)  FLUSH_CODES(a0, c0, d0, e0)  break;
+          case 1: ADD_CODE(a1, c1, sym)  FLUSH_CODES(a1, c1, d1, e1)  break;
+          case 2: ADD_CODE(a2, c2, sym)  FLUSH_CODES(a2, c2, d2, e2)  break;
+          default: ADD_CODE(a3, c3, sym)  FLUSH_CODES(a3, c3, d3, e3)  break;
+        }
+      }
+    }
+    END_CODES(a0, c0, d0)
+    END_CODES(a1, c1, d1)
+    END_CODES(a2, c2, d2)
+    END_CODES(a3, c3, d3)
+  }
+  return (size_t)(d - dest);
+}
+
+
 size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const CFloatPlaneLz *lz)
 {
   UInt32 hist[256];
@@ -306,6 +643,8 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
   size_t lzTotal = storedTotal;
   CSplitPlan plan;
   size_t splitTotal = storedTotal;
+  CQuantPlan qplan;
+  size_t quantTotal = storedTotal;
   unsigned t;
   int haveCandidate = 0;
 
@@ -338,7 +677,28 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     }
   }
 
-  /* 2. k = 0, 1 or 2 mantissa bits in the symbol, by estimated size; then the Huffman code
+  /* 2. Quantized structs (mode 3), if the sample does not look like floats (above 7 bits
+     per byte) and the scales of quantized structs show up in it. */
+  if (bestCost >= ((UInt64)7 << 16))
+  {
+    unsigned qType = 0, qPhase = 0;
+    if (Detect_Quant(src, srcLen, &qType, &qPhase))
+    {
+      Plan_Quant(src, srcLen, qType, qPhase, &qplan);
+      quantTotal = qplan.total;
+      if (quantTotal < storedTotal)
+      {
+        const UInt64 qCost = ((UInt64)quantTotal * 8 << 16) / srcLen;
+        if (qCost < bestCost)
+        {
+          bestCost = qCost;         /* the bar for the zstd probe */
+          haveCandidate = 0;        /* a split block would be larger: not planned */
+        }
+      }
+    }
+  }
+
+  /* 3. k = 0, 1 or 2 mantissa bits in the symbol, by estimated size; then the Huffman code
      of the whole block and its exact size. */
   if (haveCandidate)
   {
@@ -363,9 +723,9 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     splitTotal = plan.total;
   }
 
-  /* 3. zstd (mode 2), if a probe of the block start compresses better than the float
-     estimate: then the whole block, and the smaller result wins. The frame is written in
-     place (dest + 9); a split or stored block overwrites it. */
+  /* 4. zstd (mode 2), if a probe of the block start compresses better than the float
+     (or quantized) estimate: then the whole block, and the smaller result wins. The frame
+     is written in place (dest + 9); another block overwrites it. */
   if (lz && lz->Compress && storedTotal > kLzHeaderSize)
   {
     const size_t probeLen = srcLen < kLzProbeSize ? srcLen : kLzProbeSize;
@@ -379,6 +739,8 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     }
   }
 
+  if (quantTotal < storedTotal && quantTotal < splitTotal && quantTotal < lzTotal)
+    return Write_Quant(src, srcLen, dest, &qplan);
   if (lzTotal < storedTotal && lzTotal <= splitTotal)
   {
     dest[0] = MODE_LZ;
@@ -401,7 +763,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
 SRes FloatPlane_GetBlockOutLen(const Byte *src, size_t srcLen, size_t *outLen)
 {
   UInt32 len;
-  if (srcLen < 5 || src[0] > MODE_LZ)
+  if (srcLen < 5 || src[0] > MODE_QUANT)
     return SZ_ERROR_DATA;
   len = GetUi32(src + 1);
   if (len == 0 || len > FLOAT_PLANE_BLOCK_MAX)
@@ -457,6 +819,56 @@ static SRes Parse_SplitHeader(const Byte *src, size_t srcLen, size_t outLen, CSp
   return SZ_OK;
 }
 
+/* Fields of a quantized block header (after mode and outLen). */
+typedef struct
+{
+  unsigned type, phase;
+  size_t n, tail;
+  const Byte *fieldHeaders;   /* per field: code lengths, then 4 stream sizes */
+  size_t headerSize;          /* up to the end of the last stream sizes */
+} CQuantHeader;
+
+static SRes Parse_QuantHeader(const Byte *src, size_t srcLen, size_t outLen, CQuantHeader *h)
+{
+  const CQType *qt;
+  unsigned fi;
+  if (srcLen < kQuantHeaderSize)
+    return SZ_ERROR_INPUT_EOF;
+  h->type = src[5];
+  h->phase = src[6];
+  if (h->type >= kNumQTypes)
+    return SZ_ERROR_DATA;
+  qt = &g_QTypes[h->type];
+  if (h->phase >= qt->size || outLen < h->phase + qt->size)   /* at least one struct */
+    return SZ_ERROR_DATA;
+  h->n = (outLen - h->phase) / qt->size;
+  h->tail = outLen - h->phase - h->n * qt->size;
+  h->fieldHeaders = src + kQuantHeaderSize + h->phase + h->tail;
+  h->headerSize = kQuantHeaderSize + h->phase + h->tail;
+  for (fi = 0; fi < qt->numFields; fi++)
+    h->headerSize += QF_NUM_SYMS(&qt->f[fi]) / 2 + 4 * kNumStreams;
+  return SZ_OK;
+}
+
+/* Sizes of the Huffman streams of all fields: total in *huffTotal */
+static SRes Get_QuantStreamSizes(const CQuantHeader *h, size_t *huffTotal)
+{
+  const CQType *qt = &g_QTypes[h->type];
+  const Byte *p = h->fieldHeaders;
+  unsigned fi;
+  *huffTotal = 0;
+  for (fi = 0; fi < qt->numFields; fi++)
+  {
+    const CQField *f = &qt->f[fi];
+    size_t total;
+    p += QF_NUM_SYMS(f) / 2;
+    RINOK(Get_StreamSizes(p, h->n * QF_WIDTH(f), NULL, &total))
+    p += 4 * kNumStreams;
+    *huffTotal += total;
+  }
+  return SZ_OK;
+}
+
 SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
 {
   size_t outLen;
@@ -478,6 +890,17 @@ SRes FloatPlane_GetBlockSize(const Byte *src, size_t srcLen, size_t *blockSize)
     if (lzSize == 0 || kLzHeaderSize + lzSize >= FLOAT_PLANE_ENCODED_MAX(outLen))
       return SZ_ERROR_DATA;
     *blockSize = kLzHeaderSize + lzSize;
+    return SZ_OK;
+  }
+  if (src[0] == MODE_QUANT)
+  {
+    CQuantHeader h;
+    size_t huffTotal;
+    RINOK(Parse_QuantHeader(src, srcLen, outLen, &h))
+    if (srcLen < h.headerSize)
+      return SZ_ERROR_INPUT_EOF;
+    RINOK(Get_QuantStreamSizes(&h, &huffTotal))
+    *blockSize = h.headerSize + huffTotal;
     return SZ_OK;
   }
   {
@@ -536,12 +959,13 @@ static int Build_Table(const Byte *packedLens, unsigned numSyms, UInt16 *table)
 
 /* table2[v] for the next kTableBits bits v: one or two symbols, when two codes fit in
    the kTableBits bits: sym1 | (sym2 << 10) | (two << 20) | (length of both << 24);
-   0 = the first code is not a code. Built from table[]. */
+   0 = the first code is not a code. Built from table[]. Returns the number of entries
+   with two symbols: (numTwo / 4096) is the share of the lookups that give two symbols. */
 #define T2_TWO  ((UInt32)1 << 20)
 
-static void Build_Table2(const UInt16 *table, UInt32 *table2)
+static unsigned Build_Table2(const UInt16 *table, UInt32 *table2)
 {
-  unsigned v;
+  unsigned v, numTwo = 0;
   for (v = 0; v < ((unsigned)1 << kTableBits); v++)
   {
     const unsigned t1 = table[v];
@@ -553,10 +977,14 @@ static void Build_Table2(const UInt16 *table, UInt32 *table2)
       const unsigned len2 = t2 >> 10;
       x = (t1 & 0x3FF) | ((UInt32)len1 << 24);
       if (len2 != 0 && len1 + len2 <= kTableBits)
+      {
         x = (t1 & 0x3FF) | ((UInt32)(t2 & 0x3FF) << 10) | T2_TWO | ((UInt32)(len1 + len2) << 24);
+        numTwo++;
+      }
     }
     table2[v] = x;
   }
+  return numTwo;
 }
 
 /* r of element i, reading only the bytes inside the r plane: the bits of the field are
@@ -588,7 +1016,9 @@ static UInt32 Read_R(const Byte *r, size_t rBytes, size_t i, unsigned rb)
 typedef struct
 {
   const UInt16 *table;
-  const UInt32 *table2;  /* NULL: the reference decoder, one symbol per lookup */
+  const UInt32 *table2;
+  unsigned fast;       /* FAST_NONE: the reference decoder; FAST_ONE / FAST_TWO: fast loop
+                          with one symbol per lookup (table) or up to two (table2) */
   const Byte *r;       /* the packed r plane */
   size_t rBytes;
   size_t n;            /* elements */
@@ -599,6 +1029,9 @@ typedef struct
   UInt64 bits[kNumStreams];
   unsigned cnt[kNumStreams];
   size_t pad[kNumStreams];
+  /* quantized blocks: the field being decoded, the struct size */
+  const CQField *qf;
+  unsigned qS;
 } CDecState;
 
 #define DECODE_SYM(B, C, sym) \
@@ -668,15 +1101,65 @@ static size_t Fast_Iters(const Byte *h, const Byte *hEnd, const UInt16 *o, const
   return a < b ? a : b;
 }
 
+#define FAST_NONE  0
+#define FAST_ONE   1
+#define FAST_TWO   2
+
 /* symbols of the elements i0 .. i0 + num - 1 (i0 % 16 == 0) into syms[]: element i of
-   the chunk is in stream i % 4, the streams are decoded each at its own pace */
+   the chunk is in stream i % 4 */
 static SRes Decode_Syms(CDecState *st, UInt16 *syms, size_t num)
 {
-  const UInt32 * const table2 = st->table2;
   const UInt16 * const oEnd = syms + num;
   UInt16 *o0 = syms, *o1 = syms + 1, *o2 = syms + 2, *o3 = syms + 3;
-  if (table2)
+  if (st->fast == FAST_ONE)
   {
+    /* one symbol per lookup, the 4 streams in step: per iteration a refill of each stream
+       and 4 lookups (16 symbols); safe iterations computed in advance as below */
+    const UInt16 * const table = st->table;
+    const Byte *h0 = st->hp[0], *h1 = st->hp[1], *h2 = st->hp[2], *h3 = st->hp[3];
+    UInt64 b0 = st->bits[0], b1 = st->bits[1], b2 = st->bits[2], b3 = st->bits[3];
+    unsigned c0 = st->cnt[0], c1 = st->cnt[1], c2 = st->cnt[2], c3 = st->cnt[3];
+    UInt16 *o = syms;
+    for (;;)
+    {
+      size_t it = (size_t)(oEnd - o) / 16;
+      unsigned j;
+      for (j = 0; j < kNumStreams; j++)
+      {
+        const Byte *h = j == 0 ? h0 : j == 1 ? h1 : j == 2 ? h2 : h3;
+        const size_t a = st->hEnd[j] - h < 8 ? 0 : (size_t)(st->hEnd[j] - h - 8) / 7 + 1;
+        if (it > a)
+          it = a;
+      }
+      if (it == 0)
+        break;
+      do
+      {
+        REFILL_FAST(h0, b0, c0)
+        REFILL_FAST(h1, b1, c1)
+        REFILL_FAST(h2, b2, c2)
+        REFILL_FAST(h3, b3, c3)
+        DECODE_SYM(b0, c0, o[0])   DECODE_SYM(b1, c1, o[1])
+        DECODE_SYM(b2, c2, o[2])   DECODE_SYM(b3, c3, o[3])
+        DECODE_SYM(b0, c0, o[4])   DECODE_SYM(b1, c1, o[5])
+        DECODE_SYM(b2, c2, o[6])   DECODE_SYM(b3, c3, o[7])
+        DECODE_SYM(b0, c0, o[8])   DECODE_SYM(b1, c1, o[9])
+        DECODE_SYM(b2, c2, o[10])  DECODE_SYM(b3, c3, o[11])
+        DECODE_SYM(b0, c0, o[12])  DECODE_SYM(b1, c1, o[13])
+        DECODE_SYM(b2, c2, o[14])  DECODE_SYM(b3, c3, o[15])
+        o += 16;
+      }
+      while (--it);
+    }
+    st->hp[0] = h0; st->hp[1] = h1; st->hp[2] = h2; st->hp[3] = h3;
+    st->bits[0] = b0; st->bits[1] = b1; st->bits[2] = b2; st->bits[3] = b3;
+    st->cnt[0] = c0; st->cnt[1] = c1; st->cnt[2] = c2; st->cnt[3] = c3;
+    o0 = o; o1 = o + 1; o2 = o + 2; o3 = o + 3;
+  }
+  else if (st->fast == FAST_TWO)
+  {
+    /* up to two symbols per lookup, each stream at its own pace */
+    const UInt32 * const table2 = st->table2;
     /* fast loop: per iteration and stream, a refill (56..63 bits) and 4 lookups of at
        most 12 bits each; the number of safe iterations is computed in advance */
     const Byte *h0 = st->hp[0], *h1 = st->hp[1], *h2 = st->hp[2], *h3 = st->hp[3];
@@ -1042,11 +1525,11 @@ DEFINE_JOIN_NEON_4(21, 2)
 
 #endif
 
-static SRes Decode_Elements(CDecState *st, Func_Join join)
+/* elements i0 .. n-1 (i0 % 16 == 0, the streams at element i0) */
+static SRes Decode_Elements(CDecState *st, Func_Join join, size_t i0)
 {
   UInt16 syms[kChunk + 8];   /* + 8: the second symbol of a lookup past the end */
-  size_t i0;
-  for (i0 = 0; i0 < st->n; i0 += kChunk)
+  for (; i0 < st->n; i0 += kChunk)
   {
     const size_t num = st->n - i0 < kChunk ? st->n - i0 : kChunk;
     RINOK(Decode_Syms(st, syms, num))
@@ -1088,6 +1571,23 @@ void FloatPlane_SetSimd(BoolInt enable)
   g_SimdEnabled = enable;
 }
 
+/* The fast loop with two symbols per lookup is worth it when enough lookups give two
+   symbols (short codes: exponents of floats); with long codes (bytes of quantized
+   weights, ~8 bits) its extra work per lookup makes it slower than one symbol per lookup. */
+#ifndef TWO_MIN
+#define TWO_MIN 1024
+#endif
+#define kTwoMin  TWO_MIN   /* entries of table2 with two symbols, of 4096 */
+
+static void Set_Tables(CDecState *st, const UInt16 *table, UInt32 *table2)
+{
+  st->table = table;
+  st->table2 = table2;
+  st->fast = FAST_NONE;
+  if (g_SimdEnabled)
+    st->fast = Build_Table2(table, table2) >= kTwoMin ? FAST_TWO : FAST_ONE;
+}
+
 static Func_Join Get_Join(unsigned index)
 {
   #ifdef FLOAT_PLANE_USE_AVX2
@@ -1099,6 +1599,229 @@ static Func_Join Get_Join(unsigned index)
     return g_JoinsNeon[index];
   #endif
   return g_Joins[index];
+}
+
+
+/* ---------- Decoder of quantized blocks (mode 3) ---------- */
+
+/* field symbols i0 .. i0 + num - 1 to their bytes in the structs */
+static void Join_QBytes(const CDecState *st, const UInt16 *syms, size_t i0, size_t num)
+{
+  const CQField *f = st->qf;
+  const unsigned w = f->len, step = f->step, S = st->qS;
+  const size_t s = i0 / w;
+  unsigned o = (unsigned)(i0 - s * w);
+  Byte *p = st->e + s * S + f->start;
+  const UInt16 * const symsEnd = syms + num;
+  while (syms != symsEnd)
+  {
+    /* the rest of the struct, or of the chunk */
+    unsigned m = w - o, j;
+    if (m > (size_t)(symsEnd - syms))
+      m = (unsigned)(symsEnd - syms);
+    if (step == 1)
+    {
+      Byte *q = p + o;
+      for (j = 0; j < m; j++)
+        q[j] = (Byte)syms[j];
+    }
+    else
+      for (j = 0; j < m; j++)
+        p[(o + j) * step] = (Byte)syms[j];
+    syms += m;
+    o += m;
+    if (o == w)
+    {
+      o = 0;
+      p += S;
+    }
+  }
+}
+
+/* Q5_K / Q6_K: the 256 values of each struct to qs/ql and qh. The chunks have whole
+   structs: i0 and num are multiples of 256 (kChunk is, and n * 256 is). The values are
+   copied to a local array first: then the compiler knows that the stores to the struct
+   do not change them, and vectorizes the loops. */
+static void Join_QBits(const CDecState *st, const UInt16 *q, size_t i0, size_t num)
+{
+  const unsigned S = st->qS;
+  const int q6 = (st->qf->kind == QF_Q6);
+  Byte *p = st->e + (i0 >> 8) * S;
+  size_t s;
+  for (s = 0; s < (num >> 8); s++, p += S, q += 256)
+  {
+    UInt16 v[256];
+    Byte hb[64];
+    unsigned l, c;
+    memcpy(v, q, sizeof(v));
+    if (q6)
+    {
+      /* half c: ql[64c + l] = values 128c + l (low nibble), 128c + 64 + l (high nibble);
+         ql[64c + 32 + l] = values 128c + 32 + l, 128c + 96 + l; qh[32c + l]: bits 4-5
+         of the values 128c + 32t + l at bit 2t */
+      for (c = 0; c < 2; c++)
+      {
+        const UInt16 *w = v + 128 * c;
+        Byte *ql = p + 64 * c, *qh = hb + 32 * c;
+        for (l = 0; l < 32; l++)
+        {
+          ql[l]      = (Byte)((w[l]      & 15) | ((w[l + 64] & 15) << 4));
+          ql[l + 32] = (Byte)((w[l + 32] & 15) | ((w[l + 96] & 15) << 4));
+          qh[l] = (Byte)((w[l] >> 4) | ((w[l + 32] >> 4) << 2)
+              | ((w[l + 64] >> 4) << 4) | ((w[l + 96] >> 4) << 6));
+        }
+      }
+      memcpy(p + 128, hb, 64);
+    }
+    else
+    {
+      /* qs[32c + l] = values 64c + l (low nibble), 64c + 32 + l (high nibble); qh[l]: bit 4
+         of the value 64c + 32h + l at bit 2c + h */
+      for (l = 0; l < 32; l++)
+        hb[l] = 0;
+      for (c = 0; c < 4; c++)
+        for (l = 0; l < 32; l++)
+        {
+          const unsigned x0 = v[64 * c + l], x1 = v[64 * c + 32 + l];
+          p[48 + 32 * c + l] = (Byte)((x0 & 15) | ((x1 & 15) << 4));
+          hb[l] = (Byte)(hb[l] | (((x0 >> 4) | ((x1 >> 4) << 1)) << (2 * c)));
+        }
+      memcpy(p + 16, hb, 32);
+    }
+  }
+}
+
+/* A field of contiguous bytes, a multiple of 16 per struct (qs of Q4_0, Q8_0, Q4_K),
+   with one symbol per lookup: the symbols go straight to the structs, 16 per round (4
+   from each stream, in step), without the buffer of Decode_Elements(). *done = the
+   symbols decoded (a multiple of 16): the rest is left to Decode_Elements(). */
+static SRes Decode_QDirect(CDecState *st, size_t *done)
+{
+  const UInt16 * const table = st->table;
+  const unsigned S = st->qS, w = st->qf->len;
+  const Byte *h0 = st->hp[0], *h1 = st->hp[1], *h2 = st->hp[2], *h3 = st->hp[3];
+  UInt64 b0 = st->bits[0], b1 = st->bits[1], b2 = st->bits[2], b3 = st->bits[3];
+  unsigned c0 = st->cnt[0], c1 = st->cnt[1], c2 = st->cnt[2], c3 = st->cnt[3];
+  Byte *o = st->e + st->qf->start;
+  unsigned pos = 0;   /* symbols done in the current struct */
+  size_t i = 0;
+  for (;;)
+  {
+    size_t it = (st->n - i) / 16;
+    unsigned j;
+    for (j = 0; j < kNumStreams; j++)
+    {
+      const Byte *h = j == 0 ? h0 : j == 1 ? h1 : j == 2 ? h2 : h3;
+      const size_t a = st->hEnd[j] - h < 8 ? 0 : (size_t)(st->hEnd[j] - h - 8) / 7 + 1;
+      if (it > a)
+        it = a;
+    }
+    if (it == 0)
+      break;
+    i += it * 16;
+    do
+    {
+      REFILL_FAST(h0, b0, c0)
+      REFILL_FAST(h1, b1, c1)
+      REFILL_FAST(h2, b2, c2)
+      REFILL_FAST(h3, b3, c3)
+      /* the symbols of byte fields are < 256 */
+      #define DECODE_BYTE(B, C, dst)  { unsigned sym_; DECODE_SYM(B, C, sym_)  dst = (Byte)sym_; }
+      DECODE_BYTE(b0, c0, o[0])   DECODE_BYTE(b1, c1, o[1])
+      DECODE_BYTE(b2, c2, o[2])   DECODE_BYTE(b3, c3, o[3])
+      DECODE_BYTE(b0, c0, o[4])   DECODE_BYTE(b1, c1, o[5])
+      DECODE_BYTE(b2, c2, o[6])   DECODE_BYTE(b3, c3, o[7])
+      DECODE_BYTE(b0, c0, o[8])   DECODE_BYTE(b1, c1, o[9])
+      DECODE_BYTE(b2, c2, o[10])  DECODE_BYTE(b3, c3, o[11])
+      DECODE_BYTE(b0, c0, o[12])  DECODE_BYTE(b1, c1, o[13])
+      DECODE_BYTE(b2, c2, o[14])  DECODE_BYTE(b3, c3, o[15])
+      o += 16;
+      pos += 16;
+      if (pos == w)
+      {
+        pos = 0;
+        o += S - w;
+      }
+    }
+    while (--it);
+  }
+  st->hp[0] = h0; st->hp[1] = h1; st->hp[2] = h2; st->hp[3] = h3;
+  st->bits[0] = b0; st->bits[1] = b1; st->bits[2] = b2; st->bits[3] = b3;
+  st->cnt[0] = c0; st->cnt[1] = c1; st->cnt[2] = c2; st->cnt[3] = c3;
+  *done = i;
+  return SZ_OK;
+}
+
+static SRes Decode_Quant(const Byte *src, size_t srcLen, Byte *dest, size_t outLen, size_t *srcUsed)
+{
+  UInt16 table[(size_t)1 << kTableBits];
+  UInt32 table2[(size_t)1 << kTableBits];
+  const Byte * const srcEnd = src + srcLen;
+  CQuantHeader h;
+  const CQType *qt;
+  const Byte *p, *fh;
+  unsigned fi, j;
+
+  RINOK(Parse_QuantHeader(src, srcLen, outLen, &h))
+  if (srcLen < h.headerSize)
+    return SZ_ERROR_INPUT_EOF;
+  qt = &g_QTypes[h.type];
+  p = src + kQuantHeaderSize;
+  memcpy(dest, p, h.phase);                         p += h.phase;
+  memcpy(dest + outLen - h.tail, p, h.tail);
+  fh = h.fieldHeaders;
+  p = src + h.headerSize;   /* the streams of the first field */
+
+  for (fi = 0; fi < qt->numFields; fi++)
+  {
+    const CQField *f = &qt->f[fi];
+    const unsigned numSyms = QF_NUM_SYMS(f);
+    const size_t num = h.n * QF_WIDTH(f);
+    size_t sizes[kNumStreams];
+    const Byte *hStart[kNumStreams];
+    size_t huffTotal;
+    CDecState st;
+
+    if (!Build_Table(fh, numSyms, table))
+      return SZ_ERROR_DATA;
+    fh += numSyms / 2;
+    RINOK(Get_StreamSizes(fh, num, sizes, &huffTotal))
+    fh += 4 * kNumStreams;
+    if ((size_t)(srcEnd - p) < huffTotal)
+      return SZ_ERROR_INPUT_EOF;
+    for (j = 0; j < kNumStreams; j++)
+    {
+      hStart[j] = st.hp[j] = p;
+      p += sizes[j];
+      st.hEnd[j] = p;
+      st.bits[j] = 0;
+      st.cnt[j] = 0;
+      st.pad[j] = 0;
+    }
+    Set_Tables(&st, table, table2);
+    st.r = NULL;
+    st.rBytes = 0;
+    st.nSafe = 0;
+    st.n = num;
+    st.e = dest + h.phase;
+    st.qf = f;
+    st.qS = qt->size;
+    {
+      size_t done = 0;
+      if (st.fast == FAST_ONE && f->kind == QF_BYTES && f->step == 1 && (f->len & 15) == 0)
+        RINOK(Decode_QDirect(&st, &done))
+      RINOK(Decode_Elements(&st, f->kind == QF_BYTES ? Join_QBytes : Join_QBits, done))
+    }
+    /* as in split blocks: each stream fills exactly its declared size */
+    for (j = 0; j < kNumStreams; j++)
+    {
+      const UInt64 used = ((UInt64)(size_t)(st.hp[j] - hStart[j]) + st.pad[j]) * 8 - st.cnt[j];
+      if (((used + 7) >> 3) != sizes[j])
+        return SZ_ERROR_DATA;
+    }
+  }
+  *srcUsed = (size_t)(p - src);
+  return SZ_OK;
 }
 
 
@@ -1140,6 +1863,9 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
     return SZ_OK;
   }
 
+  if (src[0] == MODE_QUANT)
+    return Decode_Quant(src, srcLen, dest, outLen, srcUsed);
+
   {
     UInt16 table[(size_t)1 << kTableBits];
     UInt32 table2[(size_t)1 << kTableBits];
@@ -1175,13 +1901,7 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
       st.cnt[j] = 0;
       st.pad[j] = 0;
     }
-    st.table = table;
-    st.table2 = NULL;
-    if (g_SimdEnabled)
-    {
-      Build_Table2(table, table2);
-      st.table2 = table2;
-    }
+    Set_Tables(&st, table, table2);
     st.r = p;
     st.rBytes = rBytes;
     st.n = n;
@@ -1196,7 +1916,7 @@ SRes FloatPlane_DecodeBlock(const Byte *src, size_t srcLen, Byte *dest, size_t d
       st.nSafe = m < n ? m : n;
     }
 
-    res = Decode_Elements(&st, Get_Join(hd.type * 3 + hd.k));
+    res = Decode_Elements(&st, Get_Join(hd.type * 3 + hd.k), 0);
     RINOK(res)
 
     /* each stream: the bits used by its codes (all loaded minus those left) fill exactly

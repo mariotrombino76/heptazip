@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Stato** | v1 implementata: blocchi split/zstd/stored, multi-thread, scelta automatica per safetensors e GGUF, test, fuzzing, benchmark |
+| **Stato** | implementato: blocchi split (float), quantizzati (GGUF Q4_0/Q8_0/Q4_K/Q5_K/Q6_K), zstd, stored; multi-thread, SIMD (AVX2, NEON), scelta automatica per safetensors e GGUF, test, fuzzing, benchmark |
 | **Data** | 2026-11-01 |
 | **Codice** | `C/FloatPlane.{h,c}` (formato a blocchi), `C/FloatPlaneLz.{h,c}` (zstd per i blocchi non float), `CPP/7zip/Compress/FloatCoder.{h,cpp}`, `FloatRegister.cpp`, analisi in `7zUpdate.cpp` |
 | **ID del metodo** | `3F 70 7F 5E 72 8B 00 01` (`0x3F707F5E728B0001`), nome `FLOAT` |
-| **Uso** | automatico per `.safetensors` e `.gguf` F16/BF16/F32 (§3.5); esplicito `-m0=FLOAT` (opzionale `:c=4m`, blocchi da 64 KiB a 4 MiB); `-mf=off` disattiva la scelta automatica |
+| **Uso** | automatico per `.safetensors` e `.gguf` F16/BF16/F32 e quantizzati Q4_0, Q8_0, Q4_K, Q5_K, Q6_K (§3.5); esplicito `-m0=FLOAT` (opzionale `:c=4m`, blocchi da 64 KiB a 4 MiB); `-mf=off` disattiva la scelta automatica |
 
 ---
 
@@ -63,7 +63,7 @@ Lo stream è una sequenza di blocchi indipendenti; ognuno decodifica al più la 
 del blocco. Interi little-endian.
 
 ```
-u8  mode        0 = stored, 1 = split, 2 = zstd
+u8  mode        0 = stored, 1 = split, 2 = zstd, 3 = quantizzato (§3.6)
 u32 outLen      byte decodificati, 1 .. dimensione del blocco
 mode 0: outLen byte grezzi
 mode 2:
@@ -79,6 +79,12 @@ mode 1:
   4 flussi      flusso j: i codici degli elementi k con k mod 4 = j, canonici, MSB first,
                 riempimento a zero fino al byte
   ceil(n * rb / 8) byte  r, rb = 8w - 8 - k bit per elemento, impacchettati little-endian
+mode 3:
+  u8  qtype     0 = Q4_0, 1 = Q8_0, 2 = Q4_K, 3 = Q5_K, 4 = Q6_K (struttura di S byte, §3.6)
+  u8  phase     0 .. S-1, byte grezzi prima della prima struttura
+  phase byte grezzi, poi tail = (outLen - phase) mod S byte grezzi; n >= 1 strutture
+  per ogni campo: numSyms / 2 byte di lunghezze dei codici, u32 huffSize[4]
+  per ogni campo: 4 flussi come nel mode 1 (simbolo i del campo nel flusso i mod 4)
 ```
 
 I 4 flussi interlacciati (come huff0 di zstd) sono catene di dipendenze indipendenti: il
@@ -133,9 +139,12 @@ Per ogni blocco:
    k = 1 e 0. k dalla stima di entropia più i bit di r e la tabella; poi
    `Huffman_Generate` di 7-Zip (`C/HuffEnc.c`), lunghezza massima 12, dimensione esatta
    di ogni flusso. Codici e piano r si scrivono in un solo passaggio.
-3. zstd (livello 3) su un campione di 16 KiB dall'inizio del blocco: se costa meno della
-   stima float, zstd comprime il blocco intero. Vince il più piccolo tra split, zstd e
-   stored (+5 byte), misurati esattamente. Il campione costa l'1,6% del tempo
+3. Se il campione costa più di 7 bit per byte (non sembrano float), cerca strutture
+   quantizzate (§3.6); se il blocco quantizzato è più piccolo della stima float, il piano
+   split non viene calcolato.
+4. zstd (livello 3) su un campione di 16 KiB dall'inizio del blocco: se costa meno della
+   stima float (o quantizzata), zstd comprime il blocco intero. Vince il più piccolo tra
+   split, quantizzato, zstd e stored (+5 byte), misurati esattamente. Il campione costa l'1,6% del tempo
    dell'encoder; senza l'encoder zstd (opzione CMake `SEVENZIP_ZSTD_ENCODER=OFF`) il
    modo 2 non viene usato, ma è sempre decodificato.
 
@@ -199,14 +208,92 @@ WAV) legge i primi 16 KiB dei file `.safetensors` e `.gguf`:
 - **safetensors**: intestazione valida (u64 da 2 B a 100 MiB, poi `{`); FLOAT se nel
   JSON letto i dtype `BF16`, `F16`, `F32` sono più frequenti degli altri (interi, `F8_*`,
   `F64`, `BOOL`): i modelli quantizzati restano a LZMA2;
-- **GGUF**: magic, versione 2 o 3, chiave `general.file_type` = 0 (F32), 1 (F16) o
-  32 (BF16); i tipi quantizzati (Q4_K, Q8_0...) restano a LZMA2.
+- **GGUF**: magic, versione 2 o 3, chiave `general.file_type` (enum `llama_ftype`) = 0
+  (F32), 1 (F16), 32 (BF16), o un tipo quantizzato che il mode 3 codifica: 2 (Q4_0),
+  7 (Q8_0), 14/15 (Q4_K_S/M), 16/17 (Q5_K_S/M), 18 (Q6_K). Gli altri (Q2_K, Q3_K, IQ*)
+  restano a LZMA2. llama-quantize scrive la chiave dopo il vocabolario (a 5,9 MB in
+  Qwen3-0.6B): se non è nei 16 KiB, l'analisi continua a leggere il file percorrendo le
+  coppie chiave-valore (stringhe e array saltati), fino a 64 MiB.
 
 I file riconosciuti formano un gruppo, che usa FLOAT al posto del metodo principale se
 questo è LZMA o LZMA2 da solo (il default). Le altre scelte esplicite (zstd, PPMd, `-mx0`,
 catene con filtri) restano; `-mf=off` disattiva l'analisi. In un aggiornamento, i file
 nuovi vanno nel gruppo dei folder FLOAT esistenti. Il gruppo è un marcatore interno
 (`k_FLOAT_FilterGroup`), mai scritto nell'archivio.
+
+### 3.6 Modelli quantizzati (mode 3)
+
+I GGUF quantizzati (llama.cpp) tengono i pesi in strutture di 32 o 256 pesi: scale fp16,
+scale dei sotto-blocchi impacchettate, valori a 4-8 bit. I valori sono quasi uniformi
+(3,87 bit su 4 nei Q4_K), ma LZMA2 e zstd non vedono la struttura: arrivano al 97-98,7%.
+Il mode 3 dà a ogni **tipo di campo** delle strutture il suo codice di Huffman (gli
+stessi 4 flussi e lo stesso decoder dei float):
+
+| qtype | Tipo | Byte | Campi (simboli per struttura: alfabeto) |
+|---|---|---|---|
+| 0 | Q4_0 | 18 | byte basso di d (1: 256), byte alto di d (1), qs (16) |
+| 1 | Q8_0 | 34 | byte basso di d (1), byte alto di d (1), qs (32) |
+| 2 | Q4_K | 144 | byte bassi di d, dmin (2), byte alti (2), scale (12), qs (128) |
+| 3 | Q5_K | 176 | come Q4_K, ma i 256 valori a 5 bit da qs e qh (256: 32) |
+| 4 | Q6_K | 210 | i 256 valori a 6 bit da ql e qh (256: 64), scale int8 (16), byte basso e alto di d |
+
+Scelte misurate (Qwen3-4B Q4_K_M, `tools/bench/gguf_entropy.py` e prototipo):
+- i byte di qs (due valori a 4 bit) con un codice a 256 simboli: Huffman al 97,0%
+  contro l'entropia del 96,6%; un codice per nibble perderebbe di più;
+- i valori a 5 e 6 bit ricomposti dai loro bit sparsi: Q6_K 96,5% contro 97,6% a byte,
+  Q5_K 96,05% contro 97,0%;
+- il contesto aiuta poco: i valori Q4 dati scala e minimo del sotto-blocco 3,815 bit
+  contro 3,866 (servirebbe un codificatore aritmetico);
+- una sola griglia (tipo, fase) per blocco: i blocchi a cavallo di due tensori sono
+  l'1,1-2,7% dei dati, la perdita ~0,05 punti.
+
+**Rilevamento** (encoder, campione di 64 KiB): per ogni tipo e fase, la probabilità di
+collisione Σf²/n² dei byte alti delle scale fp16 (d, e dmin nei K) a passo S: in un
+tensore prendono pochi valori (sopra 1/16), a una fase o un passo sbagliati sono valori
+o scale (vicino a 1/256). Si prende il minimo tra d e dmin: così perdono la fase
+spostata di 2 byte nei Q4_K (solo dmin al suo posto) e le strutture Q4_0 viste come Q4_K
+(144 = 8 · 18). Sotto 1/64 nessun candidato. Poi decide la dimensione esatta, come per
+gli altri modi.
+
+**Decoder**: i campi di byte contigui multipli di 16 (qs) vanno direttamente nelle
+strutture, 16 simboli per giro; gli altri passano dal buffer dei simboli e una
+ricomposizione per struttura intera (i valori Q5/Q6 scritti a byte interi, cicli
+vettorizzati dal compilatore). Per ogni campo il decoder sceglie il ciclo veloce a un
+simbolo per accesso o la tabella doppia (§3.4): con codici di ~8 bit la tabella doppia
+dà raramente due simboli e costa più istruzioni; la soglia è 1024 voci su 4096 con due
+simboli.
+
+**Encoder**: simboli raccolti 64 strutture alla volta; scrittori di bit senza salti che
+dipendono dalle lunghezze (uno store da 8 byte per flusso ogni 4 codici, byte per byte
+solo vicino alla fine del flusso). Lo stesso scrittore serve il mode 1: l'encoder float
+passa da ~545 a ~770 MB/s (BF16) e da ~1020 a ~1270 MB/s (FP32), con uscita identica.
+
+Qwen3-0.6B, un core (nucleo, senza zstd per l'intestazione):
+
+| GGUF | dimensione | compressione | decompressione |
+|---|---|---|---|
+| Q4_0 | 91,80% | 479 MB/s | 965 MB/s |
+| Q8_0 | 94,10% | 560 MB/s | 1070 MB/s |
+| Q4_K_M | 95,79% | 504 MB/s | 980 MB/s |
+| Q5_K_M | 96,74% | 349 MB/s | 730 MB/s |
+| Q6_K | 96,31% | 418 MB/s | 880 MB/s |
+
+Modelli grandi, `7zz a` senza opzioni (FLOAT scelto dall'analisi) contro LZMA2 `-mx5`
+(`-mf=off`), 20 thread, decompressione con `7zz t` (CRC compreso):
+
+| Modello | Metodo | Dimensione | Compressione | Decompressione |
+|---|---|---|---|---|
+| qwen3-4b Q4_K_M (2,5 GB) | **FLOAT** | **95,65%** | **2,6 s** (950 MB/s) | **1,4 s** (1821 MB/s) |
+| | LZMA2 `-mx5` | 97,83% | 55,4 s (45 MB/s) | 5,9 s (424 MB/s) |
+| | zstd `-19 -T0` (§3 di 0006) | 97,61% | 106 s | – |
+| DeepHat-V1-7B Q4_K_M (4,7 GB) | **FLOAT** | **95,48%** | **5,8 s** (808 MB/s) | **2,6 s** (1812 MB/s) |
+| | LZMA2 `-mx5` | 97,81% | 106,1 s (44 MB/s) | 10,7 s (438 MB/s) |
+
+Circa 2,3 punti (54 MB sul modello da 2,5 GB, 109 MB su quello da 4,7 GB), con
+compressione 18-21 volte e decompressione 4 volte più veloci di LZMA2. Qwen3-0.6B con
+7zz di default: Q4_K_M 95,26% (LZMA2 97,16%, zstd -19 96,82%, xz -9 97,13%), Q5_K_M
+96,27% (98,55 / 98,42 / 98,55), Q6_K 95,87% (98,66 / 98,34 / 98,67), Q8_0 93,74%
+(96,02 / 95,17 / 95,98).
 
 ## 4. Risultati
 
@@ -277,7 +364,10 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- AVX2 anche per FP32; NEON per ARM64; la fase dei simboli resta il limite (~2300 MB/s
-  per core).
+- Quantizzati: un modello con contesto (i valori a 4 bit dato scala e minimo del
+  sotto-blocco: 3,866 → 3,815 bit) varrebbe circa mezzo punto, con un codificatore
+  aritmetico; i tipi IQ* e Q2_K/Q3_K non sono ancora coperti.
+- Estrazione multi-thread: oltre ~2,2 GB/s il limite è la pipeline (thread chiamante,
+  copie, CRC), non il decoder.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.
 - v2 con rANS: circa mezzo punto, da valutare contro il costo in velocità.

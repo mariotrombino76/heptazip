@@ -469,9 +469,23 @@ static BoolInt Parse_Safetensors(const Byte *buf, size_t size, CFilterMode *filt
 }
 
 /* GGUF (llama.cpp): "GGUF", version 2 or 3, then key-value metadata. The key
-   general.file_type (u32 value type 4) gives the type of most tensors: 0 = F32,
-   1 = F16, 32 = BF16 go to FLOAT; quantized types (Q4_K, Q8_0...) stay with LZMA2. If
-   the key is not in the part we read, the file stays with LZMA2. */
+   general.file_type (u32 value type 4, enum llama_ftype) gives the type of most
+   tensors. To FLOAT: 0 = F32, 1 = F16, 32 = BF16 (split blocks), and the quantized types
+   whose structs FLOAT codes (mode 3: 2 = Q4_0, 7 = Q8_0, 14/15 = Q4_K_S/M, 16/17 =
+   Q5_K_S/M, 18 = Q6_K). The others (Q2_K, Q3_K, IQ...) stay with LZMA2, as a file
+   without the key in the part we read. */
+static bool Is_FloatGgufType(UInt32 fileType)
+{
+  switch (fileType)
+  {
+    case 0: case 1: case 32:
+    case 2: case 7: case 14: case 15: case 16: case 17: case 18:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static BoolInt Parse_Gguf(const Byte *buf, size_t size, CFilterMode *filterMode)
 {
   if (size < 24 || GetUi32(buf) != 0x46554747)   // "GGUF"
@@ -490,12 +504,134 @@ static BoolInt Parse_Gguf(const Byte *buf, size_t size, CFilterMode *filterMode)
     if (GetUi32(v) != 4)   // GGUF_TYPE_UINT32
       return False;
     const UInt32 fileType = GetUi32(v + 4);
-    if (fileType != 0 && fileType != 1 && fileType != 32)
+    if (!Is_FloatGgufType(fileType))
       return False;
     filterMode->Id = k_FLOAT_FilterGroup;
     return True;
   }
   return False;
+}
+
+
+/* GGUF metadata read from the stream, when general.file_type is not in the analysis
+   buffer: llama-quantize writes it after the tokenizer arrays (megabytes). The key-value
+   pairs are walked (strings and arrays skipped) up to kGgufScanMax bytes of the file. */
+static const UInt64 kGgufScanMax = (UInt64)64 << 20;
+
+struct CGgufReader
+{
+  ISequentialInStream *Stream;
+  CByteBuffer Data;
+  size_t Pos, Lim;
+  UInt64 Total;   // bytes of the file consumed
+
+  // at least n bytes in Data[Pos .. Lim)
+  bool Need(size_t n)
+  {
+    if (Lim - Pos >= n)
+      return true;
+    memmove(Data, Data + Pos, Lim - Pos);
+    Lim -= Pos;
+    Pos = 0;
+    size_t rem = Data.Size() - Lim;
+    if (ReadStream(Stream, Data + Lim, &rem) != S_OK)
+      return false;
+    Lim += rem;
+    return Lim >= n;
+  }
+  bool Skip(UInt64 n)
+  {
+    Total += n;
+    if (Total > kGgufScanMax)
+      return false;
+    while (n != 0)
+    {
+      if (Pos == Lim && !Need(1))
+        return false;
+      const size_t k = (size_t)MyMin(n, (UInt64)(Lim - Pos));
+      Pos += k;
+      n -= k;
+    }
+    return true;
+  }
+  bool ReadU32(UInt32 &v)
+  {
+    if (!Need(4))
+      return false;
+    v = GetUi32(Data + Pos);
+    return Skip(4);
+  }
+  bool ReadU64(UInt64 &v)
+  {
+    if (!Need(8))
+      return false;
+    v = GetUi64(Data + Pos);
+    return Skip(8);
+  }
+};
+
+// skips a GGUF value of type (vt); arrays of arrays are not valid GGUF
+static bool Gguf_SkipValue(CGgufReader &r, UInt32 vt, bool inArray)
+{
+  static const Byte kSizes[13] = { 1, 1, 2, 2, 4, 4, 4, 1, 0, 0, 8, 8, 8 };
+  if (vt > 12)
+    return false;
+  if (vt == 8)   // string: u64 length, bytes
+  {
+    UInt64 len;
+    return r.ReadU64(len) && r.Skip(len);
+  }
+  if (vt == 9)   // array: u32 type, u64 count, elements
+  {
+    UInt32 et;
+    UInt64 count;
+    if (inArray || !r.ReadU32(et) || !r.ReadU64(count) || et > 12 || et == 9)
+      return false;
+    if (et != 8)
+      return count <= kGgufScanMax && r.Skip(count * kSizes[et]);
+    for (UInt64 i = 0; i < count; i++)
+      if (!Gguf_SkipValue(r, 8, true))
+        return false;
+    return true;
+  }
+  return r.Skip(kSizes[vt]);
+}
+
+static bool Scan_Gguf(ISequentialInStream *stream, const Byte *buf, size_t size, UInt32 &fileType)
+{
+  if (size < 24 || GetUi32(buf) != 0x46554747)   // "GGUF"
+    return false;
+  CGgufReader r;
+  r.Stream = stream;
+  r.Data.Alloc((size_t)1 << 16);
+  memcpy(r.Data, buf, MyMin(size, r.Data.Size()));
+  r.Pos = 0;
+  r.Lim = MyMin(size, r.Data.Size());
+  r.Total = 0;
+  UInt32 version;
+  UInt64 numTensors, numKv;
+  if (!r.ReadU32(version) || !r.ReadU32(version) || (version != 2 && version != 3)
+      || !r.ReadU64(numTensors) || !r.ReadU64(numKv))
+    return false;
+  static const char kKey[] = "general.file_type";
+  const size_t keyLen = sizeof(kKey) - 1;
+  for (UInt64 i = 0; i < numKv; i++)
+  {
+    UInt64 len;
+    if (!r.ReadU64(len))
+      return false;
+    if (len == keyLen && r.Need(keyLen + 8) && memcmp(r.Data + r.Pos, kKey, keyLen) == 0)
+    {
+      if (GetUi32(r.Data + r.Pos + keyLen) != 4)   // GGUF_TYPE_UINT32
+        return false;
+      fileType = GetUi32(r.Data + r.Pos + keyLen + 4);
+      return true;
+    }
+    UInt32 vt;
+    if (!r.Skip(len) || !r.ReadU32(vt) || !Gguf_SkipValue(r, vt, false))
+      return false;
+  }
+  return false;
 }
 
 
@@ -1255,12 +1391,21 @@ HRESULT CAnalysis::GetFilterGroup(UInt32 index, const CUpdateItem &ui, CFilterMo
           */
           size_t size = kAnalysisBufSize;
           result = ReadStream(stream, Buffer, &size);
-          stream.Release();
           // RINOK(Callback->SetOperationResult2(index, NUpdate::NOperationResult::kOK));
           if (result == S_OK)
           {
             parseRes = ParseFile(Buffer, size, &filterModeTemp);
+            // 7zip-modern: GGUF with general.file_type beyond the buffer
+            UInt32 fileType;
+            if (!parseRes && ParseModel
+                && Scan_Gguf(stream, Buffer, size, fileType) && Is_FloatGgufType(fileType))
+            {
+              filterModeTemp.ClearFilterMode();
+              filterModeTemp.Id = k_FLOAT_FilterGroup;
+              parseRes = true;
+            }
           }
+          stream.Release();
         }
       } // Callback
       else if (probablyIsSameIsa)

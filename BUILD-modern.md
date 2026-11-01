@@ -152,13 +152,16 @@ Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 ```sh
 7zz a modello.7z model.safetensors config.json             # automatico: BF16 ~66,3% (LZMA2 -mx5: 70,2%)
 7zz a -m0=FLOAT:c=4m modello.7z modello-f16.gguf           # blocchi da 64k a 4m (default 1m)
+7zz a modello.7z modello-Q4_K_M.gguf                       # automatico: ~95,5% (LZMA2: 97,8%), 20x piu' veloce
 ```
 
 Senza perdita, per array di float (BF16, FP16, FP32): l'esponente di ogni peso è
 codificato con Huffman, segno e mantissa sono copiati. L'encoder sceglie tipo e
 allineamento per ogni blocco; i blocchi che non sono float (maschere, testo) vanno in
-zstd o restano grezzi. **Automatico** per i file `.safetensors` e `.gguf` in
-F16/BF16/F32 quando il metodo è quello di default (`-mf=off` lo disattiva; con
+zstd o restano grezzi. Nei GGUF quantizzati (Q4_0, Q8_0, Q4_K, Q5_K, Q6_K) ogni tipo
+di campo delle strutture (scale, valori a 4-8 bit) ha il suo codice di Huffman.
+**Automatico** per i file `.safetensors` e `.gguf` in F16/BF16/F32 e nei tipi
+quantizzati qui sopra quando il metodo è quello di default (`-mf=off` lo disattiva; con
 `-m0=zstd` e altri metodi espliciti non cambia nulla). Metodo `3F707F5E728B0001`, solo in
 questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 

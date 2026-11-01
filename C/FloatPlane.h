@@ -16,8 +16,27 @@ Model files also contain data that are not floats (masks, padding, text metadata
 the encoder can code such a block as one zstd frame (mode 2), if the caller gives it a
 zstd compressor (CFloatPlaneLz), and a sample shows that zstd wins.
 
+Quantized models (GGUF of llama.cpp) store the weights in structs of 32 or 256 weights:
+fp16 scales, packed scales of sub-blocks, quantized values of 4-8 bits. Mode 3 codes
+each kind of field of the structs (e.g. all the high bytes of the scales, all the
+quantized values) as its own Huffman sequence: 2-3 points better than LZMA2/zstd, at
+the speed of a Huffman coder. The structs (types of ggml-common.h):
+  qtype  struct  bytes  fields (symbols per struct: alphabet)
+  0      Q4_0    18     d low byte (1: 256), d high byte (1: 256), qs[16] (16: 256)
+  1      Q8_0    34     d low byte (1), d high byte (1), qs[32] (32)
+  2      Q4_K    144    low bytes of d, dmin (2), high bytes of d, dmin (2),
+                        scales[12] (12), qs[128] (128)
+  3      Q5_K    176    low bytes of d, dmin (2), high bytes (2), scales[12] (12),
+                        the 256 values of 5 bits from qs[128] and qh[32] (256: 32)
+  4      Q6_K    210    the 256 values of 6 bits from ql[128] and qh[64] (256: 64),
+                        scales[16] (16), d low byte (1), d high byte (1)
+  Value v of Q5_K: c = v / 64, h = (v / 32) % 2, l = v % 32; low 4 bits in qs[32c + l] at
+  bit 4h, bit 4 in qh[l] at bit 2c + h. Value v of Q6_K: h = v / 128, c = (v / 32) % 4,
+  l = v % 32; low 4 bits in ql[64h + 32(c % 2) + l] at bit 4(c / 2), bits 4-5 in
+  qh[32h + l] at bit 2c (as dequantize_row_q5_K / q6_K of ggml).
+
 Block format (all integers little-endian):
-  u8  mode                   0 = stored, 1 = split, 2 = zstd
+  u8  mode                   0 = stored, 1 = split, 2 = zstd, 3 = quantized
   u32 outLen                 decoded size of the block, 1 .. FLOAT_PLANE_BLOCK_MAX
   mode 0:  outLen raw bytes
   mode 2:
@@ -35,6 +54,14 @@ Block format (all integers little-endian):
                              canonical, MSB first, zero padding to a byte
     ceil(n * rb / 8) bytes   r, rb = 8 * w - 8 - k bits per element, packed
                              little-endian (element i at bit i * rb)
+  mode 3:
+    u8  qtype                0 .. 4 (above), struct size S
+    u8  phase                0 .. S-1: raw bytes before the first struct
+    n = (outLen - phase) / S structs (n >= 1), tail = outLen - phase - n * S raw bytes
+    phase raw bytes, tail raw bytes
+    for each field: numSyms / 2 bytes of code lengths (as mode 1), u32 huffSize[4]
+    for each field: 4 streams, as mode 1: symbol i of the field (struct i / w, symbol
+                             i % w of the struct) in stream i % 4
   Canonical codes: shorter codes first, then by symbol value (as in Deflate).
   Decoding rejects lengths > 12, an over-subscribed code, a bit pattern that is not a
   code, and a huffSize[j] different from the bytes the codes of stream j actually use.
@@ -50,7 +77,9 @@ EXTERN_C_BEGIN
 
 #define FLOAT_PLANE_BLOCK_MAX      ((size_t)1 << 22)  /* Huffman_Generate: < 4M symbols */
 #define FLOAT_PLANE_BLOCK_DEFAULT  ((size_t)1 << 20)
-#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 3 + 3 + 3 + 512 + 4 * 4)
+/* largest header: a quantized block (mode 3) with phase and tail of up to 209 bytes and
+   4 fields of 256 symbols */
+#define FLOAT_PLANE_HEADER_MAX     (1 + 4 + 2 + 209 + 209 + 4 * (128 + 4 * 4))
 
 /* The encoded block is never larger than this (stored mode). */
 #define FLOAT_PLANE_ENCODED_MAX(srcLen)  ((srcLen) + 5)

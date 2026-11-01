@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Conclusa: quantizzati (§3), 16 bit (§4) → metodo FLOAT (design 0008) |
+| **Stato** | Conclusa: quantizzati (§3) → blocchi mode 3 di FLOAT; 16 bit (§4) → metodo FLOAT (design 0008) |
 | **Data** | 2026-11-01 |
 | **Strumenti** | `tools/bench/gguf_info.py` (composizione di un GGUF), `tools/bench/gguf_entropy.py` (limite teorico per flusso), `tools/bench/safetensors_planes.py` (piani di byte di un safetensors); richiedono numpy |
 
@@ -62,6 +62,11 @@ ordine 0 (`gguf_entropy.py`):
 dedicato ai blocchi Q4_K/Q6_K potrebbe arrivare vicino al 95,6% (un modello con contesto,
 per esempio sulle scale dei blocchi vicini, forse un punto in più): circa **2 punti** del
 file, 50 MB su 2,4 GB. Guadagno modesto per un nuovo filtro nel formato.
+
+**Seguito** (design 0008 §3.6): con un codice di Huffman per ogni tipo di campo delle
+strutture (non un filtro davanti a LZMA2) il guadagno arriva davvero, insieme alla
+velocità: Qwen3-0.6B Q4_K_M 97,16% → 95,26%, compressione 34 → 1100 MB/s,
+decompressione 240 → 1800 MB/s. I modelli grandi in §3.6 di 0008.
 
 ## 4. Modelli a 16 bit: misure
 

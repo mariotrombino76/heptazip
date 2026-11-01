@@ -214,3 +214,20 @@ per `.safetensors`/`.gguf` (`7zz a archivio.7z model.safetensors`, senza opzioni
 | Qwen3-0.6B (1503 MB) | BF16 | **66,28%**, 1,0 s | 70,24%, 88 s | 70,06% | 75,48% |
 | pythia-160m (375 MB) | FP16 + maschere U8 | **71,84%**, 0,3 s | 76,13%, 11 s | 75,98% | 78,35% |
 | gpt2 (548 MB) | FP32 | **76,60%**, 0,4 s | 83,34%, 14 s | 82,62% | 84,31% |
+
+### Modelli quantizzati GGUF (2026-11-01)
+
+Blocchi quantizzati del metodo FLOAT (design 0008 §3.6), scelti in automatico per i GGUF
+Q4_0, Q8_0, Q4_K_M/S, Q5_K_M/S, Q6_K. `7zz a` senza opzioni, 20 thread:
+
+| Modello | 7zz (FLOAT) | LZMA2 `-mx5` | zstd `-19 -T0` | xz `-9 -T0` |
+|---|---|---|---|---|
+| qwen3-4b Q4_K_M (2,5 GB) | **95,65%**, 2,6 s / 1,4 s | 97,83%, 55 s / 5,9 s | 97,61%, 106 s | 97,88% (`-6`), 91 s |
+| DeepHat-V1-7B Q4_K_M (4,7 GB) | **95,48%**, 5,8 s / 2,6 s | 97,81%, 106 s / 10,7 s | – | – |
+| Qwen3-0.6B Q4_K_M | **95,26%** | 97,16% | 96,82% | 97,13% |
+| Qwen3-0.6B Q5_K_M | **96,27%** | 98,55% | 98,42% | 98,55% |
+| Qwen3-0.6B Q6_K | **95,87%** | 98,66% | 98,34% | 98,67% |
+| Qwen3-0.6B Q8_0 | **93,74%** | 96,02% | 95,17% | 95,98% |
+
+(tempi: compressione / decompressione). Più piccolo di 1,4-2,8 punti del migliore dei
+concorrenti, e più veloce di tutti in entrambe le direzioni.
