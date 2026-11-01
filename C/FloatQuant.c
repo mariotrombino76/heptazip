@@ -15,6 +15,46 @@ encoder with reciprocals as in F. Giesen's rans_byte.h (public domain). */
 #include "CpuArch.h"
 #include "FloatQuant.h"
 
+#if defined(MY_CPU_X86_OR_AMD64) && !defined(Z7_FLOAT_QUANT_NO_AVX2)
+  #if defined(__clang__) && (__clang_major__ >= 4) \
+      || defined(Z7_GCC_VERSION) && (Z7_GCC_VERSION >= 40900)
+    #define FLOAT_QUANT_USE_AVX2
+    #define FLOAT_QUANT_ATTRIB_AVX2  __attribute__((__target__("avx2")))
+  #elif defined(_MSC_VER) && (_MSC_VER >= 1900)
+    #define FLOAT_QUANT_USE_AVX2
+    #define FLOAT_QUANT_ATTRIB_AVX2
+  #endif
+#endif
+
+#ifdef FLOAT_QUANT_USE_AVX2
+#include <immintrin.h>
+#if defined(__clang__)
+#include <avxintrin.h>
+#include <avx2intrin.h>
+#endif
+
+/* number of set bits */
+static const Byte g_LaneCount[256] =
+{
+#define B2(n)  n, n + 1, n + 1, n + 2
+#define B4(n)  B2(n), B2(n + 1), B2(n + 1), B2(n + 2)
+#define B6(n)  B4(n), B4(n + 1), B4(n + 1), B4(n + 2)
+  B6(0), B6(1), B6(1), B6(2)
+#undef B2
+#undef B4
+#undef B6
+};
+
+/* GCC drops the zero source of a gather with a constant full mask, and then gathers
+   into a register of the previous round: a dependency between the rounds. The mask is
+   made opaque to keep the zero source. */
+#if defined(__GNUC__) && !defined(__clang__)
+#define AVX2_OPAQUE(v)  __asm__("" : "+x"(v));
+#else
+#define AVX2_OPAQUE(v)
+#endif
+#endif
+
 #define kHeaderSize   (1 + 4 + 2)       /* mode, outLen, qtype, phase */
 #define kMaxStates    64                /* symbol i of a field is coded by state i % N */
 #define kRansL        ((UInt32)1 << 15) /* states are in [kRansL, 2^31) */
@@ -33,10 +73,13 @@ encoder with reciprocals as in F. Giesen's rans_byte.h (public domain). */
 #define QM_Q4K     3   /* the 256 values of Q4_K: context = zero point, scale >> 4 */
 #define QM_Q5K     4   /* the 256 values of Q5_K: as Q4_K */
 #define QM_Q6K     5   /* the 256 values of Q6_K: context = |scale| >> 3 */
+#define QM_Q40     6   /* the 32 values of Q4_0: context = exponent of d */
+#define QM_Q80     7   /* the 32 values of Q8_0: context = exponent of d >> 1 */
 
 /* states N of a field: 64 for the values (the bulk of the data: 8 vectors of 8 states
-   in flight in the AVX2 decoder, to hide the latency of its gathers), 8 for the others */
-#define QM_STATES(f)  ((f)->kind >= QM_Q4K ? 64u : 8u)
+   in flight in the AVX2 decoder, to hide the latency of its gathers), 32 for the other
+   fields with one context (4 vectors), 8 for the rest (scalar) */
+#define QM_STATES(f)  ((f)->kind >= QM_Q4K ? 64u : (f)->numCtx == 1 ? 32u : 8u)
 
 typedef struct
 {
@@ -55,12 +98,17 @@ typedef struct
   CQMField f[FLOAT_QUANT_MAX_FIELDS];
 } CQMType;
 
-#define kFirstQType  2
 
-/* index = qtype - 2. The fields are coded in this order: the contexts of a field are
+/* index = qtype. The fields are coded in this order: the contexts of a field are
    computed from the fields before it. */
 static const CQMType g_QMTypes[] =
 {
+  /* Q4_0: d, qs[16] */
+  {  18, 3, { { QM_BYTES, 0, 1, 1, 8, 12, 1, 1 }, { QM_BYTES, 1, 1, 1, 8, 12, 1, 1 },
+              { QM_Q40, 2, 0, 0, 4, 9, 32, 32 } } },
+  /* Q8_0: d, qs[32] */
+  {  34, 3, { { QM_BYTES, 0, 1, 1, 8, 12, 1, 1 }, { QM_BYTES, 1, 1, 1, 8, 12, 1, 1 },
+              { QM_Q80, 2, 0, 0, 8, 12, 16, 32 } } },
   /* Q4_K: d, dmin, scales[12], qs[128] */
   { 144, 5, { { QM_BYTES, 0, 2, 2, 8, 12, 2, 2 }, { QM_BYTES, 1, 2, 2, 8, 12, 2, 2 },
               { QM_SCALE6, 4, 0, 0, 6, 10, 1, 8 }, { QM_MIN6, 4, 0, 0, 6, 10, 16, 8 },
@@ -115,6 +163,11 @@ static void Q_Contexts(const Byte *p, unsigned S, const CQMField *f, size_t ns, 
 {
   size_t s;
   unsigned j;
+  if (f->numCtx == 1)
+  {
+    memset(ctx, 0, ns * f->width);
+    return;
+  }
   for (s = 0; s < ns; s++, p += S)
   {
     switch (f->kind)
@@ -146,13 +199,19 @@ static void Q_Contexts(const Byte *p, unsigned S, const CQMField *f, size_t ns, 
         }
         break;
       }
-      default:   /* QM_Q6K: value v is in the sub-block v / 16 */
+      case QM_Q6K:   /* value v is in the sub-block v / 16 */
         for (j = 0; j < 16; j++)
         {
           const int sc = (int)(signed char)p[192 + j];
           const unsigned a = (unsigned)(sc < 0 ? -sc : sc) >> 3;
           memset(ctx + 16 * j, (int)(a > 15 ? 15 : a), 16);
         }
+        break;
+      case QM_Q40:   /* the exponent of the fp16 d */
+        memset(ctx, (int)((p[1] >> 2) & 31), 32);
+        break;
+      default:   /* QM_Q80 */
+        memset(ctx, (int)((p[1] >> 3) & 15), 32);
         break;
     }
     ctx += f->width;
@@ -217,6 +276,16 @@ static void Q_Symbols(const Byte *p, unsigned S, const CQMField *f, size_t ns, B
         memcpy(sym, v, 256);
         break;
       }
+      case QM_Q40:   /* value v: low nibble of qs[v] (v < 16), high nibble of qs[v - 16] */
+        for (l = 0; l < 16; l++)
+        {
+          sym[l] = (Byte)(p[2 + l] & 15);
+          sym[l + 16] = (Byte)(p[2 + l] >> 4);
+        }
+        break;
+      case QM_Q80:
+        memcpy(sym, p + 2, 32);
+        break;
       default:   /* QM_Q6K */
       {
         Byte b[192], v[256];   /* ql[128], qh[64] */
@@ -306,6 +375,18 @@ static void Q_Join(Byte *p, unsigned S, const CQMField *f, size_t ns, const Byte
         memcpy(p + 16, v, 160);
         break;
       }
+      case QM_Q40:
+      {
+        Byte w[32], v[16];
+        memcpy(w, sym, 32);
+        for (l = 0; l < 16; l++)
+          v[l] = (Byte)(w[l] | (w[l + 16] << 4));
+        memcpy(p + 2, v, 16);
+        break;
+      }
+      case QM_Q80:
+        memcpy(p + 2, sym, 32);
+        break;
       default:   /* QM_Q6K */
       {
         Byte w[256], v[192];   /* ql[128], qh[64] */
@@ -562,9 +643,9 @@ int FloatQuant_Plan(const Byte *src, size_t srcLen, unsigned qtype, unsigned pha
   const CQMType *t;
   unsigned fi;
   size_t n;
-  if (qtype < kFirstQType || qtype - kFirstQType >= kNumQMTypes)
+  if (qtype >= kNumQMTypes)
     return 0;
-  t = &g_QMTypes[qtype - kFirstQType];
+  t = &g_QMTypes[qtype];
   if (srcLen < phase + t->size)
     return 0;
   n = (srcLen - phase) / t->size;
@@ -578,7 +659,7 @@ int FloatQuant_Plan(const Byte *src, size_t srcLen, unsigned qtype, unsigned pha
     const CQMField *f = &t->f[fi];
     const unsigned numSyms = 1u << f->logSyms, P = f->prec;
     const unsigned numTab = f->numCtx * numSyms;
-    UInt32 counts[FLOAT_QUANT_MAX_TAB];
+    UInt32 counts[FLOAT_QUANT_MAX_TAB], counts4[4][FLOAT_QUANT_MAX_TAB];
     UInt32 freqs[256];
     Byte sym[kGather * kMaxWidth], ctx[kGather * kMaxWidth];
     Byte *levels = plan->levels[fi];
@@ -586,19 +667,32 @@ int FloatQuant_Plan(const Byte *src, size_t srcLen, unsigned qtype, unsigned pha
     CBitW w;
     size_t s;
     unsigned c, k;
-    memset(counts, 0, numTab * sizeof(counts[0]));
+    for (k = 0; k < 4; k++)
+      memset(counts4[k], 0, numTab * sizeof(counts4[0][0]));
     for (s = 0; s < n; s += kGather)
     {
       const size_t ns = n - s < kGather ? n - s : kGather;
       const Byte *p = src + phase + s * t->size;
       size_t i;
+      const size_t num = ns * f->width;
       Q_Symbols(p, t->size, f, ns, sym);
       Q_Contexts(p, t->size, f, ns, ctx);
-      for (i = 0; i < ns * f->width; i++)
-        counts[((unsigned)ctx[i] << f->logSyms) + sym[i]]++;
+      /* 4 histograms: the same counter in a row would wait for its previous store */
+      for (i = 0; i + 4 <= num; i += 4)
+      {
+        counts4[0][((unsigned)ctx[i] << f->logSyms) + sym[i]]++;
+        counts4[1][((unsigned)ctx[i + 1] << f->logSyms) + sym[i + 1]]++;
+        counts4[2][((unsigned)ctx[i + 2] << f->logSyms) + sym[i + 2]]++;
+        counts4[3][((unsigned)ctx[i + 3] << f->logSyms) + sym[i + 3]]++;
+      }
+      for (; i < num; i++)
+        counts4[0][((unsigned)ctx[i] << f->logSyms) + sym[i]]++;
     }
     for (k = 0; k < numTab; k++)
+    {
+      counts[k] = counts4[0][k] + counts4[1][k] + counts4[2][k] + counts4[3][k];
       levels[k] = (Byte)(counts[k] != 0 ? Count_Level(counts[k]) : 0);
+    }
     for (c = 0; c < f->numCtx; c++)
       if (Norm_Freqs(levels + c * numSyms, numSyms, P, freqs))
         for (k = 0; k < numSyms; k++)
@@ -695,9 +789,196 @@ DEFINE_ENC_GROUPS(Enc_Groups5, 5, 1)   /* Q5_K values */
 DEFINE_ENC_GROUPS(Enc_Groups6G, 6, 1)  /* Q6_K values */
 DEFINE_ENC_GROUPS(Enc_Groups6, 6, 0)   /* scales, mins */
 DEFINE_ENC_GROUPS(Enc_Groups8, 8, 0)   /* bytes */
+DEFINE_ENC_GROUPS(Enc_Groups8G, 8, 1)  /* Q8_0 values */
 
 typedef Byte *(*Func_EncGroups)(UInt32 *x, unsigned N, const CEncSym *es, const Byte *sym,
     const Byte *ctx, size_t i, Byte *o, const Byte *oLim);
+
+#ifdef FLOAT_QUANT_USE_AVX2
+
+/* byte j: the lane whose word goes to position j, the words of the lanes with a set bit
+   packed at the end (positions 8 - count .. 7), in lane order */
+static const UInt64 g_LaneTail[256] =
+{
+  0x0000000000000000, 0x0000000000000000, 0x0100000000000000, 0x0100000000000000,
+  0x0200000000000000, 0x0200000000000000, 0x0201000000000000, 0x0201000000000000,
+  0x0300000000000000, 0x0300000000000000, 0x0301000000000000, 0x0301000000000000,
+  0x0302000000000000, 0x0302000000000000, 0x0302010000000000, 0x0302010000000000,
+  0x0400000000000000, 0x0400000000000000, 0x0401000000000000, 0x0401000000000000,
+  0x0402000000000000, 0x0402000000000000, 0x0402010000000000, 0x0402010000000000,
+  0x0403000000000000, 0x0403000000000000, 0x0403010000000000, 0x0403010000000000,
+  0x0403020000000000, 0x0403020000000000, 0x0403020100000000, 0x0403020100000000,
+  0x0500000000000000, 0x0500000000000000, 0x0501000000000000, 0x0501000000000000,
+  0x0502000000000000, 0x0502000000000000, 0x0502010000000000, 0x0502010000000000,
+  0x0503000000000000, 0x0503000000000000, 0x0503010000000000, 0x0503010000000000,
+  0x0503020000000000, 0x0503020000000000, 0x0503020100000000, 0x0503020100000000,
+  0x0504000000000000, 0x0504000000000000, 0x0504010000000000, 0x0504010000000000,
+  0x0504020000000000, 0x0504020000000000, 0x0504020100000000, 0x0504020100000000,
+  0x0504030000000000, 0x0504030000000000, 0x0504030100000000, 0x0504030100000000,
+  0x0504030200000000, 0x0504030200000000, 0x0504030201000000, 0x0504030201000000,
+  0x0600000000000000, 0x0600000000000000, 0x0601000000000000, 0x0601000000000000,
+  0x0602000000000000, 0x0602000000000000, 0x0602010000000000, 0x0602010000000000,
+  0x0603000000000000, 0x0603000000000000, 0x0603010000000000, 0x0603010000000000,
+  0x0603020000000000, 0x0603020000000000, 0x0603020100000000, 0x0603020100000000,
+  0x0604000000000000, 0x0604000000000000, 0x0604010000000000, 0x0604010000000000,
+  0x0604020000000000, 0x0604020000000000, 0x0604020100000000, 0x0604020100000000,
+  0x0604030000000000, 0x0604030000000000, 0x0604030100000000, 0x0604030100000000,
+  0x0604030200000000, 0x0604030200000000, 0x0604030201000000, 0x0604030201000000,
+  0x0605000000000000, 0x0605000000000000, 0x0605010000000000, 0x0605010000000000,
+  0x0605020000000000, 0x0605020000000000, 0x0605020100000000, 0x0605020100000000,
+  0x0605030000000000, 0x0605030000000000, 0x0605030100000000, 0x0605030100000000,
+  0x0605030200000000, 0x0605030200000000, 0x0605030201000000, 0x0605030201000000,
+  0x0605040000000000, 0x0605040000000000, 0x0605040100000000, 0x0605040100000000,
+  0x0605040200000000, 0x0605040200000000, 0x0605040201000000, 0x0605040201000000,
+  0x0605040300000000, 0x0605040300000000, 0x0605040301000000, 0x0605040301000000,
+  0x0605040302000000, 0x0605040302000000, 0x0605040302010000, 0x0605040302010000,
+  0x0700000000000000, 0x0700000000000000, 0x0701000000000000, 0x0701000000000000,
+  0x0702000000000000, 0x0702000000000000, 0x0702010000000000, 0x0702010000000000,
+  0x0703000000000000, 0x0703000000000000, 0x0703010000000000, 0x0703010000000000,
+  0x0703020000000000, 0x0703020000000000, 0x0703020100000000, 0x0703020100000000,
+  0x0704000000000000, 0x0704000000000000, 0x0704010000000000, 0x0704010000000000,
+  0x0704020000000000, 0x0704020000000000, 0x0704020100000000, 0x0704020100000000,
+  0x0704030000000000, 0x0704030000000000, 0x0704030100000000, 0x0704030100000000,
+  0x0704030200000000, 0x0704030200000000, 0x0704030201000000, 0x0704030201000000,
+  0x0705000000000000, 0x0705000000000000, 0x0705010000000000, 0x0705010000000000,
+  0x0705020000000000, 0x0705020000000000, 0x0705020100000000, 0x0705020100000000,
+  0x0705030000000000, 0x0705030000000000, 0x0705030100000000, 0x0705030100000000,
+  0x0705030200000000, 0x0705030200000000, 0x0705030201000000, 0x0705030201000000,
+  0x0705040000000000, 0x0705040000000000, 0x0705040100000000, 0x0705040100000000,
+  0x0705040200000000, 0x0705040200000000, 0x0705040201000000, 0x0705040201000000,
+  0x0705040300000000, 0x0705040300000000, 0x0705040301000000, 0x0705040301000000,
+  0x0705040302000000, 0x0705040302000000, 0x0705040302010000, 0x0705040302010000,
+  0x0706000000000000, 0x0706000000000000, 0x0706010000000000, 0x0706010000000000,
+  0x0706020000000000, 0x0706020000000000, 0x0706020100000000, 0x0706020100000000,
+  0x0706030000000000, 0x0706030000000000, 0x0706030100000000, 0x0706030100000000,
+  0x0706030200000000, 0x0706030200000000, 0x0706030201000000, 0x0706030201000000,
+  0x0706040000000000, 0x0706040000000000, 0x0706040100000000, 0x0706040100000000,
+  0x0706040200000000, 0x0706040200000000, 0x0706040201000000, 0x0706040201000000,
+  0x0706040300000000, 0x0706040300000000, 0x0706040301000000, 0x0706040301000000,
+  0x0706040302000000, 0x0706040302000000, 0x0706040302010000, 0x0706040302010000,
+  0x0706050000000000, 0x0706050000000000, 0x0706050100000000, 0x0706050100000000,
+  0x0706050200000000, 0x0706050200000000, 0x0706050201000000, 0x0706050201000000,
+  0x0706050300000000, 0x0706050300000000, 0x0706050301000000, 0x0706050301000000,
+  0x0706050302000000, 0x0706050302000000, 0x0706050302010000, 0x0706050302010000,
+  0x0706050400000000, 0x0706050400000000, 0x0706050401000000, 0x0706050401000000,
+  0x0706050402000000, 0x0706050402000000, 0x0706050402010000, 0x0706050402010000,
+  0x0706050403000000, 0x0706050403000000, 0x0706050403010000, 0x0706050403010000,
+  0x0706050403020000, 0x0706050403020000, 0x0706050403020100, 0x0706050403020100,
+};
+
+/* AVX2 encoder of the values (as RANS_ENC on 8 states): the table entries of the symbols
+   by two gathers, rcp and freq | bias << 13 | (shift - 32) << 26; the low words of the
+   lanes to renormalize packed and stored below o (16 bytes: the bytes below the packed
+   words are overwritten by the next stores); x * rcp in 64 bits for the even and the
+   odd lanes. */
+#define AVX2_ENC(X, v, P, LOG) { \
+  const int *rt_ = (const int *)(const void *)(rcpT + ((size_t)ctx[i + 8 * (v)] << (LOG))); \
+  const int *pt_ = (const int *)(const void *)(packT + ((size_t)ctx[i + 8 * (v)] << (LOG))); \
+  const __m256i s_ = _mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i *)(const void *)(sym + i + 8 * (v)))); \
+  __m256i m1_ = vAll, m2_ = vAll, rcp_, pk_, freq_, need_, w_, sh_, qe_, qo_; \
+  unsigned m_; \
+  AVX2_OPAQUE(m1_) \
+  AVX2_OPAQUE(m2_) \
+  rcp_ = _mm256_mask_i32gather_epi32(_mm256_setzero_si256(), rt_, s_, m1_, 4); \
+  pk_ = _mm256_mask_i32gather_epi32(_mm256_setzero_si256(), pt_, s_, m2_, 4); \
+  freq_ = _mm256_and_si256(pk_, v1FFF); \
+  need_ = _mm256_cmpgt_epi32(X, _mm256_sub_epi32(_mm256_slli_epi32(freq_, 31 - (P)), v1)); \
+  m_ = (unsigned)_mm256_movemask_ps(_mm256_castsi256_ps(need_)); \
+  w_ = _mm256_permutevar8x32_epi32(_mm256_and_si256(X, vFFFF), \
+      _mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i *)(const void *)&g_LaneTail[m_]))); \
+  w_ = _mm256_permute4x64_epi64(_mm256_packus_epi32(w_, w_), 0x08); \
+  _mm_storeu_si128((__m128i *)(void *)(o - 16), _mm256_castsi256_si128(w_)); \
+  o -= 2 * (size_t)g_LaneCount[m_]; \
+  X = _mm256_blendv_epi8(X, _mm256_srli_epi32(X, 16), need_); \
+  sh_ = _mm256_add_epi32(_mm256_srli_epi32(pk_, 26), v32); \
+  qe_ = _mm256_srlv_epi64(_mm256_mul_epu32(X, rcp_), _mm256_and_si256(sh_, vLo32)); \
+  qo_ = _mm256_srlv_epi64(_mm256_mul_epu32(_mm256_srli_epi64(X, 32), _mm256_srli_epi64(rcp_, 32)), \
+      _mm256_srli_epi64(sh_, 32)); \
+  X = _mm256_add_epi32(_mm256_add_epi32(X, _mm256_and_si256(_mm256_srli_epi32(pk_, 13), v1FFF)), \
+      _mm256_mullo_epi32(_mm256_blend_epi32(qe_, _mm256_slli_epi64(qo_, 32), 0xAA), \
+      _mm256_sub_epi32(vM, freq_))); }
+
+/* the symbols i - 1 .. 0 of a chunk of values, 64 at a time (i is a multiple of 64,
+   the states are 64); NULL if the output reaches oLim */
+#define DEFINE_ENC_AVX2(name, P, LOG) \
+static FLOAT_QUANT_ATTRIB_AVX2 Byte *name(UInt32 *x, const UInt32 *rcpT, const UInt32 *packT, \
+    const Byte *sym, const Byte *ctx, size_t i, Byte *o, const Byte *oLim) \
+{ \
+  const __m256i vAll = _mm256_set1_epi32(-1), v1 = _mm256_set1_epi32(1); \
+  const __m256i v1FFF = _mm256_set1_epi32(0x1FFF), vFFFF = _mm256_set1_epi32(0xFFFF); \
+  const __m256i v32 = _mm256_set1_epi32(32), vM = _mm256_set1_epi32(1 << (P)); \
+  const __m256i vLo32 = _mm256_set1_epi64x(0xFFFFFFFF); \
+  __m256i x0 = _mm256_loadu_si256((const __m256i *)(const void *)x); \
+  __m256i x1 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 8)); \
+  __m256i x2 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 16)); \
+  __m256i x3 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 24)); \
+  __m256i x4 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 32)); \
+  __m256i x5 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 40)); \
+  __m256i x6 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 48)); \
+  __m256i x7 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 56)); \
+  while (i != 0) \
+  { \
+    if ((size_t)(o - oLim) < 16 * 8) \
+    { \
+      o = NULL; \
+      break; \
+    } \
+    i -= 64; \
+    AVX2_ENC(x7, 7, P, LOG)  AVX2_ENC(x6, 6, P, LOG)  AVX2_ENC(x5, 5, P, LOG)  AVX2_ENC(x4, 4, P, LOG) \
+    AVX2_ENC(x3, 3, P, LOG)  AVX2_ENC(x2, 2, P, LOG)  AVX2_ENC(x1, 1, P, LOG)  AVX2_ENC(x0, 0, P, LOG) \
+  } \
+  _mm256_storeu_si256((__m256i *)(void *)x, x0); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 8), x1); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 16), x2); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 24), x3); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 32), x4); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 40), x5); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 48), x6); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 56), x7); \
+  return o; \
+}
+
+/* the same with 32 states (4 vectors): the fields with one context */
+#define DEFINE_ENC_AVX2_X4(name, P, LOG) \
+static FLOAT_QUANT_ATTRIB_AVX2 Byte *name(UInt32 *x, const UInt32 *rcpT, const UInt32 *packT, \
+    const Byte *sym, const Byte *ctx, size_t i, Byte *o, const Byte *oLim) \
+{ \
+  const __m256i vAll = _mm256_set1_epi32(-1), v1 = _mm256_set1_epi32(1); \
+  const __m256i v1FFF = _mm256_set1_epi32(0x1FFF), vFFFF = _mm256_set1_epi32(0xFFFF); \
+  const __m256i v32 = _mm256_set1_epi32(32), vM = _mm256_set1_epi32(1 << (P)); \
+  const __m256i vLo32 = _mm256_set1_epi64x(0xFFFFFFFF); \
+  __m256i x0 = _mm256_loadu_si256((const __m256i *)(const void *)x); \
+  __m256i x1 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 8)); \
+  __m256i x2 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 16)); \
+  __m256i x3 = _mm256_loadu_si256((const __m256i *)(const void *)(x + 24)); \
+  while (i != 0) \
+  { \
+    if ((size_t)(o - oLim) < 16 * 4) \
+    { \
+      o = NULL; \
+      break; \
+    } \
+    i -= 32; \
+    AVX2_ENC(x3, 3, P, LOG)  AVX2_ENC(x2, 2, P, LOG)  AVX2_ENC(x1, 1, P, LOG)  AVX2_ENC(x0, 0, P, LOG) \
+  } \
+  _mm256_storeu_si256((__m256i *)(void *)x, x0); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 8), x1); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 16), x2); \
+  _mm256_storeu_si256((__m256i *)(void *)(x + 24), x3); \
+  return o; \
+}
+
+DEFINE_ENC_AVX2(EncAvx2_9_4, 9, 4)
+DEFINE_ENC_AVX2(EncAvx2_9_5, 9, 5)
+DEFINE_ENC_AVX2(EncAvx2_11_6, 11, 6)
+DEFINE_ENC_AVX2(EncAvx2_12_8, 12, 8)
+DEFINE_ENC_AVX2_X4(EncAvx2x4_12_8, 12, 8)
+DEFINE_ENC_AVX2_X4(EncAvx2x4_10_6, 10, 6)
+
+typedef Byte *(*Func_EncAvx2)(UInt32 *x, const UInt32 *rcpT, const UInt32 *packT,
+    const Byte *sym, const Byte *ctx, size_t i, Byte *o, const Byte *oLim);
+
+#endif
 
 /* Codes one field: the stream is written backwards, down from oEnd (to oLim at most);
    returns its start, or NULL if it does not fit. */
@@ -705,9 +986,21 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
     const Byte *levels, Byte *oLim, Byte *oEnd)
 {
   const unsigned numSyms = 1u << f->logSyms, P = f->prec;
-  const Func_EncGroups groups = f->kind == QM_Q4K ? Enc_Groups4 : f->kind == QM_Q5K ? Enc_Groups5
-      : f->kind == QM_Q6K ? Enc_Groups6G : f->logSyms == 6 ? Enc_Groups6 : Enc_Groups8;
+  /* one context: the groups have the same context */
+  const Func_EncGroups groups = (f->kind == QM_BYTES && f->numCtx == 1) ? Enc_Groups8G
+      : (f->kind == QM_Q4K || f->kind == QM_Q40) ? Enc_Groups4
+      : f->kind == QM_Q5K ? Enc_Groups5 : f->kind == QM_Q6K ? Enc_Groups6G
+      : f->kind == QM_Q80 ? Enc_Groups8G : f->kind == QM_SCALE6 ? Enc_Groups6G
+      : f->logSyms == 6 ? Enc_Groups6 : Enc_Groups8;
   CEncSym es[FLOAT_QUANT_MAX_TAB];
+  #ifdef FLOAT_QUANT_USE_AVX2
+  UInt32 rcpT[FLOAT_QUANT_MAX_TAB], packT[FLOAT_QUANT_MAX_TAB];
+  const Func_EncAvx2 avx2 = !CPU_IsSupported_AVX2() ? NULL
+      : (f->kind == QM_Q4K || f->kind == QM_Q40) ? EncAvx2_9_4 : f->kind == QM_Q5K ? EncAvx2_9_5
+      : f->kind == QM_Q6K ? EncAvx2_11_6 : f->kind == QM_Q80 ? EncAvx2_12_8
+      : f->kind == QM_SCALE6 ? EncAvx2x4_10_6
+      : (f->kind == QM_BYTES && f->numCtx == 1) ? EncAvx2x4_12_8 : NULL;
+  #endif
   Byte sym[kGather * kMaxWidth], ctx[kGather * kMaxWidth];
   const unsigned N = QM_STATES(f);
   UInt32 x[kMaxStates];
@@ -723,7 +1016,14 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
     for (k = 0; k < numSyms; k++)
     {
       if (freqs[k] != 0)
-        EncSym_Init(&es[c * numSyms + k], cum, freqs[k], P);
+      {
+        CEncSym *e = &es[c * numSyms + k];
+        EncSym_Init(e, cum, freqs[k], P);
+        #ifdef FLOAT_QUANT_USE_AVX2
+        rcpT[c * numSyms + k] = e->rcp;
+        packT[c * numSyms + k] = freqs[k] | ((UInt32)e->bias << 13) | ((e->shift - 32) << 26);
+        #endif
+      }
       cum += freqs[k];
     }
   }
@@ -746,6 +1046,11 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
       i--;
       RANS_ENC(x[i & (N - 1)], &es[((unsigned)ctx[i] << f->logSyms) + sym[i]])
     }
+    #ifdef FLOAT_QUANT_USE_AVX2
+    if (avx2 && (i & (N - 1)) == 0)
+      o = avx2(x, rcpT, packT, sym, ctx, i, o, oLim);
+    else
+    #endif
     o = groups(x, N, es, sym, ctx, i, o, oLim);
     if (!o)
       return NULL;
@@ -762,7 +1067,7 @@ static Byte *Encode_Field(const Byte *src, const CQMType *t, const CQMField *f, 
 
 size_t FloatQuant_Write(const Byte *src, size_t srcLen, Byte *dest, size_t destCap, const CFloatQuantPlan *plan)
 {
-  const CQMType *t = &g_QMTypes[plan->qtype - kFirstQType];
+  const CQMType *t = &g_QMTypes[plan->qtype];
   const size_t phase = plan->phase, tail = plan->tail;
   Byte * const destEnd = dest + destCap;
   Byte *d = dest, *sizes;
@@ -825,9 +1130,9 @@ static SRes Parse_Header(const Byte *src, size_t srcLen, size_t outLen, CQMHeade
     return SZ_ERROR_INPUT_EOF;
   qtype = src[5];
   h->phase = src[6];
-  if (qtype < kFirstQType || qtype - kFirstQType >= kNumQMTypes)
+  if (qtype >= kNumQMTypes)
     return SZ_ERROR_DATA;
-  h->t = &g_QMTypes[qtype - kFirstQType];
+  h->t = &g_QMTypes[qtype];
   if (h->phase >= h->t->size || outLen < h->phase + h->t->size)   /* at least one struct */
     return SZ_ERROR_DATA;
   h->n = (outLen - h->phase) / h->t->size;
@@ -943,32 +1248,17 @@ static size_t name(CRansDec *d, const Byte *ctx, Byte *out, size_t num) \
 DEFINE_DEC_GROUPS(Dec_Groups_9_4, 9, 4, 1)    /* Q4_K values */
 DEFINE_DEC_GROUPS(Dec_Groups_9_5, 9, 5, 1)    /* Q5_K values */
 DEFINE_DEC_GROUPS(Dec_Groups_11_6, 11, 6, 1)  /* Q6_K values */
-DEFINE_DEC_GROUPS(Dec_Groups_10_6, 10, 6, 0)  /* scales, mins */
+DEFINE_DEC_GROUPS(Dec_Groups_10_6, 10, 6, 0)  /* mins */
+DEFINE_DEC_GROUPS(Dec_Groups_10_6G, 10, 6, 1) /* scales (one context) */
 DEFINE_DEC_GROUPS(Dec_Groups_12_8, 12, 8, 0)  /* bytes */
+DEFINE_DEC_GROUPS(Dec_Groups_12_8G, 12, 8, 1) /* Q8_0 values */
 
 typedef size_t (*Func_DecGroups)(CRansDec *d, const Byte *ctx, Byte *out, size_t num);
 
 
 /* ---------- AVX2 decoder of the values ---------- */
 
-#ifdef MY_CPU_X86_OR_AMD64
-  #if defined(__clang__) && (__clang_major__ >= 4) \
-      || defined(Z7_GCC_VERSION) && (Z7_GCC_VERSION >= 40900)
-    #define FLOAT_QUANT_USE_AVX2
-    #define FLOAT_QUANT_ATTRIB_AVX2  __attribute__((__target__("avx2")))
-  #elif defined(_MSC_VER) && (_MSC_VER >= 1900)
-    #define FLOAT_QUANT_USE_AVX2
-    #define FLOAT_QUANT_ATTRIB_AVX2
-  #endif
-#endif
-
 #ifdef FLOAT_QUANT_USE_AVX2
-
-#include <immintrin.h>
-#if defined(__clang__)
-#include <avxintrin.h>
-#include <avx2intrin.h>
-#endif
 
 /* byte j: the rank of lane j among the set bits of the index (the word of lane j) */
 static const UInt64 g_LaneRank[256] =
@@ -1039,26 +1329,7 @@ static const UInt64 g_LaneRank[256] =
   0x0504030201000000, 0x0605040302010000, 0x0605040302010000, 0x0706050403020100,
 };
 
-/* number of set bits */
-static const Byte g_LaneCount[256] =
-{
-#define B2(n)  n, n + 1, n + 1, n + 2
-#define B4(n)  B2(n), B2(n + 1), B2(n + 1), B2(n + 2)
-#define B6(n)  B4(n), B4(n + 1), B4(n + 1), B4(n + 2)
-  B6(0), B6(1), B6(1), B6(2)
-#undef B2
-#undef B4
-#undef B6
-};
 
-/* GCC drops the zero source of a gather with a constant full mask, and then gathers
-   into a register of the previous round: a dependency between the rounds. The mask is
-   made opaque to keep the zero source. */
-#if defined(__GNUC__) && !defined(__clang__)
-#define AVX2_OPAQUE(v)  __asm__("" : "+x"(v));
-#else
-#define AVX2_OPAQUE(v)
-#endif
 
 /* One vector of 8 states (one symbol each, with the same context c): the symbol from
    the byte table (a 4-byte gather at each slot), freq and cum from the second table
@@ -1084,8 +1355,8 @@ static const Byte g_LaneCount[256] =
   x = _mm256_blendv_epi8(x, _mm256_or_si256(_mm256_slli_epi32(x, 16), w_), need_); \
   p += 2 * (size_t)g_LaneCount[m_]; }
 
-/* 64 symbols (8 vectors) at a time, while the stream has 128 bytes; num is a multiple
-   of 64 and the states are 64 (the values) */
+/* 64 symbols (8 vectors) at a time, while the stream has 128 bytes and there are 64
+   symbols; the states are 64 (the values) */
 #define DEFINE_DEC_AVX2(name, P, LOG) \
 static FLOAT_QUANT_ATTRIB_AVX2 size_t name(CRansDec *d, const Byte *ctx, Byte *out, size_t num) \
 { \
@@ -1107,7 +1378,7 @@ static FLOAT_QUANT_ATTRIB_AVX2 size_t name(CRansDec *d, const Byte *ctx, Byte *o
   __m256i x6 = _mm256_loadu_si256((const __m256i *)(const void *)(d->x + 48)); \
   __m256i x7 = _mm256_loadu_si256((const __m256i *)(const void *)(d->x + 56)); \
   size_t i = 0; \
-  for (; i < num && (size_t)(end - p) >= 128; i += 64) \
+  for (; i + 64 <= num && (size_t)(end - p) >= 128; i += 64) \
   { \
     __m256i s0, s1, s2, s3; \
     AVX2_STEP(x0, s0, ctx[i], P, LOG) \
@@ -1137,21 +1408,66 @@ static FLOAT_QUANT_ATTRIB_AVX2 size_t name(CRansDec *d, const Byte *ctx, Byte *o
   return i; \
 }
 
+/* the same with 32 states (4 vectors): the fields with one context */
+#define DEFINE_DEC_AVX2_X4(name, P, LOG) \
+static FLOAT_QUANT_ATTRIB_AVX2 size_t name(CRansDec *d, const Byte *ctx, Byte *out, size_t num) \
+{ \
+  const Byte * const symTab = d->symTab; \
+  const UInt32 * const fc = d->fc; \
+  const Byte *p = d->p; \
+  const Byte * const end = d->end; \
+  const __m256i vMask = _mm256_set1_epi32((1 << (P)) - 1); \
+  const __m256i vFF = _mm256_set1_epi32(0xFF), vFFFF = _mm256_set1_epi32(0xFFFF); \
+  const __m256i vL = _mm256_set1_epi32((int)kRansL); \
+  const __m256i vAll = _mm256_set1_epi32(-1); \
+  const __m256i vOrder = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7); \
+  __m256i x0 = _mm256_loadu_si256((const __m256i *)(const void *)d->x); \
+  __m256i x1 = _mm256_loadu_si256((const __m256i *)(const void *)(d->x + 8)); \
+  __m256i x2 = _mm256_loadu_si256((const __m256i *)(const void *)(d->x + 16)); \
+  __m256i x3 = _mm256_loadu_si256((const __m256i *)(const void *)(d->x + 24)); \
+  size_t i = 0; \
+  for (; i + 32 <= num && (size_t)(end - p) >= 64; i += 32) \
+  { \
+    __m256i s0, s1, s2, s3; \
+    AVX2_STEP(x0, s0, ctx[i], P, LOG) \
+    AVX2_STEP(x1, s1, ctx[i + 8], P, LOG) \
+    AVX2_STEP(x2, s2, ctx[i + 16], P, LOG) \
+    AVX2_STEP(x3, s3, ctx[i + 24], P, LOG) \
+    /* bytes of 4 vectors: the packs interleave the 128-bit halves, the permutation \
+       puts the 4-byte groups back in order */ \
+    s0 = _mm256_packus_epi16(_mm256_packus_epi32(s0, s1), _mm256_packus_epi32(s2, s3)); \
+    _mm256_storeu_si256((__m256i *)(void *)(out + i), _mm256_permutevar8x32_epi32(s0, vOrder)); \
+  } \
+  _mm256_storeu_si256((__m256i *)(void *)d->x, x0); \
+  _mm256_storeu_si256((__m256i *)(void *)(d->x + 8), x1); \
+  _mm256_storeu_si256((__m256i *)(void *)(d->x + 16), x2); \
+  _mm256_storeu_si256((__m256i *)(void *)(d->x + 24), x3); \
+  d->p = p; \
+  return i; \
+}
+
 DEFINE_DEC_AVX2(DecAvx2_9_4, 9, 4)
 DEFINE_DEC_AVX2(DecAvx2_9_5, 9, 5)
 DEFINE_DEC_AVX2(DecAvx2_11_6, 11, 6)
+DEFINE_DEC_AVX2(DecAvx2_12_8, 12, 8)
+DEFINE_DEC_AVX2_X4(DecAvx2x4_12_8, 12, 8)
+DEFINE_DEC_AVX2_X4(DecAvx2x4_10_6, 10, 6)
 
 #endif
 
 static Func_DecGroups Get_DecGroups(const CQMField *f, int simd)
 {
   #ifdef FLOAT_QUANT_USE_AVX2
-  if (simd && CPU_IsSupported_AVX2())
+  if (simd && CPU_IsSupported_AVX2() && QM_STATES(f) != 8)
     switch (f->kind)
     {
-      case QM_Q4K: return DecAvx2_9_4;
+      case QM_Q4K:
+      case QM_Q40: return DecAvx2_9_4;
       case QM_Q5K: return DecAvx2_9_5;
       case QM_Q6K: return DecAvx2_11_6;
+      case QM_Q80: return DecAvx2_12_8;
+      case QM_SCALE6: return DecAvx2x4_10_6;
+      case QM_BYTES: if (f->numCtx == 1) return DecAvx2x4_12_8;  break;
       default: break;
     }
   #else
@@ -1159,12 +1475,14 @@ static Func_DecGroups Get_DecGroups(const CQMField *f, int simd)
   #endif
   switch (f->kind)
   {
-    case QM_Q4K: return Dec_Groups_9_4;
+    case QM_Q4K:
+    case QM_Q40: return Dec_Groups_9_4;
     case QM_Q5K: return Dec_Groups_9_5;
     case QM_Q6K: return Dec_Groups_11_6;
-    case QM_SCALE6:
+    case QM_Q80: return Dec_Groups_12_8G;
+    case QM_SCALE6: return Dec_Groups_10_6G;   /* one context */
     case QM_MIN6: return Dec_Groups_10_6;
-    default: return Dec_Groups_12_8;
+    default: return f->numCtx == 1 ? Dec_Groups_12_8G : Dec_Groups_12_8;
   }
 }
 

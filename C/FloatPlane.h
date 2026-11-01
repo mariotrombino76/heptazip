@@ -34,11 +34,12 @@ the speed of a Huffman coder. The structs (types of ggml-common.h):
   bit 4h, bit 4 in qh[l] at bit 2c + h. Value v of Q6_K: h = v / 128, c = (v / 32) % 4,
   l = v % 32; low 4 bits in ql[64h + 32(c % 2) + l] at bit 4(c / 2), bits 4-5 in
   qh[32h + l] at bit 2c (as dequantize_row_q5_K / q6_K of ggml).
-Mode 4 codes the K-quants (Q4_K, Q5_K, Q6_K) with a context model: rANS with one
+Mode 4 codes the structs with a context model: rANS with one
 frequency table per context, where the context of a quantized value is known from the
 fields decoded before it: in Q4_K / Q5_K the zero point of its sub-block (the quantized
 value of the weight 0: the values cluster around it), in Q6_K the scale of its sub-block.
-About 1.7 points smaller than mode 3 on Q4_K / Q5_K models, 0.7 on Q6_K (C/FloatQuant.c).
+in Q4_0 / Q8_0 the exponent of d. About 1.7 points smaller than mode 3 on Q4_K / Q5_K
+models, 0.7 on Q6_K, 0.3 on Q4_0, 0.1 on Q8_0 (C/FloatQuant.c).
 
 Block format (all integers little-endian):
   u8  mode                   0 = stored, 1 = split, 2 = zstd, 3 = quantized,
@@ -69,7 +70,7 @@ Block format (all integers little-endian):
     for each field: 4 streams, as mode 1: symbol i of the field (struct i / w, symbol
                              i % w of the struct) in stream i % 4
   mode 4:
-    u8  qtype                2 .. 4 (Q4_K, Q5_K, Q6_K), struct size S
+    u8  qtype                0 .. 4 (as mode 3), struct size S
     u8  phase                as mode 3; n structs (n >= 1), tail
     phase raw bytes, tail raw bytes
     for each field: u32 tabSize, u32 streamSize
@@ -85,6 +86,10 @@ Block format (all integers little-endian):
       qs[32(v / 64) + v % 32]; of Q5_K as in mode 3. sc_j, m_j: get_scale_min_k4 of ggml.
     Q6_K: scales[16] (16, 256, 12, 1); low byte of d (1, 256, 12, 1); high byte of d
       (1, 256, 12, 1); the values (256, 64, 11, min(15, |scales[v / 16]| >> 3)).
+    Q4_0: low byte of d (1, 256, 12, 1); high byte of d (1, 256, 12, 1); the values (32,
+      16, 9, (d >> 10) & 31: the exponent of d), value v the low nibble of qs[v] (v < 16)
+      or the high nibble of qs[v - 16].
+    Q8_0: d as Q4_0; the values qs[32] (32, 256, 12, (d >> 11) & 15).
   Frequency tables of a field: per context one bit (1 = used), and if used, for each
   symbol its level L (0 = absent, else a frequency of about 2^((L - 1) / 8)): L minus the
   level of the previous symbol (0 before the first), zigzag (d >= 0: 2d, else -2d - 1),
@@ -95,8 +100,8 @@ Block format (all integers little-endian):
   2^P, the first symbol with the largest f takes the whole difference if the sum is
   smaller, else gives back as much as it can keeping f >= 1. A context that is not used
   decodes symbol 0 with f = 2^P.
-  rANS stream of a field: N states (u32, in [2^15, 2^31)): N = 64 for the values, 8 for
-  the other fields; then 16-bit words. The symbols of the field, struct by struct, in the
+  rANS stream of a field: N states (u32, in [2^15, 2^31)): N = 64 for the values, 32
+  for the other fields with one context, 8 for the rest; then 16-bit words. The symbols of the field, struct by struct, in the
   order above: symbol i is decoded by state x = state[i % N]: slot = x % 2^P, s the symbol
   with cum[s] <= slot < cum[s] + f[s] (cum: the sum of the frequencies of the symbols
   before s), x = f[s] * (x >> P) + slot - cum[s], then if x < 2^15, x = (x << 16) | the

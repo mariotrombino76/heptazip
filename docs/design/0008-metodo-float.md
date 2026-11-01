@@ -353,9 +353,27 @@ Nell'archivio (`7zz a` senza opzioni, 20 thread; compressione / `7zz t`):
 | DeepHat-V1-7B Q4_K_M (4,7 GB) | 95,48%, 5,8 s / 2,6 s | **93,20%**, 6,6 s / 2,9 s | 97,81%, 106 s / 10,7 s |
 | Qwen3-0.6B Q4_K_M / Q5_K_M / Q6_K | 95,26 / 96,27 / 95,87% | **93,57 / 94,63 / 95,19%** | 97,16 / 98,55 / 98,66% |
 
-Estrazione a un thread: 620 MB/s (qwen3-4b). L'encoder pianifica solo il mode 4 per i
-K-quant da 256 KiB in su; sotto confronta anche il mode 3 (le tabelle dei contesti
-possono pesare più del guadagno).
+Estrazione a un thread: 620 MB/s (qwen3-4b). L'encoder pianifica solo il mode 4 da 256
+KiB in su; sotto confronta anche il mode 3 (le tabelle dei contesti possono pesare più
+del guadagno).
+
+**Seconda tappa.** Encoder AVX2 per i valori (due gather per vettore: reciproco e
+`freq | bias << 13 | (shift - 32) << 26`; prodotto a 64 bit sulle corsie pari e dispari;
+le parole da scrivere compattate in fondo a uno store da 16 byte), uscita identica byte
+per byte a quella scalare; 4 istogrammi interlacciati nel piano. Q4_0 e Q8_0 nel mode 4
+(contesto: l'esponente di d). I campi con un solo contesto (byte di d nei Q4_0/Q8_0,
+scale dei K, scale dei Q6_K) con 32 stati e un decoder AVX2 a 4 vettori: con 8 stati
+scalari costavano 5,7 cicli per simbolo contro 1,1. Qwen3-0.6B, un core, GCC:
+
+| GGUF | dimensione | decompressione | compressione |
+|---|---|---|---|
+| Q4_0 | 91,80% → **91,29%** | 941 MB/s (mode 3: ~1030) | 304 MB/s |
+| Q8_0 | 94,10% → **94,01%** | 1528 MB/s (~1080) | 541 MB/s |
+| Q4_K_M | **94,07%** | 790 MB/s | 336 MB/s (prima 238) |
+| Q5_K_M | **95,08%** | 863 MB/s | 345 MB/s (255) |
+| Q6_K | **95,60%** | 1140 MB/s | 450 MB/s (303) |
+
+Nell'archivio: Q4_0 90,80%, Q8_0 93,65%; DeepHat-7B 93,21% in 5,95 s / 2,69 s.
 
 ## 4. Risultati
 
@@ -430,9 +448,7 @@ in decompressione), sono solo indicative.
 
 ## 6. Prossimi passi
 
-- Quantizzati: Q4_0 e Q8_0 in rANS (~0,3 punti su Q4_0); i tipi IQ* e Q2_K/Q3_K non
-  sono ancora coperti; un encoder rANS AVX2 (oggi ~240 MB/s a thread contro ~650 del
-  mode 3).
+- Quantizzati: i tipi IQ* e Q2_K/Q3_K non sono ancora coperti.
 - Estrazione multi-thread: oltre ~2,2 GB/s il limite è la pipeline (thread chiamante,
   copie, CRC), non il decoder.
 - PyTorch `.bin`/`.pt` (archivi zip con i tensori): da valutare.

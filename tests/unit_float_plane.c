@@ -379,9 +379,11 @@ static size_t FillQuant(Byte *p, size_t numStructs, unsigned qtype, unsigned pha
   return size;
 }
 
+static const char * const kQNames[] = { "Q4_0", "Q8_0", "Q4_K", "Q5_K", "Q6_K" };
+
 static void Test_Quant(void)
 {
-  static const char * const names[] = { "Q4_0", "Q8_0", "Q4_K", "Q5_K", "Q6_K" };
+  static const char * const * const names = kQNames;
   unsigned qtype;
   for (qtype = 0; qtype < 5; qtype++)
   {
@@ -406,13 +408,13 @@ static void Test_Quant(void)
            vincere Huffman (mode 3) */
         if (size < ((size_t)1 << 16))
           continue;
-        if (size < ((size_t)1 << 18) && qtype >= kQ4_K)
+        if (size < ((size_t)1 << 18))
         {
           CHECK(g_Enc[0] == 3 || g_Enc[0] == 4);
           continue;
         }
-        /* i K-quant con il modello a contesti (mode 4), Q4_0 e Q8_0 con Huffman (mode 3) */
-        CHECK(g_Enc[0] == (qtype >= kQ4_K ? 4 : 3));
+        /* dai 256 KiB il modello a contesti (mode 4) */
+        CHECK(g_Enc[0] == 4);
         CHECK(g_Enc[5] == qtype);
         CHECK(g_Enc[6] == phases[pi]);
         if (ci == 2 && pi == 1)
@@ -424,17 +426,23 @@ static void Test_Quant(void)
 /* blocchi quantizzati piccoli: ogni byte corrotto in 3 modi, tutti i prefissi */
 static void Test_QuantCorruption(void)
 {
-  unsigned qtype;
+  unsigned qtype, big;
+  for (big = 0; big < 2; big++)
   for (qtype = 0; qtype < 5; qtype++)
   {
-    /* 16 KiB: le tabelle di Huffman dei campi (fino a ~600 byte) devono rendere; i
-       K-quant con il modello a contesti (mode 4) da 256 KiB */
-    const size_t size = FillQuant(g_Src, (qtype >= kQ4_K ? 256 : 16) * 1024 / kQSize[qtype],
-        qtype, 3, 5);
+    /* 16 KiB: Huffman (mode 3) o contesti (mode 4), le tabelle dei campi devono
+       rendere; 256 KiB: mode 4 */
+    const size_t size = FillQuant(g_Src, (big ? 256 : 16) * 1024 / kQSize[qtype], qtype, 3, 5);
     size_t encLen, pos, used;
     SRes res;
     encLen = FloatPlane_EncodeBlock(g_Src, size, g_Enc, LZ);
-    CHECK(g_Enc[0] == (qtype >= kQ4_K ? 4 : 3));
+    if (big)
+      CHECK(g_Enc[0] == 4);
+    else
+    {
+      CHECK(g_Enc[0] == 3 || g_Enc[0] == 4);
+      printf("  corruzione %s, 16 KiB: mode %u\n", kQNames[qtype], g_Enc[0]);
+    }
     /* ogni byte dell'intestazione e delle tabelle, poi un byte ogni 7 (ogni 97 nei
        flussi dei blocchi grandi) */
     for (pos = 0; pos < encLen; pos += pos < 1100 ? 1 : encLen > 100000 ? 97 : 7)

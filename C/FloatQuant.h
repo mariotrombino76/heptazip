@@ -23,9 +23,9 @@ typedef struct
   Byte levels[FLOAT_QUANT_MAX_FIELDS][FLOAT_QUANT_MAX_TAB];
 } CFloatQuantPlan;
 
-/* qtype: index of the struct type (2 = Q4_K, 3 = Q5_K, 4 = Q6_K; 0, 1 = Q4_0, Q8_0 have no
-   model here). Returns 1 and the plan, or 0 if the type has no model or there is no
-   struct after phase. */
+/* qtype: index of the struct type (0 = Q4_0, 1 = Q8_0, 2 = Q4_K, 3 = Q5_K, 4 = Q6_K).
+   Returns 1 and the plan, or 0 if the type is unknown or there is no struct after
+   phase. */
 int FloatQuant_Plan(const Byte *src, size_t srcLen, unsigned qtype, unsigned phase, CFloatQuantPlan *plan);
 
 /* Writes the block (mode 4) planned by FloatQuant_Plan() to dest (destCap bytes):
