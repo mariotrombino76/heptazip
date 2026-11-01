@@ -200,6 +200,9 @@ Regole per ogni modifica:
 
 1. `roundtrip.sh` deve passare sempre.
 2. Se la modifica non deve cambiare l'output (refactoring, build, flag),
-   `compare-archives.sh` contro il binario upstream deve dare `IDENTICI`.
+   `compare-archives.sh` contro la build **precedente del fork** deve dare `IDENTICI`.
+   Contro 7-Zip upstream i profili LZMA2 su input grandi differiscono per scelta (blocchi
+   LZMA2 da 2 volte il dizionario, `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi
+   si aprono con upstream.
 3. Se la modifica riguarda le prestazioni, allegare l'output di `bench.py`
    (minimo 3 ripetizioni) con il confronto rispetto a upstream.
