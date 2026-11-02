@@ -15,6 +15,8 @@ La filosofia visiva è in [filosofia-visiva.md](filosofia-visiva.md).
 | `heptazip-mark.svg`, `heptazip-mark-dark.svg` | solo il segno |
 | `heptazip-mark-{16..512}.png` | icone |
 | `heptazip.ico` | icona Windows (16-256 px) |
+| `heptazip-about.ico` | logo della finestra Informazioni (202×63, misura reale) |
+| `heptazip-menu.bmp` | segno a 1 bit 13×13 per il menu contestuale di Explorer |
 
 Colori: inchiostro `#0F1D2E`, nucleo `#2EC4B6`, carta `#ECE8DF`.
 
@@ -24,6 +26,15 @@ Tutti i file sono prodotti da [`tools/logo/make_logo.py`](../../tools/logo/make_
 (richiede shapely, fonttools, cairosvg, Pillow):
 
     python3 tools/logo/make_logo.py Outfit-Regular.ttf docs/logo IBMPlexMono-Regular.ttf
+
+Nella GUI Windows i file sono copiati con i nomi originali di 7-Zip (le risorse `.rc`
+non cambiano):
+
+| File | Risorsa |
+|---|---|
+| `heptazip.ico` | `CPP/7zip/UI/FileManager/FM.ico`, `CPP/7zip/UI/GUI/FM.ico` |
+| `heptazip-about.ico` | `CPP/7zip/UI/FileManager/7zipLogo.ico` |
+| `heptazip-menu.bmp` | `CPP/7zip/UI/Explorer/MenuLogo.bmp` |
 
 ## Caratteri
 
