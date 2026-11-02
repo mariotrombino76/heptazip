@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Suite di equivalenza della compressione .7z parallela (docs/design/0003, par. 6).
 
 Genera dati di test deterministici e, per ogni profilo, crea l'archivio due volte:

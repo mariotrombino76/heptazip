@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Deflate a blocchi in parallelo (docs/design/0009) e livelli veloci (0010).
 
 Per ogni dimensione (intorno ai multipli del blocco di 1 MiB, vuoto, dati casuali e zeri)

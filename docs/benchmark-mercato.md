@@ -210,9 +210,9 @@ corpus   libdeflate  -9                         66.20%     106.8    1596.6      
 corpus   libdeflate  -12                        65.99%      24.7    1528.0        4.7      0.06      187      181
 ```
 
-- **Compressione**: nel tempo reale vince Tensor7 con 20 thread, ma per core libdeflate
+- **Compressione**: nel tempo reale vince Heptazip con 20 thread, ma per core libdeflate
   è circa 7-10 volte più efficiente: `-6` dà 31,85% con 1,6 s di CPU, meglio di
-  Tensor7 `-mx4` (31,92% con 14,2 s); `-12` dà 30,52% con 26,8 s, come Tensor7 `-mx9`
+  Heptazip `-mx4` (31,92% con 14,2 s); `-12` dà 30,52% con 26,8 s, come Heptazip `-mx9`
   (30,56% con 262 s).
 - **Decompressione**: libdeflate 840-870 MB/s su silesia e 1,5-1,6 GB/s sul corpus,
   2,7 e 1,8 volte il decoder Deflate di 7-Zip (306-318 e 860 MB/s).
@@ -250,7 +250,7 @@ corpus   libdeflate  -9                         66.20%     106.7    1588.8      
 
 - **Decompressione gzip**: da 280-300 a 780-800 MB/s su silesia (2,7 volte; libdeflate
   860, pigz 326) e da 730 a 2100-2230 MB/s sul corpus (3 volte, più di libdeflate: 1540-1590).
-- Insieme alla compressione parallela (design 0009, 0010), gzip e zip di Tensor7 sono
+- Insieme alla compressione parallela (design 0009, 0010), gzip e zip di Heptazip sono
   davanti a pigz su entrambi gli assi a ogni livello confrontabile, e a libdeflate nel
   tempo reale di compressione; libdeflate resta più efficiente per core in compressione.
 

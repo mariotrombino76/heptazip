@@ -1,8 +1,8 @@
 @echo off
 rem SPDX-License-Identifier: BSD-2-Clause
-rem Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+rem Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 rem
-rem Tensor7 per Windows con MSVC (x64), con i makefile nmake di 7-Zip:
+rem Heptazip per Windows con MSVC (x64), con i makefile nmake di 7-Zip:
 rem   7z.dll (codec e formati), 7z.exe (riga di comando), 7zFM.exe (file manager),
 rem   7zG.exe (finestre di compressione/estrazione), 7-zip.dll (menu di Explorer).
 rem
@@ -36,6 +36,6 @@ for %%d in (Bundles\Format7zF UI\Console UI\FileManager UI\GUI UI\Explorer) do (
   copy /y x64\*.dll "%OUT%" >nul 2>nul
   popd
 )
-echo Tensor7 per Windows in %OUT%
+echo Heptazip per Windows in %OUT%
 dir /b "%OUT%"
 exit /b 0

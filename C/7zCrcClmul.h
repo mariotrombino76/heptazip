@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* 7zCrcClmul.h -- CRC32 with PCLMULQDQ folding (x86-64)
-Tensor7.
+Heptazip.
 
 Implementation header: it's included by 7zCrc.c only (all functions are
 static), so no build file of 7-Zip needs changes. tests/unit_crc_clmul.c

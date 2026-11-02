@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Semi per il fuzzing dei formati immagine di sola lettura (design 0007).
 
     python3 tools/fuzz/make-seeds-images.py <directory_corpus>

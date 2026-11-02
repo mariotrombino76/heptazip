@@ -712,7 +712,7 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
             const size_t compressedSizeT = (size_t)compressedSize;
             const size_t allocSize = compressedSizeT + kAdditionalInputSize;
             if (allocSize <= compressedSize)
-              throw CNewException();  // Tensor7: size overflow
+              throw CNewException();  // Heptazip: size overflow
             packBuf.AllocAtLeast(allocSize);
             res = ReadStream_FALSE(inStream, packBuf, compressedSizeT);
             if (res == S_OK)

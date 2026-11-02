@@ -862,7 +862,7 @@ HRESULT CDecoder::CodeReal(ICompressProgressInfo *progress)
     if (InputEofError())
       return S_FALSE;
 
-    // Tensor7: progress may be NULL (ICompressCoder::Code), as in the other decoders.
+    // Heptazip: progress may be NULL (ICompressCoder::Code), as in the other decoders.
     if (progress)
     {
       const UInt64 packSize = m_InBitStream.BitDecoder.GetProcessedSize();

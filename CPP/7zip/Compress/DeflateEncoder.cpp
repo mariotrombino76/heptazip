@@ -113,7 +113,7 @@ void CEncProps::Normalize()
   if (level < 0) level = 5;
   Level = level;
   if (algo < 0) algo = (level < 5 ? 0 : 1);
-  /* Tensor7: -mx1..-mx4 were the same profile (fb 32, mc 32, greedy parsing). The fast
+  /* Heptazip: -mx1..-mx4 were the same profile (fb 32, mc 32, greedy parsing). The fast
      mode now does lazy matching, with a longer search at each level (docs/design/0010;
      silesia, 20 threads: -mx1 is as fast as before with a better ratio, -mx3 is faster
      than pigz -6 with a better ratio, -mx4 has the ratio of pigz -9 at 1.8 times its
@@ -163,7 +163,7 @@ void CCoder::SetProps(const CEncProps *props2)
   }
 }
 
-/* Tensor7: the chunks are coded by libdeflate (design 0012), at the level with a better
+/* Heptazip: the chunks are coded by libdeflate (design 0012), at the level with a better
    ratio than the coder of 7-Zip at the same -mx (silesia, 1 MiB chunks: -mx1 32.78%
    instead of 32.98%, -mx3 31.85% / 32.14%, -mx5 30.61% / 30.99%, -mx9 30.53% / 30.56%),
    with less CPU time (2 to 5 times less; -mx5 about the same). The coder of 7-Zip codes
@@ -377,7 +377,7 @@ void CCoder::MovePos(UInt32 num)
 
 static const UInt32 kIfinityPrice = 0xFFFFFFF;
 
-static const unsigned kNumPassesFirstBlock = 4;  // Tensor7: see CodeStream()
+static const unsigned kNumPassesFirstBlock = 4;  // Heptazip: see CodeStream()
 
 NO_INLINE UInt32 CCoder::Backward(UInt32 &backRes, UInt32 cur)
 {
@@ -511,7 +511,7 @@ NO_INLINE UInt32 CCoder::GetOptimal(UInt32 &backRes)
   }
 }
 
-/* Tensor7: the fast mode does lazy matching (docs/design/0010), as zlib's deflate_slow():
+/* Heptazip: the fast mode does lazy matching (docs/design/0010), as zlib's deflate_slow():
    the match at the current position is coded only if the next position has no better
    match; else the current byte is a literal, and the match of the next position is
    compared in the same way with the following one. "Better" is decided as in zstd's
@@ -1109,7 +1109,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 {
   m_CheckStatic = (m_NumPasses != 1 || m_NumDivPasses != 1);
   m_IsMultiPass = (m_CheckStatic || (m_NumPasses != 1 || m_NumDivPasses != 1));
-  /* Tensor7: the optimal parser prices a block with the Huffman codes of the previous
+  /* Heptazip: the optimal parser prices a block with the Huffman codes of the previous
      block. A chunk after the first one would start with the default codes: its first
      block is parsed again with its own codes (kNumPassesFirstBlock passes; silesia -mx5,
      1 MiB chunks: the loss against a single stream goes from 0.17% to 0.09%, same time).
@@ -1134,7 +1134,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
   UInt64 nowPos = 0;
 
   MatchFinder_Init(&_lzInWindow);
-  // Tensor7: the history before the chunk goes into the match finder, but is not coded.
+  // Heptazip: the history before the chunk goes into the match finder, but is not coded.
   if (prefixSize != 0)
   {
     if (_btMode)
@@ -1171,7 +1171,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 
   m_NumPasses = numPasses;
 
-  // Tensor7: an empty stored block ends the chunk on a byte boundary (as zlib's
+  // Heptazip: an empty stored block ends the chunk on a byte boundary (as zlib's
   // Z_SYNC_FLUSH): the chunks are concatenated as bytes.
   if (!finalChunk)
     WriteStoreBlock(0, 0, false);
@@ -1184,7 +1184,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
   return m_OutStream.Flush();
 }
 
-// ---------- Tensor7: chunked and parallel coding (design 0009) ----------
+// ---------- Heptazip: chunked and parallel coding (design 0009) ----------
 //
 // The input is cut in chunks of kChunkSize bytes, coded independently by a pool of
 // coders. Each coder gets the last kHistorySize bytes of the previous chunk as history:

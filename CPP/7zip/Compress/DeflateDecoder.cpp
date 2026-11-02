@@ -76,7 +76,7 @@ bool CCoder::DecodeLevels(Byte *levels, unsigned numSymbols)
   return true;
 }
 
-/* ---------- Tensor7: fast decoder (docs/design/0011) ----------
+/* ---------- Heptazip: fast decoder (docs/design/0011) ----------
 
    DecodeFast() decodes the symbols of a Huffman block as libdeflate does: a 64-bit bit
    buffer refilled 8 bytes at a time without branches, tables indexed by the next bits
@@ -537,7 +537,7 @@ HRESULT CCoder::CodeSpec(UInt32 curSize, bool finishInputStream, UInt32 inputPro
   if (_remainLen == kLenIdNeedInit)
   {
     if (!_keepHistory)
-      // Tensor7: a window larger than the history: DecodeFast() needs room, and the
+      // Heptazip: a window larger than the history: DecodeFast() needs room, and the
       // output stream gets larger writes
       if (!m_OutWindowStream.Create(kWindowSize))
         return E_OUTOFMEMORY;
@@ -632,7 +632,7 @@ HRESULT CCoder::CodeSpec(UInt32 curSize, bool finishInputStream, UInt32 inputPro
     while (curSize)
     {
       {
-        // Tensor7: fast decoder, far from the limits of the buffers
+        // Heptazip: fast decoder, far from the limits of the buffers
         const int r = DecodeFast(curSize);
         if (r == kFastEob)
         {
@@ -694,7 +694,7 @@ HRESULT CCoder::CodeSpec(UInt32 curSize, bool finishInputStream, UInt32 inputPro
 
 #if 1
         sym = kDistStart[sym] + m_InBitStream.ReadBits(kDistDirectBits[sym]);
-        // Tensor7: the window can be larger than the history (it was rejected by CopyBlock())
+        // Heptazip: the window can be larger than the history (it was rejected by CopyBlock())
         if (sym >= (_deflate64Mode ? kHistorySize64 : kHistorySize32))
           return S_FALSE;
 #else

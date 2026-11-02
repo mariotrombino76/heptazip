@@ -237,7 +237,7 @@ Z7_COM7F_IMF(CFolderOutStream::GetSubStreamSize(UInt64 subStream, UInt64 *value)
 */
 
 
-/* Tensor7: the planning of one extraction step and the handling of the
+/* Heptazip: the planning of one extraction step and the handling of the
    folder decoding result were moved out of CHandler::Extract() into the two
    functions below, without behavior changes, so that the parallel folder
    extraction (docs/design/0001-estrazione-parallela-folder-7z.md) can reuse
@@ -435,7 +435,7 @@ static HRESULT DecodeJobInline(const CExtractContext &ctx, CDecoder &decoder, co
 #if !defined(Z7_ST)
 
 /* ---------------------------------------------------------------------------
-   Tensor7: parallel extraction of folders.
+   Heptazip: parallel extraction of folders.
    See docs/design/0001-estrazione-parallela-folder-7z.md
 
    Worker threads decode folders ahead into memory buffers. The extraction
@@ -1000,7 +1000,7 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
   ctx.NumThreads = _numThreads;
   ctx.MemUsage = _memUsage_Decompress;
 
-  // Tensor7: parallel extraction of folders (-mpfd)
+  // Heptazip: parallel extraction of folders (-mpfd)
   if (_parallelFolderDecoding && _numThreads > 1)
   {
     CParallelExtract parallelExtract(ctx, useMixerMT);

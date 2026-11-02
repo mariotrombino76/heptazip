@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 # Test di correttezza: per ogni profilo comprime il corpus, verifica l'archivio
 # (7zz t), estrae e confronta byte per byte con l'originale.
 #

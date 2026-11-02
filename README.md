@@ -1,10 +1,13 @@
-# Tensor7
+# Heptazip
 
-Tensor7 è un fork di [7-Zip](https://7-zip.org) 26.05 (Igor Pavlov) per Linux e
+Heptazip è un fork di [7-Zip](https://7-zip.org) 26.05 (Igor Pavlov) per Linux e
 compilatori moderni: più veloce in compressione e decompressione, parallelo dove 7-Zip
 non lo è, e con un metodo nuovo per i modelli di intelligenza artificiale. Il programma
 resta `7zz`, con gli stessi comandi e opzioni; gli archivi `.7z` con i metodi standard
 si aprono con qualunque 7-Zip.
+
+Il progetto si chiamava Tensor7 fino al 2 novembre 2026 (nome cambiato per non confonderlo
+con una società omonima).
 
 ## Cosa aggiunge
 
@@ -27,7 +30,7 @@ si aprono con qualunque 7-Zip.
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,
   sanitizer, fuzzing (libFuzzer) e build ARM64.
 
-Gli archivi con FLOAT si estraggono solo con Tensor7: per la compatibilità con 7-Zip
+Gli archivi con FLOAT si estraggono solo con Heptazip: per la compatibilità con 7-Zip
 basta `-mf=off`.
 
 ## Documentazione
@@ -39,7 +42,7 @@ basta `-mf=off`.
 
 ## Versioni
 
-`26.05-m1`: la base 7-Zip (26.05) e il rilascio di Tensor7 su quella base.
+`26.05-m1`: la base 7-Zip (26.05) e il rilascio di Heptazip su quella base.
 
 ## Branch
 
@@ -47,16 +50,16 @@ basta `-mf=off`.
 |---|---|
 | `develop` | sviluppo: base delle pull request, build e test (GitHub Actions) a ogni push |
 | `modern` | linea stabile, aggiornata da `develop` a ogni release |
-| `main` | 7-Zip 26.05 originale, come riferimento (non riceve il lavoro di Tensor7) |
+| `main` | 7-Zip 26.05 originale, come riferimento (non riceve il lavoro di Heptazip) |
 
 Ogni modifica passa da una issue, un branch da `develop` e una pull request.
 
 ## Licenza e crediti
 
-Tensor7: Copyright (c) 2026 Mario Trombino. Il codice scritto per Tensor7 è distribuito
+Heptazip: Copyright (c) 2026 Mario Trombino. Il codice scritto per Heptazip è distribuito
 con la licenza BSD a 2 clausole: chi lo riusa deve mantenere l'avviso di copyright e il
-testo della licenza. Dettagli, file per file: [LICENSE-Tensor7](LICENSE-Tensor7).
+testo della licenza. Dettagli, file per file: [LICENSE-Heptazip](LICENSE-Heptazip).
 
 7-Zip è di Igor Pavlov: il codice originale mantiene le sue licenze (GNU LGPL, con la
 restrizione unRAR per il codice RAR, e le parti BSD; vedi `DOC/License.txt`). zstd è
-distribuito con licenza BSD, il compressore di libdeflate con licenza MIT. Tensor7 non è un prodotto ufficiale di 7-Zip.
+distribuito con licenza BSD, il compressore di libdeflate con licenza MIT. Heptazip non è un prodotto ufficiale di 7-Zip.

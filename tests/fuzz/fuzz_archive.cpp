@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // fuzz_archive.cpp -- harness libFuzzer per i gestori dei formati di archivio (design 0007)
 //
 // Per ogni input: apre i dati con il gestore del formato scelto, legge le proprieta' di

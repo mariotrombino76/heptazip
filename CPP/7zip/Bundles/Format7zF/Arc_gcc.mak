@@ -380,10 +380,10 @@ C_OBJS = \
   $O/FloatQuant.o \
 
 
-# Tensor7: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# Heptazip: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
 # FLOAT) and the libdeflate compressor (Deflate, design 0012)
-T7_ZSTD_FLAGS = -DZ7_ZSTD_LIB_ENCODER
-T7_DEFLATE_FLAGS = -DZ7_DEFLATE_LIBDEFLATE
+HZ_ZSTD_FLAGS = -DZ7_ZSTD_LIB_ENCODER
+HZ_DEFLATE_FLAGS = -DZ7_DEFLATE_LIBDEFLATE
 
 ZSTD_LIB_OBJS = \
   $O/debug.o \

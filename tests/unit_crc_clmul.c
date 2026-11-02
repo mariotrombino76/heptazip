@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* unit_crc_clmul.c -- test di C/7zCrcClmul.h (CRC32 con PCLMULQDQ)
 
 Confronta il CRC32 calcolato con il folding PCLMULQDQ con un CRC32 di

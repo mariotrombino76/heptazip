@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* sais_probe.c -- costo di costruzione di un suffix array (docs/design/0005, candidato A)
 
    Implementazione diretta di SA-IS (Nong, Zhang, Chan 2009, induced sorting), senza

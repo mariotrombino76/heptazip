@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ZstdLibEncoder.h
-// Tensor7: Zstandard encoder based on the reference library (third_party/zstd).
+// Heptazip: Zstandard encoder based on the reference library (third_party/zstd).
 //
 // It creates standard zstd frames for the 7z method 0x4F71101, the method ID
 // and coder properties used by 7-Zip-zstd (5 bytes: major, minor version of

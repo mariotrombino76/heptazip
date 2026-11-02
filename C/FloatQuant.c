@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* FloatQuant.c -- context model for the quantized structs of GGUF files (FLOAT mode 4)
-Tensor7 (design 0008)
+Heptazip (design 0008)
 
 The fields of the K-quant structs (Q4_K, Q5_K, Q6_K) are coded with rANS (8 or 32
 interleaved states) and one frequency table per context: the context of a quantized value is a

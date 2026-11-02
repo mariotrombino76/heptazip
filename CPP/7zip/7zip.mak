@@ -27,7 +27,7 @@ OBJS = \
   $(COMPRESS_OBJS) \
   $(CRYPTO_OBJS) \
   $(C_OBJS) \
-  $(T7_LIB_OBJS) \
+  $(HZ_LIB_OBJS) \
   $(ASM_OBJS) \
   $O\resource.res \
 
@@ -238,21 +238,21 @@ $(C_OBJS): ../../../../C/$(*B).c
 
 !ENDIF
 
-# Tensor7: third-party libraries (third_party/, T7_LIB_OBJS of Format7zF/Arc.mak),
+# Heptazip: third-party libraries (third_party/, HZ_LIB_OBJS of Format7zF/Arc.mak),
 # compiled without warnings: the C flags without -Wall and -WX (with them, cl stops on
 # the warnings of -Wall even after -w), plus -w
-!IFDEF T7_LIB_OBJS
-T7_CFLAGS_NO_WX = $(CFLAGS_C_ALL:-WX=)
-T7_CFLAGS = $(T7_CFLAGS_NO_WX:-Wall=) -w
-T7_ZSTD_LIB_FLAGS = -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_
+!IFDEF HZ_LIB_OBJS
+HZ_CFLAGS_NO_WX = $(CFLAGS_C_ALL:-WX=)
+HZ_CFLAGS = $(HZ_CFLAGS_NO_WX:-Wall=) -w
+HZ_ZSTD_LIB_FLAGS = -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_
 {../../../../third_party/zstd/lib/common}.c{$O}.obj::
-	$(CC) $(T7_CFLAGS) $(T7_ZSTD_LIB_FLAGS) $<
+	$(CC) $(HZ_CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
 {../../../../third_party/zstd/lib/compress}.c{$O}.obj::
-	$(CC) $(T7_CFLAGS) $(T7_ZSTD_LIB_FLAGS) $<
+	$(CC) $(HZ_CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
 $O\deflate_compress.obj: ../../../../third_party/libdeflate/lib/deflate_compress.c
-	$(CC) $(T7_CFLAGS) $**
+	$(CC) $(HZ_CFLAGS) $**
 $O\libdeflate_utils.obj: ../../../../third_party/libdeflate/lib/utils.c
-	$(CC) $(T7_CFLAGS) -Fo$O\libdeflate_utils.obj $**
+	$(CC) $(HZ_CFLAGS) -Fo$O\libdeflate_utils.obj $**
 !ENDIF
 
 !include "Asm.mak"

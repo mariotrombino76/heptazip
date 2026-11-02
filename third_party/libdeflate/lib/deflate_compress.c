@@ -467,12 +467,12 @@ struct libdeflate_compressor {
 	size_t max_passthrough_size;
 
 	/*
-	 * Tensor7: libdeflate_deflate_compress_chunk().  The first t7_dict_nbytes
+	 * Heptazip: libdeflate_deflate_compress_chunk().  The first hz_dict_nbytes
 	 * bytes of the input are history: they go in the matchfinder, but are not
-	 * coded.  If !t7_final, no block is marked as the final one.
+	 * coded.  If !hz_final, no block is marked as the final one.
 	 */
-	size_t t7_dict_nbytes;
-	bool t7_final;
+	size_t hz_dict_nbytes;
+	bool hz_final;
 
 	/*
 	 * The maximum search depth: consider at most this many potential
@@ -2473,11 +2473,11 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 
 	ht_matchfinder_init(&c->p.f.ht_mf);
 
-	/* Tensor7: the history goes in the matchfinder, but is not coded */
-	if (c->t7_dict_nbytes != 0) {
+	/* Heptazip: the history goes in the matchfinder, but is not coded */
+	if (c->hz_dict_nbytes != 0) {
 		ht_matchfinder_skip_bytes(&c->p.f.ht_mf, &in_cur_base, in_next,
-					  in_end, c->t7_dict_nbytes, &next_hash);
-		in_next += c->t7_dict_nbytes;
+					  in_end, c->hz_dict_nbytes, &next_hash);
+		in_next += c->hz_dict_nbytes;
 	}
 
 	do {
@@ -2537,7 +2537,7 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.f.sequences,
-				     in_next == in_end && c->t7_final);
+				     in_next == in_end && c->hz_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -2568,12 +2568,12 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 	hc_matchfinder_init(&c->p.g.hc_mf, GREEDY_MULTI_HOP);
 
-	/* Tensor7: the history goes in the matchfinder, but is not coded */
-	if (c->t7_dict_nbytes != 0) {
+	/* Heptazip: the history goes in the matchfinder, but is not coded */
+	if (c->hz_dict_nbytes != 0) {
 		hc_matchfinder_skip_bytes(&c->p.g.hc_mf, &in_cur_base, in_next,
-					  in_end, c->t7_dict_nbytes, next_hashes,
+					  in_end, c->hz_dict_nbytes, next_hashes,
 					  GREEDY_MULTI_HOP);
-		in_next += c->t7_dict_nbytes;
+		in_next += c->hz_dict_nbytes;
 	}
 
 	do {
@@ -2637,7 +2637,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.g.sequences,
-				     in_next == in_end && c->t7_final);
+				     in_next == in_end && c->hz_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -2655,12 +2655,12 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 
 	hc_matchfinder_init(&c->p.g.hc_mf, LAZY_MULTI_HOP);
 
-	/* Tensor7: the history goes in the matchfinder, but is not coded */
-	if (c->t7_dict_nbytes != 0) {
+	/* Heptazip: the history goes in the matchfinder, but is not coded */
+	if (c->hz_dict_nbytes != 0) {
 		hc_matchfinder_skip_bytes(&c->p.g.hc_mf, &in_cur_base, in_next,
-					  in_end, c->t7_dict_nbytes, next_hashes,
+					  in_end, c->hz_dict_nbytes, next_hashes,
 					  LAZY_MULTI_HOP);
-		in_next += c->t7_dict_nbytes;
+		in_next += c->hz_dict_nbytes;
 	}
 
 	do {
@@ -2858,7 +2858,7 @@ have_cur_match:
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.g.sequences,
-				     in_next == in_end && c->t7_final);
+				     in_next == in_end && c->hz_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -3687,11 +3687,11 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	deflate_near_optimal_init_stats(c);
 
 	/*
-	 * Tensor7: the history goes in the matchfinder, but is not coded.  It is
+	 * Heptazip: the history goes in the matchfinder, but is not coded.  It is
 	 * at most MATCHFINDER_WINDOW_SIZE bytes: no slide is needed.
 	 */
-	if (c->t7_dict_nbytes != 0) {
-		const u8 * const in_dict_end = in_next + c->t7_dict_nbytes;
+	if (c->hz_dict_nbytes != 0) {
+		const u8 * const in_dict_end = in_next + c->hz_dict_nbytes;
 
 		do {
 			adjust_max_and_nice_len(&max_len, &nice_len,
@@ -3896,7 +3896,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			const u8 *in_block_end = prev_end_block_check;
 			u32 block_length = in_block_end - in_block_begin;
 			bool is_first = (in_block_begin ==
-					 in + c->t7_dict_nbytes);
+					 in + c->hz_dict_nbytes);
 			bool is_final = false;
 			u32 num_bytes_to_rewind = in_next - in_block_end;
 			size_t cache_len_rewound;
@@ -3931,8 +3931,8 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			 */
 			u32 block_length = in_next - in_block_begin;
 			bool is_first = (in_block_begin ==
-					 in + c->t7_dict_nbytes);
-			bool is_final = (in_next == in_end && c->t7_final);
+					 in + c->hz_dict_nbytes);
+			bool is_final = (in_next == in_end && c->hz_final);
 
 			deflate_near_optimal_merge_stats(c);
 			deflate_optimize_and_flush_block(
@@ -4043,8 +4043,8 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	 * compress very small inputs.
 	 */
 	c->max_passthrough_size = 55 - (compression_level * 4);
-	c->t7_dict_nbytes = 0;	/* Tensor7 */
-	c->t7_final = true;
+	c->hz_dict_nbytes = 0;	/* Heptazip */
+	c->hz_final = true;
 
 	switch (compression_level) {
 	case 0:
@@ -4191,7 +4191,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 }
 
 /*
- * Tensor7: compresses the (in_nbytes) bytes after (dict_nbytes) bytes of history
+ * Heptazip: compresses the (in_nbytes) bytes after (dict_nbytes) bytes of history
  * at (in): the matches can refer to the history, as in a single stream.  If
  * !final, no block is the final one, and an empty stored block ends the output
  * on a byte boundary (as zlib's Z_SYNC_FLUSH): the outputs of the chunks of a
@@ -4227,11 +4227,11 @@ libdeflate_deflate_compress_chunk(struct libdeflate_compressor *c,
 	os.end = os.next + out_nbytes_avail;
 	os.overflow = false;
 
-	c->t7_dict_nbytes = dict_nbytes;
-	c->t7_final = (final != 0);
+	c->hz_dict_nbytes = dict_nbytes;
+	c->hz_final = (final != 0);
 	(*c->impl)(c, in, dict_nbytes + in_nbytes, &os);
-	c->t7_dict_nbytes = 0;
-	c->t7_final = true;
+	c->hz_dict_nbytes = 0;
+	c->hz_final = true;
 
 	if (os.overflow)
 		return 0;

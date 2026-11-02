@@ -90,7 +90,7 @@ public:
     _pos = pos;
   }
   
-  // Tensor7: direct access for the fast Deflate decoder. It writes at (GetBuf() + pos)
+  // Heptazip: direct access for the fast Deflate decoder. It writes at (GetBuf() + pos)
   // only below (limitPos), and sets a new (pos < limitPos) with Fast_SetPos().
   Byte *Fast_GetBuf(UInt32 &pos, UInt32 &limitPos) const { pos = _pos; limitPos = _limitPos; return _buf; }
   void Fast_SetPos(UInt32 pos) { _pos = pos; }

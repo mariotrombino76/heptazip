@@ -5,7 +5,7 @@
 
 #include "../Common/OutBuffer.h"
 
-/* Tensor7: the bits are collected in a 64-bit buffer and written 4 bytes at a time,
+/* Heptazip: the bits are collected in a 64-bit buffer and written 4 bytes at a time,
    instead of one byte at a time with a loop. Same output; the greedy Deflate -mx1 of
    7-Zip 26.05 was 16% faster with one thread (docs/design/0010). */
 class CBitlEncoder

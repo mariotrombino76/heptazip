@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ListJson.cpp
-// Tensor7: JSON output of the "l" (list) command, switch -json.
+// Heptazip: JSON output of the "l" (list) command, switch -json.
 // See docs/json-output.md.
 
 #include "StdAfx.h"

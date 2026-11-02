@@ -1342,7 +1342,7 @@ HRESULT CHandler::Open2(IInStream *inStream)
     // ---------- Read Dirs ----------
 
     CByteBuffer dataBuf;
-    // Tensor7: the data of a directory are in blocks of the image, so a directory cannot
+    // Heptazip: the data of a directory are in blocks of the image, so a directory cannot
     // be larger than the image file. Without this check a corrupted inode (or extents
     // with holes, read as zeros) made a 47 KB image allocate gigabytes (found by fuzzing).
     UInt64 imageSize = 0;

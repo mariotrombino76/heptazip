@@ -433,7 +433,7 @@ static void GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UStr
   }
 }
 
-// Tensor7: property names of -slt, also used by the JSON output (ListJson.cpp)
+// Heptazip: property names of -slt, also used by the JSON output (ListJson.cpp)
 void List_GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UString &nameU);
 void List_GetPropName(PROPID propID, const wchar_t *name, AString &nameA, UString &nameU)
 {

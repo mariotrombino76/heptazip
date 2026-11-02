@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* unit_float_plane.c -- test del formato a blocchi FLOAT (C/FloatPlane.c, design 0008)
  *
  * - round-trip su dati sintetici: pesi gaussiani in BF16, FP16, FP32, con fasi 0..3

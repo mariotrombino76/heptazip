@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // 7zExtractMt.cpp
-// Tensor7: building blocks for parallel extraction of 7z folders.
+// Heptazip: building blocks for parallel extraction of 7z folders.
 // See docs/design/0001-estrazione-parallela-folder-7z.md
 
 #include "StdAfx.h"
@@ -34,7 +34,7 @@ static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 strea
    frame. The properties don't contain the window: we use the largest window of
    the standard levels (2^27, level 22). Frames with bigger windows (long mode,
    custom window) and without content size can use more memory than estimated.
-   The Tensor7 encoder stores the content size only for folders up to
+   The Heptazip encoder stores the content size only for folders up to
    128 KiB (compressed in one call); bigger frames use the window of the level,
    at most 2^27. */
 static const UInt64 kMem_Zstd = (UInt64)1 << 27;

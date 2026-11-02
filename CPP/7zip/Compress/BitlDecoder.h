@@ -204,7 +204,7 @@ public:
     return b;
   }
 
-  /* Tensor7: for the fast Deflate decoder, that reads the bytes of the buffer of
+  /* Heptazip: for the fast Deflate decoder, that reads the bytes of the buffer of
      (TInByte) directly with its own 64-bit bit buffer (DeflateDecoder.cpp). */
   struct CState
   {
