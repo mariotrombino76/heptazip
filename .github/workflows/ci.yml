@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configura
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
       - name: Compila
@@ -40,7 +40,7 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configura
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
       - name: Compila
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configura
         run: >
           cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSEVENZIP_ASM=OFF
