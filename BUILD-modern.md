@@ -176,6 +176,24 @@ questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 Un solo documento JSON su stdout, con gli stessi campi di `-slt` (nomi in camelCase, date
 ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
 
+## Windows: 7zz.exe con MinGW-w64
+
+La versione da riga di comando per Windows si compila da Linux con i makefile di 7-Zip
+(che ora contengono anche FLOAT, l'encoder zstd e libdeflate):
+
+```sh
+sudo apt install g++-mingw-w64-x86-64-posix
+cd CPP/7zip/Bundles/Alone2
+make -f makefile.gcc -j"$(nproc)" O=_mingw IS_MINGW=1 \
+  CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix \
+  RC=x86_64-w64-mingw32-windres
+# -> _mingw/7zz.exe (statico, nessuna DLL)
+```
+
+Lo stesso makefile senza `IS_MINGW` compila `7zz` per Linux. La CI compila entrambi, e
+prova `7zz.exe` su un runner Windows (`tests/roundtrip_smoke.py`, `tests/deflate_mt.py`);
+l'eseguibile è tra gli artefatti dell'esecuzione (`7zz-windows-x64-mingw`).
+
 ## Gestori di archivi di Linux (Ark, File Roller)
 
 Tensor7 non ha una GUI per Linux, ma i gestori di archivi dei desktop eseguono 7-Zip e

@@ -257,6 +257,12 @@ add_test(NAME deflate_mt
           --7zz ${_7zz})
 set_tests_properties(deflate_mt PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
 
+# Andata e ritorno in ogni formato e metodo principale (anche sul runner Windows, issue #8).
+add_test(NAME roundtrip_smoke
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/roundtrip_smoke.py
+          --7zz ${_7zz})
+set_tests_properties(roundtrip_smoke PROPERTIES TIMEOUT 900 ENVIRONMENT "${_test_env}")
+
 # Ark e File Roller leggono l'output di 7z/7zz: banner e "l -slt" letti con le loro
 # regole (issue #7).
 add_test(NAME gui_compat

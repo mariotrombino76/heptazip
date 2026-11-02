@@ -283,6 +283,9 @@ COMPRESS_OBJS = \
   $O/ZDecoder.o \
   $O/ZstdDecoder.o \
   $O/ZstdCodecRegister.o \
+  $O/ZstdLibEncoder.o \
+  $O/FloatCoder.o \
+  $O/FloatRegister.o \
 
 ifdef DISABLE_RAR
 DISABLE_RAR_COMPRESS=1
@@ -372,6 +375,43 @@ C_OBJS = \
   $O/XzCrc64.o \
   $O/XzCrc64Opt.o \
   $O/ZstdDec.o \
+  $O/FloatPlane.o \
+  $O/FloatPlaneLz.o \
+  $O/FloatQuant.o \
+
+
+# Tensor7: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# FLOAT) and the libdeflate compressor (Deflate, design 0012)
+T7_ZSTD_FLAGS = -DZ7_ZSTD_LIB_ENCODER
+T7_DEFLATE_FLAGS = -DZ7_DEFLATE_LIBDEFLATE
+
+ZSTD_LIB_OBJS = \
+  $O/debug.o \
+  $O/entropy_common.o \
+  $O/error_private.o \
+  $O/fse_decompress.o \
+  $O/pool.o \
+  $O/threading.o \
+  $O/xxhash.o \
+  $O/zstd_common.o \
+  $O/fse_compress.o \
+  $O/hist.o \
+  $O/huf_compress.o \
+  $O/zstd_compress.o \
+  $O/zstd_compress_literals.o \
+  $O/zstd_compress_sequences.o \
+  $O/zstd_compress_superblock.o \
+  $O/zstd_double_fast.o \
+  $O/zstd_fast.o \
+  $O/zstd_lazy.o \
+  $O/zstd_ldm.o \
+  $O/zstd_opt.o \
+  $O/zstd_preSplit.o \
+  $O/zstdmt_compress.o \
+
+LIBDEFLATE_OBJS = \
+  $O/deflate_compress.o \
+  $O/libdeflate_utils.o \
 
 ARC_OBJS = \
   $(LZMA_DEC_OPT_OBJS) \
@@ -395,5 +435,7 @@ ARC_OBJS = \
   $(ZIP_OBJS) \
   $(COMPRESS_OBJS) \
   $(CRYPTO_OBJS) \
+  $(ZSTD_LIB_OBJS) \
+  $(LIBDEFLATE_OBJS) \
 
 # we need empty line after last line above
