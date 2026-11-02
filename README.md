@@ -41,6 +41,16 @@ basta `-mf=off`.
 
 `26.05-m1`: la base 7-Zip (26.05) e il rilascio di Tensor7 su quella base.
 
+## Branch
+
+| branch | contenuto |
+|---|---|
+| `develop` | sviluppo: base delle pull request, build e test (GitHub Actions) a ogni push |
+| `modern` | linea stabile, aggiornata da `develop` a ogni release |
+| `main` | 7-Zip 26.05 originale, come riferimento (non riceve il lavoro di Tensor7) |
+
+Ogni modifica passa da una issue, un branch da `develop` e una pull request.
+
 ## Licenza e crediti
 
 Tensor7: Copyright (c) 2026 Mario Trombino. Il codice scritto per Tensor7 è distribuito
