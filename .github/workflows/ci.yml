@@ -64,3 +64,45 @@ jobs:
         run: >
           ctest --test-dir build -j2 --output-on-failure
           -R "unit_|fuzz_regress|fuzz_codec_regress|deflate_mt|update_growing|list_json"
+
+  makefiles:
+    name: Makefile GCC (Linux) e MinGW (Windows)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64-posix
+      - name: 7zz con i makefile (Linux)
+        working-directory: CPP/7zip/Bundles/Alone2
+        run: make -f makefile.gcc -j"$(nproc)" O=_linux
+      - name: Andata e ritorno (Linux, makefile)
+        run: python3 tests/roundtrip_smoke.py --7zz CPP/7zip/Bundles/Alone2/_linux/7zz
+      - name: 7zz.exe con MinGW
+        working-directory: CPP/7zip/Bundles/Alone2
+        run: >
+          make -f makefile.gcc -j"$(nproc)" O=_mingw IS_MINGW=1
+          CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix
+          RC=x86_64-w64-mingw32-windres
+      - uses: actions/upload-artifact@v7
+        with:
+          name: 7zz-windows-x64-mingw
+          path: CPP/7zip/Bundles/Alone2/_mingw/7zz.exe
+
+  windows-test:
+    name: Windows (7zz.exe MinGW)
+    needs: makefiles
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: 7zz-windows-x64-mingw
+          path: bin
+      - name: Versione
+        run: bin\7zz.exe
+      - name: Andata e ritorno
+        run: python tests/roundtrip_smoke.py --7zz bin/7zz.exe
+      - name: Deflate parallelo
+        run: python tests/deflate_mt.py --7zz bin/7zz.exe

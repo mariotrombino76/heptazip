@@ -11,7 +11,7 @@
 #include "../Common/StreamObjects.h"
 #include "../Common/StreamUtils.h"
 #ifdef Z7_DEFLATE_LIBDEFLATE
-#include "libdeflate.h"
+#include "../../../third_party/libdeflate/libdeflate.h"
 #endif
 #ifndef Z7_ST
 #include "../Common/MtTaskPool.h"

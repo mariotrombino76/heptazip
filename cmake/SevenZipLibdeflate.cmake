@@ -30,5 +30,4 @@ target_include_directories(sevenzip_libdeflate PRIVATE "${_ld_dir}")
 set(SEVENZIP_LIBDEFLATE_OBJECTS $<TARGET_OBJECTS:sevenzip_libdeflate>)
 
 set_source_files_properties(CPP/7zip/Compress/DeflateEncoder.cpp PROPERTIES
-  COMPILE_DEFINITIONS Z7_DEFLATE_LIBDEFLATE
-  INCLUDE_DIRECTORIES "${_ld_dir}")
+  COMPILE_DEFINITIONS Z7_DEFLATE_LIBDEFLATE)
