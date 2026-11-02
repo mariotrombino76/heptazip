@@ -204,8 +204,11 @@ static void BuildLut(unsigned s, uint16_t (*freq)[MAX_SYM])
     (d).x = r_ ? y_ : x_; \
     (d).p += r_ * 2; }
 
-static double g_TTables, g_TLit;
+static double g_TTables, g_TLit, g_T2a;
 static int g_AfterMatch;
+static uint32_t g_LastDist;
+#define MAX_SEQ (BLOCK_SIZE + 4096)
+static uint32_t g_SeqRun[MAX_SEQ], g_SeqLen[MAX_SEQ], g_SeqDist[MAX_SEQ], g_SeqPrevDist[MAX_SEQ];
 static double Now(void)
 {
   struct timespec ts;
@@ -442,101 +445,150 @@ int main(int argc, char **argv)
       const size_t end = bl->outEnd;
       #define RAW_GET(v, nb) { const uint64_t w_ = (uint64_t)raw[rb >> 5] | ((uint64_t)raw[(rb >> 5) + 1] << 32); \
           (v) = (uint32_t)(w_ >> (rb & 31)) & (uint32_t)((1ull << (nb)) - 1); rb += (nb); }
-      while (op < end)
+      /* phase 2a: the sequences of the block into arrays (no access to the output) */
+      size_t ns = 0;
       {
-        unsigned code;
-        DEC(d[S_RUN], S_RUN, prevType, code)
-        uint32_t run = code;
-        if (code >= 16)
+        size_t opv = op;
+        while (opv < end)
         {
-          const unsigned b2 = (code - 16) / 2 + 4;
-          uint32_t ex;
-          RAW_GET(ex, b2 - 1)
-          run = ((2u | ((code - 16) & 1)) << (b2 - 1)) + ex;
-        }
-        if (run)
-        {
-          /* the first literal after a match is coded XOR the byte at rep0 */
-          uint32_t k = 0;
-          if (g_AfterMatch)
+          unsigned code;
+          DEC(d[S_RUN], S_RUN, prevType, code)
+          uint32_t run = code;
+          if (code >= 16)
           {
-            out[op] = (uint8_t)(*mlit++ ^ out[op - rp[0]]);
-            op++;
-            k = 1;
+            const unsigned b2 = (code - 16) / 2 + 4;
+            uint32_t ex;
+            RAW_GET(ex, b2 - 1)
+            run = ((2u | ((code - 16) & 1)) << (b2 - 1)) + ex;
           }
-          /* 16 bytes at a time (the buffers have room after the end) */
-          if (k < run)
+          opv += run;
+          g_SeqRun[ns] = run;
+          if (opv >= size)
           {
-            const uint8_t *src = lit;
-            uint8_t *dst = out + op;
-            const uint32_t n = run - k;
-            uint32_t i = 0;
-            do { memcpy(dst + i, src + i, 16); i += 16; } while (i < n);
-            lit += n;
-            op += n;
+            g_SeqLen[ns] = 0;
+            g_SeqDist[ns] = rp[0];
+            ns++;
+            break;
           }
-        }
-        if (op >= size)
-          break;
-        unsigned type;
-        DEC(d[S_MTYPE], S_MTYPE, prevType * 2 + (run == 0), type)
-        unsigned len;
-        const unsigned posState = (unsigned)(op & 3);
-        if (type == M_MATCH)
-        {
-          DEC(d[S_LEN], S_LEN, posState, len)
-          len += 2;
-          unsigned slot;
-          DEC(d[S_SLOT], S_SLOT, len - 2 < 3 ? len - 2 : 3, slot)
-          uint32_t dd = slot;
-          if (slot >= 4)
+          unsigned type;
+          DEC(d[S_MTYPE], S_MTYPE, prevType * 2 + (run == 0), type)
+          unsigned len;
+          const unsigned posState = (unsigned)(opv & 3);
+          if (type == M_MATCH)
           {
-            const unsigned fb = (slot >> 1) - 1;
-            dd = (2u | (slot & 1)) << fb;
-            if (slot < 14)
+            DEC(d[S_LEN], S_LEN, posState, len)
+            len += 2;
+            unsigned slot;
+            DEC(d[S_SLOT], S_SLOT, len - 2 < 3 ? len - 2 : 3, slot)
+            uint32_t dd = slot;
+            if (slot >= 4)
             {
-              unsigned e;
-              DEC(d[S_FOOT], S_FOOT, slot - 4, e)
-              dd += e;
+              const unsigned fb = (slot >> 1) - 1;
+              dd = (2u | (slot & 1)) << fb;
+              if (slot < 14)
+              {
+                unsigned e;
+                DEC(d[S_FOOT], S_FOOT, slot - 4, e)
+                dd += e;
+              }
+              else
+              {
+                uint32_t v;
+                RAW_GET(v, fb - 4)
+                unsigned a;
+                DEC(d[S_ALIGN], S_ALIGN, 0, a)
+                dd += (v << 4) + a;
+              }
             }
+            g_SeqPrevDist[ns] = rp[0];
+            rp[3] = rp[2]; rp[2] = rp[1]; rp[1] = rp[0]; rp[0] = dd + 1;
+          }
+          else
+          {
+            g_SeqPrevDist[ns] = rp[0];
+            if (type == M_SHORTREP)
+              len = 1;
             else
             {
-              uint32_t v;
-              RAW_GET(v, fb - 4)
-              unsigned a;
-              DEC(d[S_ALIGN], S_ALIGN, 0, a)
-              dd += (v << 4) + a;
+              if (type != M_REP0)
+              {
+                const unsigned k = type - M_REP1 + 1;   /* rep index 1..3 */
+                const uint32_t dd = rp[k];
+                for (unsigned j = k; j > 0; j--) rp[j] = rp[j - 1];
+                rp[0] = dd;
+              }
+              DEC(d[S_RLEN], S_RLEN, posState, len)
+              len += 2;
             }
           }
-          rp[3] = rp[2]; rp[2] = rp[1]; rp[1] = rp[0]; rp[0] = dd + 1;
+          g_SeqLen[ns] = len;
+          g_SeqDist[ns] = rp[0];
+          ns++;
+          opv += len;
+          prevType = type;
         }
-        else if (type == M_SHORTREP)
-          len = 1;
-        else
+      }
+      const double tb3 = Now();
+      g_T2a += tb3 - tb2;
+      /* phase 2b: literals and copies; the source of the match PF sequences ahead is
+         prefetched (the far matches wait for the memory) */
+      {
+        const size_t PF = 8;
+        size_t pfPos = op;
+        for (size_t i = 0; i < ns && i < PF; i++)
+          pfPos += g_SeqRun[i] + g_SeqLen[i];
+        for (size_t i = 0; i < ns; i++)
         {
-          if (type != M_REP0)
+          if (i + PF < ns)
           {
-            const unsigned k = type - M_REP1 + 1;   /* rep index 1..3 */
-            const uint32_t dd = rp[k];
-            for (unsigned j = k; j > 0; j--) rp[j] = rp[j - 1];
-            rp[0] = dd;
+            pfPos += g_SeqRun[i + PF];
+            __builtin_prefetch(out + pfPos - g_SeqDist[i + PF]);
+            pfPos += g_SeqLen[i + PF];
           }
-          DEC(d[S_RLEN], S_RLEN, posState, len)
-          len += 2;
+          const uint32_t run = g_SeqRun[i];
+          if (run)
+          {
+            uint32_t k = 0;
+            if (g_AfterMatch)
+            {
+              /* the first literal after a match: XOR the byte at rep0 before the match */
+              out[op] = (uint8_t)(*mlit++ ^ out[op - g_LastDist]);
+              op++;
+              k = 1;
+            }
+            if (k < run)
+            {
+              const uint8_t *src = lit;
+              uint8_t *dst = out + op;
+              const uint32_t n = run - k;
+              uint32_t j = 0;
+              do { memcpy(dst + j, src + j, 16); j += 16; } while (j < n);
+              lit += n;
+              op += n;
+            }
+          }
+          const uint32_t len = g_SeqLen[i];
+          if (len == 0)
+            break;
+          const uint32_t dist = g_SeqDist[i];
+          const uint8_t *src = out + op - dist;
+          uint8_t *dst = out + op;
+          if (dist >= 16)
+          {
+            size_t k = 0;
+            do { memcpy(dst + k, src + k, 16); k += 16; } while (k < len);
+          }
+          else if (dist >= 8)
+          {
+            size_t k = 0;
+            do { uint64_t v; memcpy(&v, src + k, 8); memcpy(dst + k, &v, 8); k += 8; } while (k < len);
+          }
+          else
+            for (unsigned k = 0; k < len; k++) dst[k] = src[k];
+          op += len;
+          g_LastDist = dist;
+          g_AfterMatch = 1;
         }
-        const uint32_t dist = rp[0];
-        const uint8_t *src = out + op - dist;
-        uint8_t *dst = out + op;
-        if (dist >= 8)
-        {
-          size_t k = 0;
-          do { uint64_t v; memcpy(&v, src + k, 8); memcpy(dst + k, &v, 8); k += 8; } while (k < len);
-        }
-        else
-          for (unsigned k = 0; k < len; k++) dst[k] = src[k];
-        op += len;
-        prevType = type;
-        g_AfterMatch = 1;
       }
     }
     const double dt = Now() - t0;
@@ -549,7 +601,7 @@ int main(int argc, char **argv)
       return 1;
     }
   }
-  printf("decode ok: %.3f s, %.1f MB/s (one core); of 5 runs: tables %.3f s, literals %.3f s\n",
-      best, (double)size / best / 1e6, g_TTables / 5, g_TLit / 5);
+  printf("decode ok: %.3f s, %.1f MB/s (one core); of 5 runs: tables %.3f s, literals %.3f s, sequences %.3f s\n",
+      best, (double)size / best / 1e6, g_TTables / 5, g_TLit / 5, g_T2a / 5);
   return 0;
 }

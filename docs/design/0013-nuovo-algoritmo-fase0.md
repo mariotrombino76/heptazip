@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Ricerca, Fase 0 chiusa: soglie non raggiunte (issue #16) |
+| **Stato** | Ricerca chiusa: Fase 0 e Fase 1 (decoder) senza raggiungere le soglie (issue #16) |
 | **Data** | 2026-11-02 |
 | **Fase** | 3: nuovi algoritmi |
 | **Codice** | `tools/research/lzstatic/` (`lztrace.c`, `lzstatic.py`, `adaptive.py`, `lzseq.py`, `lzproto.c`); aggancio `Z7_LZMA_TOKEN_TRACE` in `C/LzmaEnc.c` (solo per la ricerca) |
@@ -88,7 +88,36 @@ Ognuno è incerto e il totale è un progetto di ricerca lungo, con il rischio di
 al livello di brotli -11. Gli strumenti restano in `tools/research/lzstatic/` per
 riprendere da qui.
 
-## 5. Come riprodurre
+## 5. Fase 1: il decoder (2026-11-02)
+
+Dopo l'aggiunta di brotli nei `.7z` (design 0014) si è provato a migliorare il decoder:
+
+- **due fasi con prefetch** (`lzproto.c`): le sequenze del blocco decodificate in array
+  senza toccare l'uscita, poi letterali e copie con l'origine del match di 8 sequenze
+  dopo chiesta in anticipo alla memoria: primi 20 MB 183 -> 252 MB/s, **silesia 396 ->
+  433 MB/s** (23,78%).
+- Il limite rimasto è la decodifica delle sequenze (silesia: 268 ms su 490): ogni
+  simbolo sceglie la tabella in base a un simbolo di un altro flusso (posizione dopo la
+  serie di letterali per la lunghezza, lunghezza per lo slot della distanza), quindi le
+  4-5 decodifiche di una sequenza sono in fila. Toglierle costa rapporto (primi 20 MB,
+  rispetto a LZMA):
+
+| variante | rispetto a LZMA |
+|---|---|
+| sequenze con i contesti incrociati | +1,70% |
+| senza contesti incrociati (flussi indipendenti, come zstd) | +3,15% |
+| lunghezza e slot in un solo simbolo | +2,22% |
+| posizione dell'inizio della serie di letterali | +1,96% |
+
+**Conclusione**: il prototipo (23,78% a 433 MB/s su un core) resta dietro a brotli
+`-mx11` nel `.7z` (23,66%, 445 MB/s su un core e 1,2 GB/s con 20 thread, design 0014) su
+entrambi gli assi, e ogni accelerazione del decoder costa rapporto. Con brotli
+disponibile, il valore aggiunto di un formato nuovo è basso: la ricerca si chiude qui.
+Ripartire avrebbe senso solo con un'idea di modello diversa (per esempio tabelle
+multiple per blocco scelte dall'encoder, o un parser che ottimizzi per i costi statici),
+non con altre ottimizzazioni dello stesso schema.
+
+## 6. Come riprodurre
 
 ```sh
 gcc -O2 -DZ7_LZMA_TOKEN_TRACE -DZ7_ST -o lztrace tools/research/lzstatic/lztrace.c \
