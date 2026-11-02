@@ -234,6 +234,59 @@ def sheet_svg(font_word, font_mono):
     return W, H, "\n  ".join(out)
 
 
+# segno a 1 bit, 13x13, per il menu contestuale di Explorer (MenuLogo.bmp): a questa
+# misura il segno è disegnato a mano, pixel per pixel
+MENU_BITMAP = (
+    ".....###.....",
+    "...#######...",
+    ".###########.",
+    ".###########.",
+    ".####...####.",
+    ".###.....###.",
+    ".###.....###.",
+    ".####...####.",
+    ".###########.",
+    ".###########.",
+    "..#########..",
+    "...#######...",
+    ".............",
+)
+
+
+def save_ico(images, path):
+    """ICO come quelli di Windows: le misure fino a 128 in BMP a 32 bit (con la maschera
+    AND), 256 in PNG. Ogni misura è un'immagine disegnata a quella misura."""
+    import struct
+    entries = []
+    for im in images:
+        w, h = im.size
+        if w >= 256:
+            buf = io.BytesIO()
+            im.save(buf, "PNG")
+            data = buf.getvalue()
+        else:
+            px = im.tobytes("raw", "BGRA")
+            rows = [px[y * w * 4:(y + 1) * w * 4] for y in range(h)][::-1]   # dal basso
+            mask_stride = ((w + 31) // 32) * 4
+            mask = b""
+            for y in range(h - 1, -1, -1):
+                bits = bytearray(mask_stride)
+                for x in range(w):
+                    if im.getpixel((x, y))[3] == 0:
+                        bits[x // 8] |= 0x80 >> (x % 8)
+                mask += bytes(bits)
+            hdr = struct.pack("<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, len(px) + len(mask), 0, 0, 0, 0)
+            data = hdr + b"".join(rows) + mask
+        entries.append((w, h, data))
+    out = struct.pack("<HHH", 0, 1, len(entries))
+    off = 6 + 16 * len(entries)
+    for w, h, data in entries:
+        out += struct.pack("<BBBBHHII", w % 256, h % 256, 0, 0, 1, 32, len(data), off)
+        off += len(data)
+    with open(path, "wb") as f:
+        f.write(out + b"".join(d for _, _, d in entries))
+
+
 def main():
     font, outdir = sys.argv[1], sys.argv[2]
     font_mono = sys.argv[3] if len(sys.argv) > 3 else None
@@ -266,9 +319,21 @@ def main():
     if font_mono:
         W, H, body = sheet_svg(font, font_mono)
         png(svg(W, H, body), "heptazip-tavola.png")
-    # ICO per Windows: ogni misura dalla sua immagine (non riscalata)
-    ico = [im for im in images if im.size[0] <= 256]
-    ico[-1].save(os.path.join(outdir, "heptazip.ico"), sizes=[im.size for im in ico], append_images=ico[:-1])
+    # ICO per Windows (7zFM, 7zG, estensione di Explorer): ogni misura dalla sua immagine
+    save_ico([im for im in images if im.size[0] <= 256], os.path.join(outdir, "heptazip.ico"))
+    # logo della finestra Informazioni (7zipLogo.ico): segno e nome, alto 63 px come
+    # l'originale (l'immagine è mostrata alla sua misura reale)
+    w, h, body = logo_svg(font, "light", mark=56)
+    about = svg(math.ceil(w), 63, '<g transform="translate(0,3.5)">%s</g>' % body)
+    im = Image.open(io.BytesIO(cairosvg.svg2png(bytestring=about.encode()))).convert("RGBA")
+    save_ico([im], os.path.join(outdir, "heptazip-about.ico"))
+    # menu contestuale: bitmap a 1 bit (0 = nero)
+    bmp = Image.new("1", (13, 13), 1)
+    for y, row in enumerate(MENU_BITMAP):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                bmp.putpixel((x, y), 0)
+    bmp.save(os.path.join(outdir, "heptazip-menu.bmp"))
 
 
 if __name__ == "__main__":
