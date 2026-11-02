@@ -571,6 +571,7 @@ bool CCompressDialog::OnInit()
   CheckButton(IDX_COMPRESS_DEL, Info.DeleteAfterCompressing);
 
   FormatChanged(false); // isChanged
+  Profile_Detect();
 
   // OnButtonSFX();
 
@@ -1377,14 +1378,63 @@ void CCompressDialog::ApplyProfile(int index)
   }
   const UString params (p.Params);
   m_Params.SetText(params);
+  Params_UpdateMethodEnable();
+  _profileIsChanging = false;
+}
+
+// the options of the format are remembered (also "0=zstd" of a profile): at the opening
+// we show the profile that gave them
+void CCompressDialog::Profile_Detect()
+{
+  UString params;
+  m_Params.GetText(params);
   if (!params.IsEmpty())
   {
-    // the method of the combo box is not used
+    const CArcInfoEx &ai = Get_ArcInfoEx();
+    const UInt32 level = (UInt32)m_Level.GetItemData_of_CurSel();
+    for (unsigned i = 1; i < Z7_ARRAY_SIZE(k_Profiles); i++)
+    {
+      const CProfile &p = k_Profiles[i];
+      if (p.Params[0] != 0 && p.Level == level
+          && ai.Name.IsEqualTo_Ascii_NoCase(p.Format)
+          && params == UString(p.Params))
+      {
+        m_Profile.SetCurSel((int)i);
+        break;
+      }
+    }
+  }
+  Params_UpdateMethodEnable();
+}
+
+// "0=method" (7z) or "m=method" in the Parameters field replaces the method of the
+// combo box (see UpdateGUI.cpp): the method controls are disabled
+void CCompressDialog::Params_UpdateMethodEnable()
+{
+  UString s;
+  m_Params.GetText(s);
+  bool methodOverride = false;
+  for (unsigned i = 0; i + 1 < s.Len(); i++)
+  {
+    const wchar_t c = s[i];
+    if ((i == 0 || s[i - 1] == ' ') && s[i + 1] == '=' && (c == '0' || c == 'm' || c == 'M'))
+    {
+      methodOverride = true;
+      break;
+    }
+  }
+  if (methodOverride)
+  {
     EnableItem(IDC_COMPRESS_METHOD, false);
     EnableItem(IDC_COMPRESS_DICTIONARY, false);
     EnableItem(IDC_COMPRESS_ORDER, false);
   }
-  _profileIsChanging = false;
+  else
+  {
+    EnableMultiCombo(IDC_COMPRESS_METHOD);
+    EnableMultiCombo(IDC_COMPRESS_DICTIONARY);
+    EnableMultiCombo(IDC_COMPRESS_ORDER);
+  }
 }
 
 void CCompressDialog::Profile_SetCustom()
@@ -1405,6 +1455,11 @@ void CCompressDialog::Profile_SetCustom()
 
 bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
 {
+  if (code == EN_CHANGE && itemID == IDE_COMPRESS_PARAMETERS)
+  {
+    Params_UpdateMethodEnable();
+    return true;
+  }
   if (code == CBN_SELCHANGE)
   {
     switch (itemID)
@@ -1440,6 +1495,7 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
         SaveOptionsInMem();
         FormatChanged(true); // isChanged
         SetArchiveName2(isSFX);
+        Params_UpdateMethodEnable();
         return true;
       }
       
@@ -1463,6 +1519,7 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
         SetNumThreads();
         CheckSFXNameChange();
         SetMemoryUsage();
+        Params_UpdateMethodEnable();
         return true;
       }
       
