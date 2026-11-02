@@ -176,6 +176,49 @@ corpus   gzip        -6                         66.37%      52.4     290.7      
   lento di pigz -6 (con meno CPU): il limite qui è la pipeline a blocchi su un input di
   110 MB, non la ricerca dei match.
 
+## Deflate contro libdeflate (2026-11-02)
+
+libdeflate dal ramo master (`0758d0a`, dopo la 1.26), compilato in `~/devtools/bin`;
+`libdeflate-gzip` usa un thread e tiene il file in memoria (RSS).
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -tgzip -mx1                32.98%     510.4     306.0        6.8      0.70       80        6
+silesia  7zz-modern  -tgzip -mx3                32.14%     361.2     317.0       10.9      0.68       80        6
+silesia  7zz-modern  -tgzip -mx4                31.92%     273.2     318.3       14.2      0.67       81        6
+silesia  7zz-modern  -tgzip -mx5                30.99%     108.4     317.7       37.2      0.68       94        6
+silesia  7zz-modern  -tgzip -mx9                30.56%      15.4     314.1      262.4      0.68      109        6
+silesia  pigz        -6 -p 20                   32.20%     323.2     320.6       12.0      0.77       16        2
+silesia  pigz        -9 -p 20                   31.92%     149.0     322.5       26.0      0.75       16        2
+silesia  gzip        -6                         32.19%      37.6     242.5        5.8      0.89        2        2
+silesia  libdeflate  -1                         34.68%     256.1     837.2        0.8      0.25      274      273
+silesia  libdeflate  -6                         31.85%     136.8     857.8        1.6      0.25      268      268
+silesia  libdeflate  -9                         31.48%      69.0     852.3        3.1      0.24      268      267
+silesia  libdeflate  -12                        30.52%       8.1     869.6       26.8      0.24      273      265
+corpus   7zz-modern  -tgzip -mx1                66.52%     493.5     853.3        4.1      0.13      100        6
+corpus   7zz-modern  -tgzip -mx3                66.36%     423.9     864.7        4.6      0.13      100        6
+corpus   7zz-modern  -tgzip -mx4                66.32%     384.5     869.3        5.2      0.13      100        6
+corpus   7zz-modern  -tgzip -mx5                66.09%     221.6     870.6        9.0      0.12      109        6
+corpus   7zz-modern  -tgzip -mx9                66.02%      29.1     808.6       70.0      0.13      122        6
+corpus   pigz        -6 -p 20                   66.37%     462.8     588.7        4.5      0.23       16        2
+corpus   pigz        -9 -p 20                   66.32%     304.1     579.9        6.7      0.24       17        2
+corpus   gzip        -6                         66.37%      52.0     287.2        2.2      0.40        2        2
+corpus   libdeflate  -1                         66.96%     191.0    1567.9        0.6      0.06      182      182
+corpus   libdeflate  -6                         66.26%     131.7    1581.8        0.9      0.07      182      181
+corpus   libdeflate  -9                         66.20%     106.8    1596.6        1.1      0.07      182      181
+corpus   libdeflate  -12                        65.99%      24.7    1528.0        4.7      0.06      187      181
+```
+
+- **Compressione**: nel tempo reale vince Tensor7 con 20 thread, ma per core libdeflate
+  è circa 7-10 volte più efficiente: `-6` dà 31,85% con 1,6 s di CPU, meglio di
+  Tensor7 `-mx4` (31,92% con 14,2 s); `-12` dà 30,52% con 26,8 s, come Tensor7 `-mx9`
+  (30,56% con 262 s).
+- **Decompressione**: libdeflate 840-870 MB/s su silesia e 1,5-1,6 GB/s sul corpus,
+  2,7 e 1,8 volte il decoder Deflate di 7-Zip (306-318 e 860 MB/s).
+- Il parallelismo a blocchi (design 0009) e un motore efficiente come libdeflate si
+  sommano: è il margine più grande rimasto su gzip/zip.
+
 ## Blocchi LZMA2: compromesso misurato
 
 `tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione, build con il decoder
