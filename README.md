@@ -5,6 +5,8 @@
   </picture>
 </p>
 
+🇮🇹 Italiano · 🇬🇧 [English](README.en.md)
+
 # Heptazip
 
 Heptazip è un fork di [7-Zip](https://7-zip.org) 26.05 (Igor Pavlov) per Linux e
@@ -69,7 +71,8 @@ Ogni modifica passa da una issue, un branch da `develop` e una pull request.
 
 Heptazip: Copyright (c) 2026 Mario Trombino. Il codice scritto per Heptazip è distribuito
 con la licenza BSD a 2 clausole: chi lo riusa deve mantenere l'avviso di copyright e il
-testo della licenza. Dettagli, file per file: [LICENSE-Heptazip](LICENSE-Heptazip).
+testo della licenza. Dettagli, file per file: [LICENSE-Heptazip](LICENSE-Heptazip) (in inglese:
+[LICENSE-Heptazip.en](LICENSE-Heptazip.en)).
 
 7-Zip è di Igor Pavlov: il codice originale mantiene le sue licenze (GNU LGPL, con la
 restrizione unRAR per il codice RAR, e le parti BSD; vedi `DOC/License.txt`). zstd è
