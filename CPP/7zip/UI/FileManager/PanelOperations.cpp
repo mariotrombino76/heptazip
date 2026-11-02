@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/DynamicBuffer.h"
 #include "../../../Common/StringConvert.h"
 #include "../../../Common/Wildcard.h"
@@ -88,7 +90,7 @@ HRESULT CThreadFolderOperations::DoOperation(CPanel &panel, const UString &progr
   }
 
   MainWindow = panel._mainWindow; // panel.GetParent()
-  MainTitle = "7-Zip"; // LangString(IDS_APP_TITLE);
+  MainTitle = HZ_NAME; // LangString(IDS_APP_TITLE);
   MainAddTitle = progressTitle + L' ';
 
   RINOK(Create(progressTitle, MainWindow))

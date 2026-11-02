@@ -3,6 +3,8 @@
 #ifndef ZIP7_INC_COMPRESS_DIALOG_H
 #define ZIP7_INC_COMPRESS_DIALOG_H
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/Wildcard.h"
 
 #include "../../../Windows/Control/ComboBox.h"
@@ -364,7 +366,7 @@ public:
 
   void MessageBoxError(LPCWSTR message)
   {
-    MessageBoxW(*this, message, L"7-Zip", MB_ICONERROR);
+    MessageBoxW(*this, message, HZ_NAME_W, MB_ICONERROR);
   }
 
   void ShowOptionsString();

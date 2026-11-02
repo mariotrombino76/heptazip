@@ -1727,7 +1727,7 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
     LPMAPISENDDOCUMENTS fnSend = (LPMAPISENDDOCUMENTS)mapiLib.GetProc("MAPISendDocuments");
     if (fnSend == 0)
     {
-      errorInfo.SetFromLastError)("7-Zip cannot find MAPISendDocuments function");
+      errorInfo.SetFromLastError)("Heptazip cannot find MAPISendDocuments function");
       return errorInfo.Get_HRESULT_Error();
     }
     */
@@ -1793,7 +1793,7 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
      "MAPISendMail");
     if (!sendMail)
     {
-      errorInfo.SetFromLastError("7-Zip cannot find MAPISendMail function");
+      errorInfo.SetFromLastError("Heptazip cannot find MAPISendMail function");
       return errorInfo.Get_HRESULT_Error();
     }
 

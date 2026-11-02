@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Windows/ErrorMsg.h"
 #include "../../../Windows/FileDir.h"
 #include "../../../Windows/FileFind.h"
@@ -249,7 +251,7 @@ void CLinkDialog::OnButton_SetPath(bool to)
 
 void CLinkDialog::ShowError(const wchar_t *s)
 {
-  ::MessageBoxW(*this, s, L"7-Zip", MB_ICONERROR);
+  ::MessageBoxW(*this, s, HZ_NAME_W, MB_ICONERROR);
 }
 
 void CLinkDialog::ShowLastErrorMessage()

@@ -40,17 +40,16 @@
 
 #include "ContextMenu.h"
 
-static LPCTSTR const k_ShellExtName = TEXT("7-Zip Shell Extension");
+static LPCTSTR const k_ShellExtName = TEXT("Heptazip Shell Extension");
 static LPCTSTR const k_Approved = TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved");
 
-// {23170F69-40C1-278A-1000-000100020000}
-static LPCTSTR const k_Clsid = TEXT("{23170F69-40C1-278A-1000-000100020000}");
+/* Heptazip: its own CLSID ({23170F69-40C1-278A-1000-000100020000} is the one of 7-Zip):
+   both shell extensions can be registered at the same time (issue #21) */
+static LPCTSTR const k_Clsid = TEXT("{90642948-CE43-44BE-810E-2CA2A1F77CEE}");
 
 Z7_DEFINE_GUID(CLSID_CZipContextMenu,
-    k_7zip_GUID_Data1,
-    k_7zip_GUID_Data2,
-    k_7zip_GUID_Data3_Common,
-    0x10, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00);
+    0x90642948, 0xCE43, 0x44BE,
+    0x81, 0x0E, 0x2C, 0xA2, 0xA1, 0xF7, 0x7C, 0xEE);
 
 using namespace NWindows;
 

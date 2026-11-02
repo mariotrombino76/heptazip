@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/IntToString.h"
 #include "../../../Common/StringConvert.h"
 
@@ -297,7 +299,7 @@ HRESULT HashCalcGUI(
 
   const UString title = LangString(IDS_CHECKSUM_CALCULATING);
 
-  t.MainTitle = "7-Zip"; // LangString(IDS_APP_TITLE);
+  t.MainTitle = HZ_NAME; // LangString(IDS_APP_TITLE);
   t.MainAddTitle = title;
   t.MainAddTitle.Add_Space();
 

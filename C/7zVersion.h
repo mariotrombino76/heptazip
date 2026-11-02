@@ -9,6 +9,8 @@
 #define HZ_RELEASE  1
 #define HZ_VERSION  MY_VERSION_NUMBERS "-m1"
 #define HZ_COPYRIGHT  "Copyright (c) 2026 Mario Trombino"
+#define HZ_NAME_W   L"Heptazip"   /* captions of the GUI (MessageBoxW) */
+#define HZ_HOME_PAGE "https://github.com/mariotrombino76/heptazip"
 
 #ifdef MY_CPU_NAME
   #define MY_VERSION_CPU MY_VERSION " (" MY_CPU_NAME ")"

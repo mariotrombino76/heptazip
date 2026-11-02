@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/MyWindows.h"
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -198,7 +200,7 @@ CApp g_App;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-static const wchar_t * const kWindowClass = L"7-Zip::FM";
+static const wchar_t * const kWindowClass = L"Heptazip::FM";
 
 #ifdef UNDER_CE
 #define WS_OVERLAPPEDWINDOW ( \
@@ -246,7 +248,7 @@ static BOOL InitInstance(int nCmdShow)
 
   // LoadString(hInstance, IDS_CLASS, windowClass, MAX_LOADSTRING);
 
-  UString title ("7-Zip"); // LangString(IDS_APP_TITLE, 0x03000000);
+  UString title (HZ_NAME); // LangString(IDS_APP_TITLE, 0x03000000);
 
   /*
   //If it is already running, then focus on the window
@@ -566,7 +568,7 @@ static const CSwitchForm kSwitchForms[kNumSwitches] =
 
 static void ErrorMessage(const wchar_t *s)
 {
-  MessageBoxW(NULL, s, L"7-Zip", MB_ICONERROR);
+  MessageBoxW(NULL, s, HZ_NAME_W, MB_ICONERROR);
 }
 
 static void ErrorMessage(const char *s)

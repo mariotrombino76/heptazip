@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../../C/CpuArch.h"
 
 #include "../../../Common/IntToString.h"
@@ -1228,7 +1230,7 @@ void CCompressDialog::OnOK()
         wchar_t s[32];
         ConvertUInt64ToString(volumeSize, s);
         if (::MessageBoxW(*this, MyFormatNew(IDS_SPLIT_CONFIRM, s),
-            L"7-Zip", MB_YESNOCANCEL | MB_ICONQUESTION) != IDYES)
+            HZ_NAME_W, MB_YESNOCANCEL | MB_ICONQUESTION) != IDYES)
           return;
       }
     }

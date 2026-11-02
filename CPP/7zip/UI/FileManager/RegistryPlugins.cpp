@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 /*
 #include "../../../Windows/DLL.h"
 #include "../../../Windows/FileFind.h"
@@ -135,7 +137,7 @@ void ReadFileFolderPluginInfoList(CObjectVector<CPluginInfo> &plugins)
     CPluginInfo &plugin = plugins.AddNew();
     // p.FilePath.Empty();
     plugin.Type = kPluginTypeFF;
-    plugin.Name = "7-Zip";
+    plugin.Name = HZ_NAME;
     // plugin.ClassID = CLSID_CAgentArchiveHandler;
     // plugin.ClassID_Defined = true;
     // plugin.ClassID_Defined = false;
