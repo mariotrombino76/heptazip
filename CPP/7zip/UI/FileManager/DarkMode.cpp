@@ -10,6 +10,14 @@
 #include <uxtheme.h>
 #include <vssym32.h>
 
+// 7-Zip builds with a low _WIN32_IE: values of commctrl.h (IE 6)
+#ifndef TBCDRF_NOBACKGROUND
+#define TBCDRF_NOBACKGROUND  0x00400000
+#endif
+#ifndef TBCDRF_USECDCOLORS
+#define TBCDRF_USECDCOLORS   0x00800000
+#endif
+
 #include "../../../Windows/Registry.h"
 #include "../../../Windows/Control/Dialog.h"
 
