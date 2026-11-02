@@ -14,6 +14,8 @@ setlocal enabledelayedexpansion
 set "ROOT=%~dp0..\.."
 set "OUT=%~1"
 if "%OUT%"=="" set "OUT=%ROOT%\out-msvc"
+rem absolute path: the builds run in other folders
+for %%I in ("%OUT%") do set "OUT=%%~fI"
 
 if not defined VCINSTALLDIR (
   set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
