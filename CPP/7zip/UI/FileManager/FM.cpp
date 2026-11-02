@@ -35,6 +35,7 @@
 #include "resource.h"
 
 #include "App.h"
+#include "DarkMode.h"
 #include "FormatUtils.h"
 #include "LangUtils.h"
 #include "MyLoadMenu.h"
@@ -737,6 +738,7 @@ static int WINAPI WinMain2(int nCmdShow)
   #endif
 
   g_App.ReloadLangItems();
+  NDarkMode::Init();
 
   MSG msg;
   if (!InitInstance (nCmdShow))
@@ -1023,6 +1025,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       }
 
       g_WindowWasCreated = true;
+      NDarkMode::ApplyMainWindow(hWnd);
       
       // g_SplitterPos = 0;
 
@@ -1141,10 +1144,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       return 0;
     */
       
-    /*
     case WM_SETTINGCHANGE:
+      // Heptazip: the "Apps" theme of Windows (dark / light) was changed
+      if (NDarkMode::OnSettingChange(lParam))
+        g_App.ApplyTheme();
       break;
-    */
     
     case WM_NOTIFY:
     {

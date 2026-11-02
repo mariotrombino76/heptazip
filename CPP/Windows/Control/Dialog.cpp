@@ -18,6 +18,8 @@ extern bool g_IsNT;
 namespace NWindows {
 namespace NControl {
 
+void (*g_DialogInitHook)(HWND dialog) = NULL;
+
 static
 #ifdef Z7_OLD_WIN_SDK
   BOOL
@@ -43,8 +45,12 @@ DialogProcedure(HWND dialogHWND, UINT message, WPARAM wParam, LPARAM lParam)
      the dialog manager performs the default dialog operation in response to the message.
   */
 
-  try { return BoolToBOOL(dialog->OnMessage(message, wParam, lParam)); }
+  BOOL res = FALSE;
+  try { res = BoolToBOOL(dialog->OnMessage(message, wParam, lParam)); }
   catch(...) { return TRUE; }
+  if (message == WM_INITDIALOG && g_DialogInitHook)
+    g_DialogInitHook(dialogHWND);
+  return res;
 }
 
 bool CDialog::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)

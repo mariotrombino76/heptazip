@@ -21,6 +21,7 @@
 
 #include "App.h"
 #include "CopyDialog.h"
+#include "DarkMode.h"
 #include "ExtractCallback.h"
 #include "FormatUtils.h"
 #include "IFolder.h"
@@ -170,6 +171,7 @@ static void CreateToolbar(HWND parent,
       | TBSTYLE_FLAT
       | TBSTYLE_TOOLTIPS
       | TBSTYLE_WRAPABLE
+      | CCS_NODIVIDER  // Heptazip: no etched line under the menu (white in the dark theme)
       // | TBSTYLE_AUTOSIZE
       // | CCS_NORESIZE
       #ifdef UNDER_CE
@@ -250,8 +252,9 @@ static void AddButton(
     but.iString = (INT_PTR)(LPCWSTR)s;
 
   but.iBitmap = imageList.GetImageCount();
+  const UINT iconID = butInfo.IconResID + (NDarkMode::IsDark() ? IDI_TB_DARK_OFFSET : 0);
   const HICON icon = (HICON)::LoadImage(g_hInstance,
-      MAKEINTRESOURCE(butInfo.IconResID), IMAGE_ICON,
+      MAKEINTRESOURCE(iconID), IMAGE_ICON,
       iconSize, iconSize, LR_DEFAULTCOLOR);
   if (icon)
   {
@@ -284,7 +287,18 @@ void CApp::ReloadToolbars()
         AddButton(_buttonsImageList, _toolBar, g_StandardButtons[i], ShowButtonsLables, iconSize);
 
     _toolBar.AutoSize();
+    NDarkMode::ApplyTree(_toolBar);
   }
+}
+
+void CApp::ApplyTheme()
+{
+  ReloadToolbars();
+  NDarkMode::ApplyMainWindow(_window);
+  for (unsigned i = 0; i < kNumPanelsMax; i++)
+    if (Panels[i].PanelCreated)
+      Panels[i].OnThemeChanged();
+  MoveSubWindows();
 }
 
 void CApp::SaveToolbarChanges()

@@ -14,6 +14,7 @@
 #include "AboutDialog.h"
 #include "App.h"
 #include "BrowseDialog2.h"
+#include "DarkMode.h"
 #include "HelpUtils.h"
 #include "LangUtils.h"
 #include "MyLoadMenu.h"
@@ -434,6 +435,8 @@ void OnMenuActivating(HWND /* hWnd */, HMENU hMenu, int position)
     menu.CheckItemByID(IDM_VIEW_TOOLBARS_LARGE_BUTTONS, g_App.LargeButtons);
     menu.CheckItemByID(IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT, g_App.ShowButtonsLables);
     menu.CheckItemByID(IDM_VIEW_AUTO_REFRESH, g_App.Get_AutoRefresh_Mode());
+    menu.CheckRadioItem(IDM_VIEW_THEME_SYSTEM, IDM_VIEW_THEME_DARK,
+        IDM_VIEW_THEME_SYSTEM + NDarkMode::GetSetting(), MF_BYCOMMAND);
     // menu.CheckItemByID(IDM_VIEW_SHOW_STREAMS, g_App.Get_ShowNtfsStrems_Mode());
     // menu.CheckItemByID(IDM_VIEW_SHOW_DELETED, g_App.ShowDeletedFiles);
 
@@ -905,6 +908,13 @@ bool OnMenuCommand(HWND hWnd, unsigned id)
 
     case IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT: g_App.SwitchButtonsLables(); break;
     case IDM_VIEW_TOOLBARS_LARGE_BUTTONS:     g_App.SwitchLargeButtons(); break;
+
+    case IDM_VIEW_THEME_SYSTEM:
+    case IDM_VIEW_THEME_LIGHT:
+    case IDM_VIEW_THEME_DARK:
+      if (NDarkMode::SetSetting((UInt32)(id - IDM_VIEW_THEME_SYSTEM)))
+        g_App.ApplyTheme();
+      break;
 
     case IDM_VIEW_TIME_UTC:
       g_Timestamp_Show_UTC = !g_Timestamp_Show_UTC;

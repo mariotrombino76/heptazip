@@ -121,6 +121,12 @@ BEGIN
       MENUITEM "Large Buttons",             IDM_VIEW_TOOLBARS_LARGE_BUTTONS
       MENUITEM "Show Buttons Text",         IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT
     END
+    POPUP "T&heme" MY_MENUITEM_ID(IDM_VIEW_THEME)
+    BEGIN
+      MENUITEM "&System",                   IDM_VIEW_THEME_SYSTEM
+      MENUITEM "&Light",                    IDM_VIEW_THEME_LIGHT
+      MENUITEM "&Dark",                     IDM_VIEW_THEME_DARK
+    END
     MENUITEM "Open Root Folder\t\\",        IDM_OPEN_ROOT_FOLDER
     MENUITEM "Up One Level\tBackspace",     IDM_OPEN_PARENT_FOLDER
     MENUITEM "Folders History...\tAlt+F12", IDM_FOLDERS_HISTORY
@@ -174,6 +180,13 @@ IDI_TB_COPY     ICON  "../../UI/FileManager/tb_copy.ico"
 IDI_TB_MOVE     ICON  "../../UI/FileManager/tb_move.ico"
 IDI_TB_DELETE   ICON  "../../UI/FileManager/tb_delete.ico"
 IDI_TB_INFO     ICON  "../../UI/FileManager/tb_info.ico"
+210             ICON  "../../UI/FileManager/tb_add_dark.ico"
+211             ICON  "../../UI/FileManager/tb_extract_dark.ico"
+212             ICON  "../../UI/FileManager/tb_test_dark.ico"
+213             ICON  "../../UI/FileManager/tb_copy_dark.ico"
+214             ICON  "../../UI/FileManager/tb_move_dark.ico"
+215             ICON  "../../UI/FileManager/tb_delete_dark.ico"
+216             ICON  "../../UI/FileManager/tb_info_dark.ico"
 
 
 STRINGTABLE

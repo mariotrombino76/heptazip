@@ -9,6 +9,7 @@ Sette icone a linee, nello stile del logo (docs/logo): tratto d'inchiostro, una 
 verde acqua per l'azione. Disegnate su una griglia di 24 unità e calcolate come geometria
 (shapely: i tratti diventano poligoni, i distintivi ritagliano ciò che sta sotto), poi
 rese a ogni misura usata dalla barra: 24 e 32 px per le scale 100-200% di Windows.
+Per ogni icona anche la variante per il tema scuro (*_dark.ico, tratto chiaro).
 
 Richiede: shapely, cairosvg, Pillow (nel venv di ~/devtools).
 """
@@ -22,6 +23,8 @@ from shapely.ops import unary_union
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_logo import CORE, INK, geom_path, save_ico  # noqa: E402
+
+LIGHT_INK = "#E6E4DF"   # il tratto sul tema scuro
 
 W = 1.7            # spessore del tratto (unità su 24)
 PAPER = "#FFFFFF"
@@ -130,20 +133,22 @@ ICONS = {
 }
 
 
-def icon_svg(parts, size, x0=0.0, y0=0.0):
+def icon_svg(parts, size, x0=0.0, y0=0.0, dark=False):
     k = size / 24.0
     body = []
     for geom, color in parts:
+        if dark and color == INK:
+            color = LIGHT_INK
         body.append('<path transform="translate(%.3f,%.3f) scale(%.5f)" fill="%s" fill-rule="evenodd" d="%s"/>'
                     % (x0, y0, k, color, geom_path(geom)))
     return "\n".join(body)
 
 
-def render(parts, size):
+def render(parts, size, dark=False):
     import cairosvg
     from PIL import Image
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">%s</svg>'
-           % (size, size, icon_svg(parts, size)))
+           % (size, size, icon_svg(parts, size, dark=dark)))
     return Image.open(io.BytesIO(cairosvg.svg2png(bytestring=svg.encode()))).convert("RGBA")
 
 
@@ -175,6 +180,8 @@ def main():
     for name, fn in ICONS.items():
         parts = fn()
         save_ico([render(parts, s) for s in SIZES], os.path.join(outdir, name + ".ico"))
+        # per il tema scuro: il tratto chiaro
+        save_ico([render(parts, s, dark=True) for s in SIZES], os.path.join(outdir, name + "_dark.ico"))
     if len(sys.argv) > 2:
         preview(sys.argv[2])
 
