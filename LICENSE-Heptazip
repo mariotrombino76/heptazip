@@ -39,6 +39,9 @@ quale licenza ha ciascuna parte del codice.
    Eric Biggers, Copyright 2024 Google LLC, licenza MIT (third_party/libdeflate/COPYING);
    con modifiche di Heptazip descritte in third_party/libdeflate/README-Heptazip.md.
 
+   third_party/brotli: brotli 1.2.1, Copyright (c) 2009, 2010, 2013-2016 by the Brotli
+   Authors, licenza MIT (third_party/brotli/LICENSE); non modificato.
+
 
 Licenza BSD a 2 clausole (BSD-2-Clause)
 ---------------------------------------

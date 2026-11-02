@@ -126,3 +126,24 @@ jobs:
         with:
           name: heptazip-windows-x64-msvc
           path: out-msvc/
+
+  interop-7zzstd:
+    name: Interoperabilità con 7-Zip-zstd (brotli, zstd)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ZSTD7_TAG: v26.02-v1.5.7-R2
+      ZSTD7_SHA256: be246e5a284d3b5e738bad5cbb24c2662996ddb9776e09575b5099ab53fa0ba3
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compila Heptazip
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF -DSEVENZIP_BUILD_TESTS=OFF
+          cmake --build build -j"$(nproc)" --target 7zz
+      - name: 7-Zip-zstd (release fissata, SHA-256 verificato)
+        run: |
+          curl -fsSL -o zstd7.zip "https://github.com/mcmilk/7-Zip-zstd/releases/download/${ZSTD7_TAG}/linux-gcc-x64.zip"
+          echo "${ZSTD7_SHA256}  zstd7.zip" | sha256sum -c -
+          mkdir zstd7 && cd zstd7 && unzip -q ../zstd7.zip && chmod +x 7zz && ./7zz | head -3
+      - name: Andata e ritorno nelle due direzioni
+        run: python3 tests/interop_7zzstd.py --ours build/7zz --theirs zstd7/7zz
