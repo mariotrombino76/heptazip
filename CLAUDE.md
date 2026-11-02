@@ -19,5 +19,3 @@ Ecco il piano d'azione su cui voglio lavorare con te:
 
 4. Gestione del Codice e Contributi:
 - Scrittura di codice pulito, altamente commentato e compatibile con l'architettura esistente di 7-Zip, fornendo patch chiare e istruzioni su come integrarle nel codice sorgente clonato.
-
-Da dove iniziamo? Vorrei partire analizzando la struttura della codebase originale di 7-Zip per identificare i moduli chiave (es. LZMA2, 7z dec/enc) e pianificare il nuovo sistema di build con CMake. Dammi un'analisi iniziale e i primi passi pratici.
