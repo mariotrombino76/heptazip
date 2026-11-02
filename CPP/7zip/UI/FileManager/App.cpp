@@ -171,6 +171,7 @@ static void CreateToolbar(HWND parent,
       | TBSTYLE_FLAT
       | TBSTYLE_TOOLTIPS
       | TBSTYLE_WRAPABLE
+      | CCS_NODIVIDER  // Heptazip: no etched line under the menu (white in the dark theme)
       // | TBSTYLE_AUTOSIZE
       // | CCS_NORESIZE
       #ifdef UNDER_CE
