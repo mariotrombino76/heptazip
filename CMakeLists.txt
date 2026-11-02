@@ -86,6 +86,8 @@ option(SEVENZIP_ZSTD_ENCODER
   "Encoder Zstandard per .7z con la libreria inclusa in third_party/zstd (il decoder e' sempre presente)" ON)
 option(SEVENZIP_LIBDEFLATE
   "Compressore Deflate di libdeflate (third_party/libdeflate) per gzip, zip e 7z" ON)
+option(SEVENZIP_BROTLI
+  "Metodo brotli nei .7z con la libreria di third_party/brotli (compatibile con 7-Zip-zstd)" ON)
 option(SEVENZIP_BUILD_TESTS "Compila i programmi di test e registra la suite CTest" ON)
 
 set(CMAKE_C_STANDARD 17)
@@ -200,6 +202,9 @@ include(cmake/SevenZipZstd.cmake)
 # Compressore Deflate di libdeflate opzionale (definisce SEVENZIP_LIBDEFLATE_OBJECTS)
 include(cmake/SevenZipLibdeflate.cmake)
 
+# Metodo brotli opzionale (modifica SEVENZIP_CPP_SOURCES, definisce SEVENZIP_BROTLI_OBJECTS)
+include(cmake/SevenZipBrotli.cmake)
+
 # ---------------------------------------------------------------------------
 # Librerie
 #
@@ -230,7 +235,7 @@ add_executable(7zz
   $<TARGET_OBJECTS:sevenzip_cpp>
   $<TARGET_OBJECTS:sevenzip_console>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
 target_link_libraries(7zz PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 if(TARGET sevenzip_asm)
   add_dependencies(7zz sevenzip_asm)

@@ -58,6 +58,7 @@ CASES = [
     ("7z", ["-m0=lzma2", "-mx5", "-mmt4"]),
     ("7z", ["-m0=lzma2", "-mx1", "-ms=1m", "-mpfc=on"]),
     ("7z", ["-m0=zstd", "-mx3"]),
+    ("7z", ["-m0=brotli", "-mx5", "-mmt4"]),
     ("7z", ["-m0=FLOAT"]),
     ("7z", ["-m0=Deflate", "-mx5"]),
     ("7z", ["-m0=PPMd"]),

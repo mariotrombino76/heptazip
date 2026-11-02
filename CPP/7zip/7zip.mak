@@ -253,6 +253,78 @@ $O\deflate_compress.obj: ../../../../third_party/libdeflate/lib/deflate_compress
 	$(CC) $(HZ_CFLAGS) $**
 $O\libdeflate_utils.obj: ../../../../third_party/libdeflate/lib/utils.c
 	$(CC) $(HZ_CFLAGS) -Fo$O\libdeflate_utils.obj $**
+$O\br_common_constants.obj: ../../../../third_party/brotli/c/common/constants.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_constants.obj $**
+$O\br_common_context.obj: ../../../../third_party/brotli/c/common/context.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_context.obj $**
+$O\br_common_dictionary.obj: ../../../../third_party/brotli/c/common/dictionary.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_dictionary.obj $**
+$O\br_common_platform.obj: ../../../../third_party/brotli/c/common/platform.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_platform.obj $**
+$O\br_common_shared_dictionary.obj: ../../../../third_party/brotli/c/common/shared_dictionary.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_shared_dictionary.obj $**
+$O\br_common_transform.obj: ../../../../third_party/brotli/c/common/transform.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_common_transform.obj $**
+$O\br_dec_bit_reader.obj: ../../../../third_party/brotli/c/dec/bit_reader.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_bit_reader.obj $**
+$O\br_dec_decode.obj: ../../../../third_party/brotli/c/dec/decode.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_decode.obj $**
+$O\br_dec_huffman.obj: ../../../../third_party/brotli/c/dec/huffman.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_huffman.obj $**
+$O\br_dec_prefix.obj: ../../../../third_party/brotli/c/dec/prefix.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_prefix.obj $**
+$O\br_dec_state.obj: ../../../../third_party/brotli/c/dec/state.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_state.obj $**
+$O\br_dec_static_init.obj: ../../../../third_party/brotli/c/dec/static_init.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_dec_static_init.obj $**
+$O\br_enc_backward_references.obj: ../../../../third_party/brotli/c/enc/backward_references.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_backward_references.obj $**
+$O\br_enc_backward_references_hq.obj: ../../../../third_party/brotli/c/enc/backward_references_hq.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_backward_references_hq.obj $**
+$O\br_enc_bit_cost.obj: ../../../../third_party/brotli/c/enc/bit_cost.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_bit_cost.obj $**
+$O\br_enc_block_splitter.obj: ../../../../third_party/brotli/c/enc/block_splitter.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_block_splitter.obj $**
+$O\br_enc_brotli_bit_stream.obj: ../../../../third_party/brotli/c/enc/brotli_bit_stream.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_brotli_bit_stream.obj $**
+$O\br_enc_cluster.obj: ../../../../third_party/brotli/c/enc/cluster.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_cluster.obj $**
+$O\br_enc_command.obj: ../../../../third_party/brotli/c/enc/command.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_command.obj $**
+$O\br_enc_compound_dictionary.obj: ../../../../third_party/brotli/c/enc/compound_dictionary.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_compound_dictionary.obj $**
+$O\br_enc_compress_fragment.obj: ../../../../third_party/brotli/c/enc/compress_fragment.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_compress_fragment.obj $**
+$O\br_enc_compress_fragment_two_pass.obj: ../../../../third_party/brotli/c/enc/compress_fragment_two_pass.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_compress_fragment_two_pass.obj $**
+$O\br_enc_dictionary_hash.obj: ../../../../third_party/brotli/c/enc/dictionary_hash.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_dictionary_hash.obj $**
+$O\br_enc_encode.obj: ../../../../third_party/brotli/c/enc/encode.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_encode.obj $**
+$O\br_enc_encoder_dict.obj: ../../../../third_party/brotli/c/enc/encoder_dict.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_encoder_dict.obj $**
+$O\br_enc_entropy_encode.obj: ../../../../third_party/brotli/c/enc/entropy_encode.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_entropy_encode.obj $**
+$O\br_enc_fast_log.obj: ../../../../third_party/brotli/c/enc/fast_log.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_fast_log.obj $**
+$O\br_enc_histogram.obj: ../../../../third_party/brotli/c/enc/histogram.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_histogram.obj $**
+$O\br_enc_literal_cost.obj: ../../../../third_party/brotli/c/enc/literal_cost.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_literal_cost.obj $**
+$O\br_enc_memory.obj: ../../../../third_party/brotli/c/enc/memory.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_memory.obj $**
+$O\br_enc_metablock.obj: ../../../../third_party/brotli/c/enc/metablock.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_metablock.obj $**
+$O\br_enc_static_dict.obj: ../../../../third_party/brotli/c/enc/static_dict.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_static_dict.obj $**
+$O\br_enc_static_dict_lut.obj: ../../../../third_party/brotli/c/enc/static_dict_lut.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_static_dict_lut.obj $**
+$O\br_enc_static_init.obj: ../../../../third_party/brotli/c/enc/static_init.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_static_init.obj $**
+$O\br_enc_utf8_util.obj: ../../../../third_party/brotli/c/enc/utf8_util.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_utf8_util.obj $**
+$O\BrotliCoder.obj: ../../Compress/BrotliCoder.cpp
+	$(COMPL_O2) -I../../../../third_party/brotli/c/include
 !ENDIF
 
 !include "Asm.mak"

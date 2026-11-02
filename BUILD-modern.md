@@ -27,6 +27,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
 | `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
+| `SEVENZIP_BROTLI` | `ON` | metodo brotli nei `.7z` con `third_party/brotli` (compatibile con 7-Zip-zstd) |
 | `SEVENZIP_LIBDEFLATE` | `ON` | compressore Deflate di `third_party/libdeflate` per gzip, zip e 7z (senza: l'encoder di 7-Zip) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 
@@ -147,6 +148,17 @@ Metodo `0x4F71101`, compatibile con 7-Zip-zstd. L'estrazione usa il decoder di 7
 1.5.7 inclusa in `third_party/zstd` (opzione CMake `SEVENZIP_ZSTD_ENCODER`, ON di default).
 Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 `docs/design/0002-zstd-nel-formato-7z.md`.
+
+## Brotli nei `.7z` (`-m0=brotli`)
+
+```sh
+7zz a -m0=brotli -mx5 archivio.7z dati/     # equilibrato
+7zz a -m0=brotli -mx11 archivio.7z dati/    # massimo rapporto (lento in compressione)
+```
+
+Metodo `0x4F71102`, nel formato di 7-Zip-zstd (frame indipendenti, compressi e
+decompressi in parallelo). Gli archivi non si aprono con 7-Zip upstream. Dettagli e
+misure: [docs/design/0014-brotli-nel-7z.md](docs/design/0014-brotli-nel-7z.md).
 
 ## Pesi dei modelli AI (`-m0=FLOAT`)
 

@@ -247,6 +247,8 @@ COMPRESS_OBJS = \
   $O\ZstdLibEncoder.obj \
   $O\FloatCoder.obj \
   $O\FloatRegister.obj \
+  $O\BrotliCoder.obj \
+  $O\BrotliRegister.obj \
 
 CRYPTO_OBJS = \
   $O\7zAes.obj \
@@ -339,6 +341,41 @@ HZ_LIB_OBJS = \
   $O\zstdmt_compress.obj \
   $O\deflate_compress.obj \
   $O\libdeflate_utils.obj \
+  $O\br_common_constants.obj \
+  $O\br_common_context.obj \
+  $O\br_common_dictionary.obj \
+  $O\br_common_platform.obj \
+  $O\br_common_shared_dictionary.obj \
+  $O\br_common_transform.obj \
+  $O\br_dec_bit_reader.obj \
+  $O\br_dec_decode.obj \
+  $O\br_dec_huffman.obj \
+  $O\br_dec_prefix.obj \
+  $O\br_dec_state.obj \
+  $O\br_dec_static_init.obj \
+  $O\br_enc_backward_references.obj \
+  $O\br_enc_backward_references_hq.obj \
+  $O\br_enc_bit_cost.obj \
+  $O\br_enc_block_splitter.obj \
+  $O\br_enc_brotli_bit_stream.obj \
+  $O\br_enc_cluster.obj \
+  $O\br_enc_command.obj \
+  $O\br_enc_compound_dictionary.obj \
+  $O\br_enc_compress_fragment.obj \
+  $O\br_enc_compress_fragment_two_pass.obj \
+  $O\br_enc_dictionary_hash.obj \
+  $O\br_enc_encode.obj \
+  $O\br_enc_encoder_dict.obj \
+  $O\br_enc_entropy_encode.obj \
+  $O\br_enc_fast_log.obj \
+  $O\br_enc_histogram.obj \
+  $O\br_enc_literal_cost.obj \
+  $O\br_enc_memory.obj \
+  $O\br_enc_metablock.obj \
+  $O\br_enc_static_dict.obj \
+  $O\br_enc_static_dict_lut.obj \
+  $O\br_enc_static_init.obj \
+  $O\br_enc_utf8_util.obj \
 
 !include "../../Aes.mak"
 !include "../../Crc.mak"

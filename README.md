@@ -16,7 +16,9 @@ con una società omonima).
   (Q2_K … Q8_0) con un modello a contesti e rANS. Esempi (`7zz a` senza opzioni):
   Qwen3-0.6B BF16 al 66,3% (LZMA2 70,2%) in 1 s invece di 90; DeepHat-7B Q4_K_M al
   93,2% (LZMA2 97,8%) 18 volte più veloce.
-- **zstd** nel formato 7z, per profili "ultra-veloci".
+- **zstd** e **brotli** nel formato 7z (`-m0=zstd`, `-m0=brotli`), compatibili con
+  7-Zip-zstd: brotli `-mx11` comprime meglio di zstd -19 e decomprime oltre 1 GB/s con
+  più thread.
 - **Estrazione e compressione parallele** dei folder 7z (`-mpfd`, `-mpfc`), con archivi
   identici byte per byte a quelli a un thread.
 - **gzip e zip in parallelo**: Deflate a blocchi su tutti i core, 8,6 volte più veloce
@@ -62,4 +64,4 @@ testo della licenza. Dettagli, file per file: [LICENSE-Heptazip](LICENSE-Heptazi
 
 7-Zip è di Igor Pavlov: il codice originale mantiene le sue licenze (GNU LGPL, con la
 restrizione unRAR per il codice RAR, e le parti BSD; vedi `DOC/License.txt`). zstd è
-distribuito con licenza BSD, il compressore di libdeflate con licenza MIT. Heptazip non è un prodotto ufficiale di 7-Zip.
+distribuito con licenza BSD, il compressore di libdeflate e brotli con licenza MIT. Heptazip non è un prodotto ufficiale di 7-Zip.
