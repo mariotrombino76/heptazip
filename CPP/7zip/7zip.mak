@@ -27,6 +27,7 @@ OBJS = \
   $(COMPRESS_OBJS) \
   $(CRYPTO_OBJS) \
   $(C_OBJS) \
+  $(T7_LIB_OBJS) \
   $(ASM_OBJS) \
   $O\resource.res \
 
@@ -235,6 +236,20 @@ $(C_OBJS): ../../../../C/$(*B).c
 {../../../../C}.c{$O}.obj::
 	$(CCOMPLB)
 
+!ENDIF
+
+# Tensor7: third-party libraries (third_party/, T7_LIB_OBJS of Format7zF/Arc.mak),
+# compiled without warnings (-W0 after -W4 -WX)
+!IFDEF T7_LIB_OBJS
+T7_ZSTD_LIB_FLAGS = -W0 -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_
+{../../../../third_party/zstd/lib/common}.c{$O}.obj::
+	$(CCOMPLB) $(T7_ZSTD_LIB_FLAGS)
+{../../../../third_party/zstd/lib/compress}.c{$O}.obj::
+	$(CCOMPLB) $(T7_ZSTD_LIB_FLAGS)
+$O\deflate_compress.obj: ../../../../third_party/libdeflate/lib/deflate_compress.c
+	$(CCOMPL) -W0
+$O\libdeflate_utils.obj: ../../../../third_party/libdeflate/lib/utils.c
+	$(CC) $(CFLAGS_C_ALL) -W0 -Fo$O\libdeflate_utils.obj $**
 !ENDIF
 
 !include "Asm.mak"
