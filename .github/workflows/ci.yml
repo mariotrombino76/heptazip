@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Build e test di Tensor7 a ogni push e pull request (issue #1).
+# Il runner non ha un assembler MASM (asmc/uasm): build in C puro.
+
+name: CI
+
+on:
+  push:
+    branches: [develop, modern]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gcc-release:
+    name: GCC Release + ctest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: ctest --test-dir build -j2 --output-on-failure
+
+  clang-release:
+    name: Clang Release + ctest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: ctest --test-dir build -j2 --output-on-failure
+
+  asan-ubsan:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSEVENZIP_ASM=OFF
+          -DSEVENZIP_SANITIZE=address,undefined
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: >
+          ctest --test-dir build -j2 --output-on-failure
+          -R "unit_|fuzz_regress|fuzz_codec_regress|deflate_mt|update_growing|list_json"

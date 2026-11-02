@@ -21,11 +21,11 @@ add_library(sevenzip_libdeflate OBJECT
   "${_ld_dir}/lib/deflate_compress.c"
   "${_ld_dir}/lib/utils.c")
 target_link_libraries(sevenzip_libdeflate PRIVATE sevenzip_flags)
-# codice esterno: i warning non bloccano la build (proprieta' dei sorgenti: vengono dopo
+# codice esterno: senza warning (proprieta' dei sorgenti: vengono dopo
 # il -Werror di sevenzip_flags)
 set_source_files_properties(
   "${_ld_dir}/lib/deflate_compress.c" "${_ld_dir}/lib/utils.c"
-  PROPERTIES COMPILE_OPTIONS "-Wno-error")
+  PROPERTIES COMPILE_OPTIONS "-w")
 target_include_directories(sevenzip_libdeflate PRIVATE "${_ld_dir}")
 set(SEVENZIP_LIBDEFLATE_OBJECTS $<TARGET_OBJECTS:sevenzip_libdeflate>)
 
