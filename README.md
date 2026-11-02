@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/heptazip-logo-dark.svg">
+    <img alt="Heptazip" src="docs/logo/heptazip-logo.svg" width="420">
+  </picture>
+</p>
+
 # Heptazip
 
 Heptazip è un fork di [7-Zip](https://7-zip.org) 26.05 (Igor Pavlov) per Linux e
