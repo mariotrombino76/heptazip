@@ -244,6 +244,9 @@ COMPRESS_OBJS = \
   $O\ZDecoder.obj \
   $O\ZstdDecoder.obj \
   $O\ZstdCodecRegister.obj \
+  $O\ZstdLibEncoder.obj \
+  $O\FloatCoder.obj \
+  $O\FloatRegister.obj \
 
 CRYPTO_OBJS = \
   $O\7zAes.obj \
@@ -303,6 +306,39 @@ C_OBJS = \
   $O\XzEnc.obj \
   $O\XzIn.obj \
   $O\ZstdDec.obj \
+  $O\FloatPlane.obj \
+  $O\FloatPlaneLz.obj \
+  $O\FloatQuant.obj \
+
+# Tensor7: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# FLOAT) and the libdeflate compressor (Deflate, design 0012). The rules are in 7zip.mak.
+CFLAGS = $(CFLAGS) -DZ7_ZSTD_LIB_ENCODER -DZ7_DEFLATE_LIBDEFLATE
+
+T7_LIB_OBJS = \
+  $O\debug.obj \
+  $O\entropy_common.obj \
+  $O\error_private.obj \
+  $O\fse_decompress.obj \
+  $O\pool.obj \
+  $O\threading.obj \
+  $O\xxhash.obj \
+  $O\zstd_common.obj \
+  $O\fse_compress.obj \
+  $O\hist.obj \
+  $O\huf_compress.obj \
+  $O\zstd_compress.obj \
+  $O\zstd_compress_literals.obj \
+  $O\zstd_compress_sequences.obj \
+  $O\zstd_compress_superblock.obj \
+  $O\zstd_double_fast.obj \
+  $O\zstd_fast.obj \
+  $O\zstd_lazy.obj \
+  $O\zstd_ldm.obj \
+  $O\zstd_opt.obj \
+  $O\zstd_preSplit.obj \
+  $O\zstdmt_compress.obj \
+  $O\deflate_compress.obj \
+  $O\libdeflate_utils.obj \
 
 !include "../../Aes.mak"
 !include "../../Crc.mak"

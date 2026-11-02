@@ -106,3 +106,23 @@ jobs:
         run: python tests/roundtrip_smoke.py --7zz bin/7zz.exe
       - name: Deflate parallelo
         run: python tests/deflate_mt.py --7zz bin/7zz.exe
+
+  windows-msvc:
+    name: Windows MSVC (7z.dll, 7z.exe, 7zFM, 7zG)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compila con MSVC (nmake)
+        shell: cmd
+        run: tools\windows\build-msvc.bat out-msvc
+      - name: Versione
+        run: out-msvc\7z.exe
+      - name: Andata e ritorno (7z.exe con 7z.dll)
+        run: python tests/roundtrip_smoke.py --7zz out-msvc/7z.exe
+      - name: Deflate parallelo
+        run: python tests/deflate_mt.py --7zz out-msvc/7z.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tensor7-windows-x64-msvc
+          path: out-msvc/
