@@ -18,7 +18,9 @@ si aprono con qualunque 7-Zip.
   identici byte per byte a quelli a un thread.
 - **gzip e zip in parallelo**: Deflate a blocchi su tutti i core, 8,6 volte più veloce
   (`-tgzip -mx5`: 105 MB/s, meglio di pigz -9 come rapporto), file leggibili da
-  qualunque gzip/unzip e identici per ogni numero di thread.
+  qualunque gzip/unzip e identici per ogni numero di thread. I livelli `-mx1`..`-mx4`
+  fanno lazy matching: `-mx3` comprime più di pigz -6 ed è più veloce, `-mx4` ha il
+  rapporto di pigz -9 a 1,8 volte la velocità.
 - **Più velocità**: assembly attivo di default (LZMA 1,4x in decompressione), CRC32 con
   PCLMULQDQ, match finder ottimizzato, decoder SIMD (AVX2, NEON).
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,

@@ -139,6 +139,5 @@ gzip (246 MB/s).
 
 ## 8. Come continuare
 
-- Livelli `-mx2`..`-mx4` distinti (oggi identici a `-mx1`): per esempio match finder BT
-  o più byte veloci in modalità veloce, per un profilo tra `-mx1` e `-mx5`.
+- ~~Livelli `-mx2`..`-mx4` distinti~~: fatto, lazy matching (design 0010).
 - Decoder Deflate più veloce (libdeflate, da misurare quando sarà disponibile).

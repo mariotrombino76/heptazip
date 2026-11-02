@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
-"""Deflate a blocchi in parallelo (docs/design/0009).
+"""Deflate a blocchi in parallelo (docs/design/0009) e livelli veloci (0010).
 
 Per ogni dimensione (intorno ai multipli del blocco di 1 MiB, vuoto, dati casuali e zeri)
 e per ogni livello crea .gz e .zip con -mmt1, -mmt3 e -mmt8 e verifica che:
@@ -67,14 +67,17 @@ def main():
             src = os.path.join(work, name)
             with open(src, "wb") as f:
                 f.write(data)
-            for fmt, method, levels in (("gzip", None, ("-mx1", "-mx5", "-mx9")),
-                                        ("zip", "Deflate", ("-mx5",)),
-                                        ("zip", "Deflate64", ("-mx5",))):
+            # -mx1..-mx4: lazy matching (design 0010), also with more passes (cache of
+            # the matches); -mx5 and -mx9: optimal parser
+            for fmt, method, levels in (("gzip", None, ("-mx1", "-mx2", "-mx3", "-mx4", "-mx5", "-mx9",
+                                                        "-mx3 -mpass=3")),
+                                        ("zip", "Deflate", ("-mx3", "-mx5")),
+                                        ("zip", "Deflate64", ("-mx3", "-mx5"))):
                 for level in levels:
                     digests = {}
                     for mt in ("-mmt1", "-mmt3", "-mmt8"):
                         arc = os.path.join(work, "a" + mt + (".gz" if fmt == "gzip" else ".zip"))
-                        cmd = [args.sz, "a", "-t" + fmt, level, mt, "-bso0", "-bsp0"]
+                        cmd = [args.sz, "a", "-t" + fmt] + level.split() + [mt, "-bso0", "-bsp0"]
                         if method:
                             cmd.append("-mm=" + method)
                         run(cmd + [arc, src])

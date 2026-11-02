@@ -3,6 +3,8 @@
 #ifndef ZIP7_INC_OUT_BUFFER_H
 #define ZIP7_INC_OUT_BUFFER_H
 
+#include "../../../C/CpuArch.h"
+
 #include "../IStream.h"
 #include "../../Common/MyCom.h"
 #include "../../Common/MyException.h"
@@ -56,6 +58,27 @@ public:
       FlushWithCheck();
   }
   
+  // Tensor7: 4 bytes, little endian (CBitlEncoder)
+  Z7_FORCE_INLINE
+  void WriteUInt32_LE(UInt32 v)
+  {
+    const UInt32 pos = _pos;
+    if (_limitPos - pos >= 4)
+    {
+      SetUi32(_buf + pos, v)
+      _pos = pos + 4;
+      if (pos + 4 == _limitPos)
+        FlushWithCheck();
+    }
+    else
+    {
+      WriteByte((Byte)v);
+      WriteByte((Byte)(v >> 8));
+      WriteByte((Byte)(v >> 16));
+      WriteByte((Byte)(v >> 24));
+    }
+  }
+
   void WriteBytes(const void *data, size_t size)
   {
     while (size)

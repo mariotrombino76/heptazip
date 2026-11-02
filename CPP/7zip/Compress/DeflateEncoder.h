@@ -79,6 +79,9 @@ public:
   UInt32 m_NumFastBytes;
   bool _fastMode;
   bool _btMode;
+  // Tensor7: lazy matching of the fast mode (GetOptimalFast(), docs/design/0010)
+  UInt16 _nextLen;               // the match at the next position, if pending
+  UInt16 _nextBack;
 
   UInt16 *m_OnePosMatchesMemory;
   UInt16 *m_DistanceMemory;

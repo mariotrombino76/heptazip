@@ -110,6 +110,18 @@ void CEncProps::Normalize()
   if (level < 0) level = 5;
   Level = level;
   if (algo < 0) algo = (level < 5 ? 0 : 1);
+  /* Tensor7: -mx1..-mx4 were the same profile (fb 32, mc 32, greedy parsing). The fast
+     mode now does lazy matching, with a longer search at each level (docs/design/0010;
+     silesia, 20 threads: -mx1 is as fast as before with a better ratio, -mx3 is faster
+     than pigz -6 with a better ratio, -mx4 has the ratio of pigz -9 at 1.8 times its
+     speed). */
+  if (algo == 0 && level < 5)
+  {
+    static const Byte kFastFb[5] = { 32, 32, 32, 64, 128 };
+    static const Byte kFastMc[5] = { 10, 10, 24, 48, 128 };
+    if (fb < 0) fb = kFastFb[level];
+    if (mc == 0) mc = kFastMc[level];
+  }
   if (fb < 0) fb = (level < 7 ? 32 : (level < 9 ? 64 : 128));
   if (btMode < 0) btMode = (algo == 0 ? 0 : 1);
   if (mc == 0) mc = (16 + ((unsigned)fb >> 1));
@@ -467,16 +479,96 @@ NO_INLINE UInt32 CCoder::GetOptimal(UInt32 &backRes)
   }
 }
 
+/* Tensor7: the fast mode does lazy matching (docs/design/0010), as zlib's deflate_slow():
+   the match at the current position is coded only if the next position has no better
+   match; else the current byte is a literal, and the match of the next position is
+   compared in the same way with the following one. "Better" is decided as in zstd's
+   lazy parser, by the gain of a match: 4 per byte of length minus the extra bits of the
+   distance; the next match must have kNextBias more.
+   Also from zlib: a match of 3 bytes at a distance over 4096 is not used (it costs more
+   than 3 literals), and after a match of kGoodLen bytes the next position is searched
+   with a quarter of the chain.
+   The match of the next position is pending while (m_OptimumEndIndex !=
+   m_OptimumCurrentIndex): the fast mode does not use the optimal parser, and TryBlock()
+   does not end a block before the pending match. */
+static const UInt32 kTooFar = 4096;     // (backRes >= kTooFar): distance > 4096
+static const UInt32 kGoodLen = 8;
+static const Int32 kNextBias = 2;
+static const Int32 kShorterBias = 2;    // a shorter match at the same position
+
+static inline Int32 MatchGain(UInt32 len, UInt32 backRes)
+{
+  return (Int32)(len * 4) - (Int32)kDistDirectBits[GetPosSlot(backRes)];
+}
+
 UInt32 CCoder::GetOptimalFast(UInt32 &backRes)
 {
-  GetMatches();
-  UInt32 numDistancePairs = m_MatchDistances[0];
-  if (numDistancePairs == 0)
-    return 1;
-  UInt32 lenMain = m_MatchDistances[(size_t)numDistancePairs - 1];
-  backRes = m_MatchDistances[numDistancePairs];
-  MovePos(lenMain - 1);
-  return lenMain;
+  UInt32 len;
+  if (m_OptimumEndIndex != m_OptimumCurrentIndex)
+  {
+    m_OptimumEndIndex = m_OptimumCurrentIndex;
+    len = _nextLen;
+    backRes = _nextBack;
+  }
+  else
+  {
+    GetMatches();
+    const UInt32 numPairs = m_MatchDistances[0];
+    if (numPairs == 0)
+      return 1;
+    len = m_MatchDistances[(size_t)numPairs - 1];
+    backRes = m_MatchDistances[numPairs];
+    // the matches are sorted by length and distance: a shorter one can be closer
+    Int32 gain = MatchGain(len, backRes);
+    for (UInt32 i = 1; i < numPairs - 2; i += 2)
+    {
+      const UInt32 len2 = m_MatchDistances[i];
+      const UInt32 back2 = m_MatchDistances[(size_t)i + 1];
+      const Int32 gain2 = MatchGain(len2, back2) - kShorterBias;
+      if (gain < gain2)
+      {
+        gain = gain2;
+        len = len2;
+        backRes = back2;
+      }
+    }
+    if (len == kMatchMinLen && backRes >= kTooFar)
+      return 1;
+  }
+
+  /* the bytes after the current position: the match finder is m_AdditionalOffset bytes
+     ahead (in the second pass of a block it is at the end of the block, and the
+     matches come from m_OnePosMatchesMemory: the decisions must be the same) */
+  if (len < m_MatchMaxLen
+      && Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) + m_AdditionalOffset - 1 > len)
+  {
+    if (len >= kGoodLen)
+    {
+      const UInt32 cutValue = _lzInWindow.cutValue;
+      _lzInWindow.cutValue = (cutValue >> 2) + 1;
+      GetMatches();
+      _lzInWindow.cutValue = cutValue;
+    }
+    else
+      GetMatches();
+    const UInt32 numPairs = m_MatchDistances[0];
+    if (numPairs != 0)
+    {
+      const UInt32 lenNext = m_MatchDistances[(size_t)numPairs - 1];
+      const UInt32 backNext = m_MatchDistances[numPairs];
+      if (MatchGain(lenNext, backNext) > MatchGain(len, backRes) + kNextBias)
+      {
+        _nextLen = (UInt16)lenNext;
+        _nextBack = (UInt16)backNext;
+        m_OptimumEndIndex = m_OptimumCurrentIndex + 1;
+        return 1;
+      }
+    }
+    MovePos(len - 2);
+    return len;
+  }
+  MovePos(len - 1);
+  return len;
 }
 
 void CTables::InitStructures()
@@ -808,8 +900,7 @@ void CCoder::WriteStoreBlock(UInt32 blockSize, UInt32 additionalOffset, bool fin
     WriteBits((UInt16)curBlockSize, kStoredBlockLengthFieldSize);
     WriteBits((UInt16)~curBlockSize, kStoredBlockLengthFieldSize);
     const Byte *data = Inline_MatchFinder_GetPointerToCurrentPos(&_lzInWindow)- additionalOffset;
-    for (UInt32 i = 0; i < curBlockSize; i++)
-      m_OutStream.WriteByte(data[i]);
+    m_OutStream.WriteBytes(data, curBlockSize);
     additionalOffset -= curBlockSize;
   }
   while (blockSize != 0);

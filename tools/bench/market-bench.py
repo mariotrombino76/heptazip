@@ -75,14 +75,16 @@ def profiles(fork, upstream):
         p.append(seven("7zz-modern", fork, opts))
     # Deflate e BZip2 di 7-Zip nei loro formati, contro gzip/pigz/libdeflate e bzip2/lbzip2
     # (-tbzip2 -mx5 e' il predefinito, blocchi da 900k come bzip2 -9; -mx9 fa 7 passate)
-    for fmt, opts, ext in (("gzip", ["-mx1"], ".gz"), ("gzip", ["-mx5"], ".gz"),
+    for fmt, opts, ext in (("gzip", ["-mx1"], ".gz"), ("gzip", ["-mx3"], ".gz"),
+                           ("gzip", ["-mx4"], ".gz"), ("gzip", ["-mx5"], ".gz"),
                            ("gzip", ["-mx9"], ".gz"),
                            ("bzip2", ["-mx5"], ".bz2"), ("bzip2", ["-mx9"], ".bz2")):
         p.append(seven_fmt("7zz-modern", fork, fmt, opts, ext))
     if upstream:
         for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"]):
             p.append(seven("7zz-26.05", upstream, opts))
-        for fmt, opts, ext in (("gzip", ["-mx5"], ".gz"), ("bzip2", ["-mx5"], ".bz2")):
+        for fmt, opts, ext in (("gzip", ["-mx1"], ".gz"), ("gzip", ["-mx5"], ".gz"),
+                               ("bzip2", ["-mx5"], ".bz2")):
             p.append(seven_fmt("7zz-26.05", upstream, fmt, opts, ext))
     p += [
         stream("zstd", "zstd", ["-3", "-T0", "-q"], ["-d", "-q"], ".zst"),

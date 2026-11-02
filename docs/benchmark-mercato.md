@@ -135,10 +135,46 @@ corpus   bzip2       -9                         64.66%      18.8      34.0      
   (8,6×) con il rapporto migliore della tabella (0,9 punti meglio di pigz -9), `-mx1` a
   512 MB/s (più di pigz -6, rapporto peggiore). Il decoder è come pigz e più veloce di
   gzip. Manca un livello intermedio che batta pigz -6 su entrambi gli assi (design 0009,
-  §8).
+  §8; fatto nel design 0010, sezione seguente).
 - **bzip2**: già parallelo in 7-Zip. `-mx5` (predefinito, blocchi da 900k come
   `bzip2 -9`, stesso file) è 4,6 volte più veloce in compressione e 2,2 in
   decompressione di bzip2. `-mx9` fa 7 passate: 7 volte la CPU per lo 0,7%.
+
+## Deflate: livelli veloci con lazy matching (2026-11-02)
+
+`market-bench.py --only 'gzip|pigz'`, con `-mx1`..`-mx4` in lazy matching (design 0010).
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -tgzip -mx1                32.98%     529.3     300.2        7.1      0.71       81        6
+silesia  7zz-modern  -tgzip -mx3                32.14%     362.3     310.4       10.7      0.69       80        6
+silesia  7zz-modern  -tgzip -mx4                31.92%     272.4     314.4       14.2      0.68       80        6
+silesia  7zz-modern  -tgzip -mx5                30.99%     108.6     318.7       37.2      0.68       94        6
+silesia  7zz-modern  -tgzip -mx9                30.56%      15.4     314.9      262.2      0.68      109        6
+silesia  7zz-26.05   -tgzip -mx1                33.15%      74.1     283.1        2.9      0.76        7        6
+silesia  7zz-26.05   -tgzip -mx5                30.96%      12.3     299.5       17.7      0.72        7        6
+silesia  pigz        -6 -p 20                   32.20%     332.5     317.7       12.3      0.77       16        2
+silesia  pigz        -9 -p 20                   31.92%     151.3     315.6       26.1      0.77       16        2
+silesia  gzip        -6                         32.19%      37.8     241.9        5.8      0.89        2        2
+corpus   7zz-modern  -tgzip -mx1                66.52%     474.4     833.9        4.1      0.13      100        6
+corpus   7zz-modern  -tgzip -mx3                66.36%     424.8     865.7        4.6      0.13      100        6
+corpus   7zz-modern  -tgzip -mx4                66.32%     370.9     868.7        5.2      0.13      100        6
+corpus   7zz-modern  -tgzip -mx5                66.09%     217.5     863.0        9.0      0.13      109        6
+corpus   7zz-modern  -tgzip -mx9                66.02%      29.4     857.8       70.1      0.12      123        6
+corpus   7zz-26.05   -tgzip -mx1                66.61%      80.3     712.4        1.4      0.15        7        6
+corpus   7zz-26.05   -tgzip -mx5                66.07%      30.2     749.8        3.9      0.14        7        6
+corpus   pigz        -6 -p 20                   66.37%     447.2     556.6        4.7      0.25       17        2
+corpus   pigz        -9 -p 20                   66.32%     297.7     583.3        6.7      0.23       17        2
+corpus   gzip        -6                         66.37%      52.4     290.7        2.2      0.40        2        2
+```
+
+- **silesia**: `-mx3` batte pigz -6 su entrambi gli assi (32,14% a 362 MB/s contro
+  32,20% a 333), `-mx4` ha il rapporto di pigz -9 a 1,8 volte la velocità, `-mx1` è
+  veloce come prima con un rapporto migliore (32,98% invece di 33,15%).
+- **corpus**: stessi rapporti di pigz, `-mx4` più veloce di pigz -9; `-mx3` il 6% più
+  lento di pigz -6 (con meno CPU): il limite qui è la pipeline a blocchi su un input di
+  110 MB, non la ricerca dei match.
 
 ## Blocchi LZMA2: compromesso misurato
 

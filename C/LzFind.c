@@ -931,15 +931,13 @@ static UInt32 * Hc_GetMatchesSpec(size_t lenLimit, UInt32 curMatch, UInt32 pos, 
       diff = (ptrdiff_t)0 - (ptrdiff_t)delta;
       if (cur[maxLen] == cur[(ptrdiff_t)maxLen + diff])
       {
-        const Byte *c = cur;
-        while (*c == c[diff])
+        // Tensor7: LzFind_MatchEnd() instead of a byte loop (same result)
+        const Byte *c = LzFind_MatchEnd(cur, lim, diff);
+        if (c == lim)
         {
-          if (++c == lim)
-          {
-            d[0] = (UInt32)(lim - cur);
-            d[1] = delta - 1;
-            return d + 2;
-          }
+          d[0] = (UInt32)(lim - cur);
+          d[1] = delta - 1;
+          return d + 2;
         }
         {
           const unsigned len = (unsigned)(c - cur);
