@@ -295,10 +295,9 @@ void CApp::ApplyTheme()
 {
   ReloadToolbars();
   NDarkMode::ApplyMainWindow(_window);
-  // the ComboBoxEx of the path loses the icon of its item after a theme change
   for (unsigned i = 0; i < kNumPanelsMax; i++)
     if (Panels[i].PanelCreated)
-      Panels[i].LoadFullPathAndShow();
+      Panels[i].OnThemeChanged();
   MoveSubWindows();
 }
 

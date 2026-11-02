@@ -602,6 +602,20 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
   return true;
 }
 
+// Heptazip: after a change of the dark/light theme the ComboBoxEx of the path
+// loses the icon of its item and keeps the old frame
+void CPanel::OnThemeChanged()
+{
+  #ifndef UNDER_CE
+  _headerComboBox.SetImageList(Shell_Get_SysImageList_smallIcons(true));
+  #endif
+  LoadFullPathAndShow();
+  const UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+  ::SetWindowPos(_headerComboBox, NULL, 0, 0, 0, 0, flags);
+  ::SetWindowPos(_comboBoxEdit, NULL, 0, 0, 0, 0, flags);
+  ::RedrawWindow(_headerComboBox, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
+}
+
 void CPanel::OnDestroy()
 {
   SaveListViewInfo();

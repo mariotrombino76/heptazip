@@ -571,6 +571,7 @@ public:
   
   void LoadFullPath();
   void LoadFullPathAndShow();
+  void OnThemeChanged();
   void FoldersHistory();
   void OpenParentFolder();
   void CloseOneLevel();
