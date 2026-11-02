@@ -21,8 +21,8 @@ File copiati (solo il compressore):
 - `lib/x86/matchfinder_impl.h`, `lib/x86/cpu_features.h`, `lib/arm/matchfinder_impl.h`,
   `lib/arm/cpu_features.h`, `lib/riscv/matchfinder_impl.h`
 
-Il commit `8ea0c8f` contiene i file originali; le modifiche Tensor7 sono nei commit
-successivi (`git diff 8ea0c8f -- third_party/libdeflate`).
+Il commit `072f3d3` contiene i file originali; le modifiche Tensor7 sono nei commit
+successivi (`git diff 072f3d3 -- third_party/libdeflate`).
 
 ## Modifiche Tensor7
 
@@ -46,6 +46,6 @@ Tutte marcate `Tensor7` nel codice:
 ## Aggiornamento
 
 1. Copiare i file elencati dalla nuova versione in un commit a sé (file originali).
-2. Riapplicare le modifiche (`git diff 8ea0c8f <ultimo commit> -- third_party/libdeflate`).
+2. Riapplicare le modifiche (`git diff 072f3d3 <ultimo commit> -- third_party/libdeflate`).
 3. Ricompilare, `ctest` (`deflate_mt` decomprime con zlib di Python ogni livello) e
    ripetere le misure del design 0012.

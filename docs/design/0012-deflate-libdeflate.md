@@ -39,7 +39,7 @@ libdeflate comprime un buffer intero in uno stream completo: due modifiche (in
   con le funzioni di skip della libreria, senza codificarla;
 - **blocco non finale**: nessun blocco ha BFINAL, e alla fine un blocco stored vuoto.
 
-Il commit `8ea0c8f` contiene i file originali, così le modifiche sono un diff leggibile
+Il commit `072f3d3` contiene i file originali, così le modifiche sono un diff leggibile
 (146 righe).
 
 ### 2.1 Livelli
