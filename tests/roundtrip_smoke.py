@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Prova di andata e ritorno su ogni sistema (anche Windows, issue #8).
 
 Crea una cartella di prova (testo, dati casuali, zeri, pesi float, sottocartelle, nome

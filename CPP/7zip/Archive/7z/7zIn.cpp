@@ -1155,7 +1155,7 @@ void CInArchive::ReadStreamsInfo(
     ThrowIncorrect();
 }
 
-/* Tensor7: these readers take the data pointer with NonConstData()/ConstData(): with
+/* Heptazip: these readers take the data pointer with NonConstData()/ConstData(): with
    (numItems == 0) the vector has no buffer and &v[0] bound a reference to NULL
    (undefined behaviour, reported by UBSan on a crafted header). */
 void CInArchive::ReadBoolVector(unsigned numItems, CBoolVector &v)

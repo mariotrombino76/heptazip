@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
-# Compressore Deflate di libdeflate (third_party/libdeflate, vedi README-Tensor7.md),
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
+# Compressore Deflate di libdeflate (third_party/libdeflate, vedi README-Heptazip.md),
 # usato da CPP/7zip/Compress/DeflateEncoder.cpp per gzip, zip e 7z (design 0012).
 #
 # Il decoder e Deflate64 restano quelli di 7-Zip: senza questa opzione l'encoder usa

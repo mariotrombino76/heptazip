@@ -6,7 +6,7 @@
 #include "MyWindows.h"
 #include "NewHandler.h"
 
-/* Tensor7: only allocation failures (CNewException, std::bad_alloc) become
+/* Heptazip: only allocation failures (CNewException, std::bad_alloc) become
    E_OUTOFMEMORY. Upstream returned E_OUTOFMEMORY for any exception, so internal
    errors and malformed data reported with "throw <number>" were shown to the user
    as "not enough memory". The other exceptions now give E_FAIL.

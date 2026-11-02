@@ -124,14 +124,14 @@ DECLARE_AND_SET_CLIENT_VERSION_VAR
 #endif
 
 
-/* Tensor7: the first line is the one of 7-Zip, then the name and version of the fork.
+/* Heptazip: the first line is the one of 7-Zip, then the name and version of the fork.
    Programs that run 7z read the version of 7-Zip from the first line: Ark (KDE) needs a
    line "^7-Zip(?: \(\w\))? ([\d\.]+) .*$" before it reads a listing (issue #7). */
 static const char * const kCopyrightString = "\n7-Zip"
   PROG_POSTFIX_2
   " " MY_VERSION_CPU
   " : " MY_COPYRIGHT_DATE "\n"
-  T7_NAME " " T7_VERSION " : " T7_COPYRIGHT "\n";
+  HZ_NAME " " HZ_VERSION " : " HZ_COPYRIGHT "\n";
 
 static const char * const kHelpString =
     "Usage: 7z"
@@ -1529,7 +1529,7 @@ int Main2(
       lo.ExcludeFileItems = options.Censor.ExcludeFileItems;
       lo.DisablePercents = options.DisablePercents;
 
-      if (options.JsonOutput) // Tensor7: -json
+      if (options.JsonOutput) // Heptazip: -json
         hresultMain = ListArchives_Json(
           lo,
           codecs,

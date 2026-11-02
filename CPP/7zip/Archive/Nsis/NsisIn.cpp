@@ -5910,7 +5910,7 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
   if (FirstHeader.HeaderSize == 0)
     return S_FALSE;
 
-  // Tensor7: _data is filled below with ReadToBuffer_Growing(): HeaderSize comes
+  // Heptazip: _data is filled below with ReadToBuffer_Growing(): HeaderSize comes
   // from the file (up to 4 GiB) and is allocated only while the data are there.
   _size = (size_t)FirstHeader.HeaderSize;
 

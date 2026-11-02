@@ -1,4 +1,4 @@
-# Tensor7 (fork di 7-Zip, branch modern) — build e test
+# Heptazip (fork di 7-Zip, branch modern) — build e test
 
 Questo branch (`modern`) affianca ai makefile originali un build system CMake
 e un banco di prova per misurare correttezza e prestazioni di ogni modifica.
@@ -196,8 +196,8 @@ l'eseguibile è tra gli artefatti dell'esecuzione (`7zz-windows-x64-mingw`).
 
 ## Gestori di archivi di Linux (Ark, File Roller)
 
-Tensor7 non ha una GUI per Linux, ma i gestori di archivi dei desktop eseguono 7-Zip e
-ne leggono l'output, quindi usano il motore di Tensor7 se lo trovano nel PATH:
+Heptazip non ha una GUI per Linux, ma i gestori di archivi dei desktop eseguono 7-Zip e
+ne leggono l'output, quindi usano il motore di Heptazip se lo trovano nel PATH:
 
 ```sh
 sudo install -m 755 build/7zz /usr/local/bin/7zz      # File Roller (GNOME) usa 7zz

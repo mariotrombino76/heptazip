@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // fuzz_codec.cpp -- harness libFuzzer per i decoder senza gestore di archivio (design 0007)
 //
 // fuzz_archive arriva ai decoder solo attraverso un archivio valido fino all'intestazione:

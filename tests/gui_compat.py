@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Compatibilita' con i gestori di archivi di Linux che usano 7z/7zz (issue #7).
 
 Ark (KDE, plugins/cli7zplugin/cliplugin.cpp) e File Roller (GNOME,

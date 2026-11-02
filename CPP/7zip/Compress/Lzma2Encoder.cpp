@@ -24,7 +24,7 @@ CEncoder::CEncoder()
   _encoder = NULL;
   _encoder = Lzma2Enc_Create(&g_AlignedAlloc, &g_BigAlloc);
   if (!_encoder)
-    throw CNewException();  // Tensor7: allocation failed (E_OUTOFMEMORY)
+    throw CNewException();  // Heptazip: allocation failed (E_OUTOFMEMORY)
 }
 
 CEncoder::~CEncoder()

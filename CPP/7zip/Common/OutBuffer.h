@@ -58,7 +58,7 @@ public:
       FlushWithCheck();
   }
   
-  // Tensor7: 4 bytes, little endian (CBitlEncoder)
+  // Heptazip: 4 bytes, little endian (CBitlEncoder)
   Z7_FORCE_INLINE
   void WriteUInt32_LE(UInt32 v)
   {

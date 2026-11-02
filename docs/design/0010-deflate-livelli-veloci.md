@@ -17,10 +17,10 @@ pigz -6 senza batterlo su entrambi gli assi (silesia, 20 thread):
 
 | | rapporto | compressione |
 |---|---|---|
-| Tensor7 `-tgzip -mx1` | 33,15% | 512 MB/s |
+| Heptazip `-tgzip -mx1` | 33,15% | 512 MB/s |
 | pigz -6 | 32,20% | 340 MB/s |
 | pigz -9 | 31,92% | 152 MB/s |
-| Tensor7 `-tgzip -mx5` | 30,99% | 105 MB/s |
+| Heptazip `-tgzip -mx5` | 30,99% | 105 MB/s |
 
 In 7-Zip `-mx1`..`-mx4` sono lo stesso profilo: modalità veloce (`algo 0`), match finder
 hash chain con 32 passi, e parsing **greedy** (si codifica sempre il match più lungo).
@@ -81,7 +81,7 @@ prima (verificato anche zip Deflate64 `-mx7`).
 
 ### 3.1 Scelta dei parametri
 
-Silesia, 20 thread, con `T7_*` variabili di prova (rimosse):
+Silesia, 20 thread, con `HZ_*` variabili di prova (rimosse):
 
 | variante | rapporto | MB/s |
 |---|---|---|
@@ -108,10 +108,10 @@ ripetizioni:
 | | rapporto | compressione | CPU s | |
 |---|---|---|---|---|
 | 7-Zip 26.05 `-tgzip -mx1` | 33,15% | 74 MB/s | 2,9 | |
-| **Tensor7 `-mx1`** | **32,98%** | **529 MB/s** | 7,1 | prima: 33,15% a 512 |
-| **Tensor7 `-mx3`** | **32,14%** | **362 MB/s** | 10,7 | pigz -6: 32,20% a 333 |
-| **Tensor7 `-mx4`** | **31,92%** | **272 MB/s** | 14,2 | pigz -9: 31,92% a 151 |
-| Tensor7 `-mx5` | 30,99% | 109 MB/s | 37,2 | |
+| **Heptazip `-mx1`** | **32,98%** | **529 MB/s** | 7,1 | prima: 33,15% a 512 |
+| **Heptazip `-mx3`** | **32,14%** | **362 MB/s** | 10,7 | pigz -6: 32,20% a 333 |
+| **Heptazip `-mx4`** | **31,92%** | **272 MB/s** | 14,2 | pigz -9: 31,92% a 151 |
+| Heptazip `-mx5` | 30,99% | 109 MB/s | 37,2 | |
 | pigz -6 | 32,20% | 333 MB/s | 12,3 | |
 | pigz -9 | 31,92% | 151 MB/s | 26,1 | |
 

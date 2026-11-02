@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
-# Build e test di Tensor7 a ogni push e pull request (issue #1).
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
+# Build e test di Heptazip a ogni push e pull request (issue #1).
 # Il runner non ha un assembler MASM (asmc/uasm): build in C puro.
 
 name: CI
@@ -124,5 +124,5 @@ jobs:
         run: python tests/deflate_mt.py --7zz out-msvc/7z.exe
       - uses: actions/upload-artifact@v7
         with:
-          name: tensor7-windows-x64-msvc
+          name: heptazip-windows-x64-msvc
           path: out-msvc/

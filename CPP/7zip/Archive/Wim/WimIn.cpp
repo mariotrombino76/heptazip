@@ -418,12 +418,12 @@ HRESULT CUnpacker::UnpackData(IInStream *inStream,
   const size_t size = (size_t)unpackSize64;
   if (size != unpackSize64)
     return E_OUTOFMEMORY;
-  // Tensor7: the callers check resource.UnpackSize against the memory limit, but
+  // Heptazip: the callers check resource.UnpackSize against the memory limit, but
   // for a solid resource the real size comes from db->Solids[] and was allocated
   // unchecked (up to 2^56 bytes from a corrupted header; found by fuzzing).
   if (MemUsage > MemUsage_Limit || unpackSize64 > MemUsage_Limit - MemUsage)
     return E_OUTOFMEMORY;
-  // Tensor7: even under the limit (31/32 of RAM by default) the size can be a few
+  // Heptazip: even under the limit (31/32 of RAM by default) the size can be a few
   // GB from a file of a few KB: the buffer grows with the decoded data.
   CMyComPtr2_Create<ISequentialOutStream, CGrowingBufSeqOutStream> outStream;
   outStream->Init(&buf, size);
@@ -457,7 +457,7 @@ void CResource::Parse(const Byte *p)
 #define kLongPath "[LONG_PATH]" STRING_PATH_SEPARATOR "[LONG_PATH_ITEM]"
 
 // (data) is aligned for 2-bytes
-// Tensor7: (data) is not const: the function fixes the name in place (it was
+// Heptazip: (data) is not const: the function fixes the name in place (it was
 // written through a const pointer, hidden by a (void *) cast in SetUi16a).
 static bool CheckName_and_Fix_in_Meta(Byte *data, unsigned numBytes)
 {
@@ -1127,7 +1127,7 @@ HRESULT ReadHeader(IInStream *inStream, CHeader &h, UInt64 &phySize)
 
 HRESULT CDatabase::OpenXml(IInStream *inStream, const CHeader &h, CByteBuffer &xml)
 {
-  // Tensor7: limit the size that UnpackData() allocates (for a solid resource
+  // Heptazip: limit the size that UnpackData() allocates (for a solid resource
   // it is not h.XmlResource.UnpackSize but the size of the solid block).
   const UInt64 xmlSize = Get_UnpackSize_of_Resource(h.XmlResource);
   if (xmlSize >= 1u << 26)

@@ -200,7 +200,7 @@ HRESULT CHandler::SetMainMethod(CCompressionMethodMode &methodMode)
     */
     if (methodFull.Id == k_LZMA2)
     {
-      /* Tensor7: the solid block size stays as in upstream: 64 x (4 x dictionary),
+      /* Heptazip: the solid block size stays as in upstream: 64 x (4 x dictionary),
          a ratio decision independent of the LZMA2 block size (2 x dictionary now,
          C/Lzma2Enc.h). Upstream comment:
          he we calculate default chunk Size for LZMA2 as defined in LZMA2 encoder code
@@ -465,7 +465,7 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
 
     name.Empty();
     // bool isAltStream = false;
-    /* Tensor7: an item that is not in the archive must bring its properties and data:
+    /* Heptazip: an item that is not in the archive must bring its properties and data:
        otherwise Update() read db->Files[-1] (or a NULL db) for its name and attributes.
        7-Zip's UI never does it; a client of the 7z.so API could. */
     if (ui.IndexInArchive == -1 && (!ui.NewProps || !ui.NewData))
@@ -1050,9 +1050,9 @@ HRESULT COutHandler::SetProperty(const wchar_t *nameSpec, const PROPVARIANT &val
     if (name.IsEqualTo("tr")) return PROPVARIANT_to_BoolPair(value, Write_Attrib);
     
     if (name.IsEqualTo("mtf")) return PROPVARIANT_to_bool(value, _useMultiThreadMixer);
-    // Tensor7: parallel extraction of folders (docs/design/0001)
+    // Heptazip: parallel extraction of folders (docs/design/0001)
     if (name.IsEqualTo("pfd")) return PROPVARIANT_to_bool(value, _parallelFolderDecoding);
-    // Tensor7: parallel compression of folders (docs/design/0003)
+    // Heptazip: parallel compression of folders (docs/design/0003)
     if (name.IsEqualTo("pfc")) return PROPVARIANT_to_bool(value, _parallelFolderEncoding);
 
     if (name.IsEqualTo("qs")) return PROPVARIANT_to_bool(value, _useTypeSorting);

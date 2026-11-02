@@ -631,7 +631,7 @@ $O/7zSpecStream.o: ../../Archive/7z/7zSpecStream.cpp
 $O/7zUpdate.o: ../../Archive/7z/7zUpdate.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/7zUpdateMt.o: ../../Archive/7z/7zUpdateMt.cpp
-	$(CXX) $(CXXFLAGS) $(T7_ZSTD_FLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
 
 
 $O/CabBlockInStream.o: ../../Archive/Cab/CabBlockInStream.cpp
@@ -758,7 +758,7 @@ $O/Deflate64Register.o: ../../Compress/Deflate64Register.cpp
 $O/DeflateDecoder.o: ../../Compress/DeflateDecoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/DeflateEncoder.o: ../../Compress/DeflateEncoder.cpp
-	$(CXX) $(CXXFLAGS) $(T7_DEFLATE_FLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_DEFLATE_FLAGS) $<
 $O/DeflateRegister.o: ../../Compress/DeflateRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/DeltaFilter.o: ../../Compress/DeltaFilter.cpp
@@ -832,9 +832,9 @@ $O/ZlibEncoder.o: ../../Compress/ZlibEncoder.cpp
 $O/ZstdDecoder.o: ../../Compress/ZstdDecoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/ZstdCodecRegister.o: ../../Compress/ZstdCodecRegister.cpp
-	$(CXX) $(CXXFLAGS) $(T7_ZSTD_FLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
 $O/ZstdLibEncoder.o: ../../Compress/ZstdLibEncoder.cpp
-	$(CXX) $(CXXFLAGS) $(T7_ZSTD_FLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
 $O/FloatCoder.o: ../../Compress/FloatCoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/FloatRegister.o: ../../Compress/FloatRegister.cpp
@@ -1217,16 +1217,16 @@ $O/LzFind.o: ../../../../C/LzFind.c
 $O/FloatPlane.o: ../../../../C/FloatPlane.c
 	$(CC) $(CFLAGS) $<
 $O/FloatPlaneLz.o: ../../../../C/FloatPlaneLz.c
-	$(CC) $(CFLAGS) $(T7_ZSTD_FLAGS) $<
+	$(CC) $(CFLAGS) $(HZ_ZSTD_FLAGS) $<
 $O/FloatQuant.o: ../../../../C/FloatQuant.c
 	$(CC) $(CFLAGS) $<
 
-# Tensor7: third-party libraries (third_party/), without warnings (-w after -Werror)
-T7_ZSTD_LIB_FLAGS = -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_ -w
+# Heptazip: third-party libraries (third_party/), without warnings (-w after -Werror)
+HZ_ZSTD_LIB_FLAGS = -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_ -w
 $O/%.o: ../../../../third_party/zstd/lib/common/%.c
-	$(CC) $(CFLAGS) $(T7_ZSTD_LIB_FLAGS) $<
+	$(CC) $(CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
 $O/%.o: ../../../../third_party/zstd/lib/compress/%.c
-	$(CC) $(CFLAGS) $(T7_ZSTD_LIB_FLAGS) $<
+	$(CC) $(CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
 $O/deflate_compress.o: ../../../../third_party/libdeflate/lib/deflate_compress.c
 	$(CC) $(CFLAGS) -w $<
 $O/libdeflate_utils.o: ../../../../third_party/libdeflate/lib/utils.c

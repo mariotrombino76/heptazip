@@ -260,7 +260,7 @@ Z7_COM7F_IMF(CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
 
 Z7_COM7F_IMF(CHandler::GetStream(UInt32 index, ISequentialInStream **stream))
 {
-  COM_TRY_BEGIN // Tensor7: GetStream() is throw(), its allocations can throw
+  COM_TRY_BEGIN // Heptazip: GetStream() is throw(), its allocations can throw
   *stream = NULL;
 
   const CRef2 &ref2 = _refs2[index];

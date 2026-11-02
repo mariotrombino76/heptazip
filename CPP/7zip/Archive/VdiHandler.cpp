@@ -370,7 +370,7 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback * /* openCallbac
     return E_OUTOFMEMORY;
   }
 
-  // Tensor7: the table is read whole from the file: check it is there before
+  // Heptazip: the table is read whole from the file: check it is there before
   // allocating (totalBlocks comes from the header, up to 16 GiB of table).
   {
     UInt64 fileSize;

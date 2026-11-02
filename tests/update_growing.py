@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """File che cambiano dimensione tra la scansione e la lettura (docs/design/0003, par. 5.3).
 
 Per ogni caso di tests/update_growing.cpp (grow-small, grow-huge, shrink) e per piu'

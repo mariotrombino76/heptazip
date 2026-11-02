@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* FloatPlaneLz.h -- zstd for the blocks of the FLOAT method that are not floats (mode 2)
-Tensor7 (design 0008)
+Heptazip (design 0008)
 
 Encoder: zstd reference library (third_party/zstd), only if this file is compiled with
 Z7_ZSTD_LIB_ENCODER; otherwise Lz.Compress is NULL and the encoder never uses mode 2.

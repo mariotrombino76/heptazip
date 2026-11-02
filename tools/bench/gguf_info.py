@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Composizione di un file GGUF: byte per tipo di tensore (F32, F16, BF16, Q4_K, Q6_K, ...).
 
 Uso: tools/bench/gguf_info.py <file.gguf> [--tensors]

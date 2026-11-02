@@ -79,7 +79,7 @@ public:
   UInt32 m_NumFastBytes;
   bool _fastMode;
   bool _btMode;
-  // Tensor7: lazy matching of the fast mode (GetOptimalFast(), docs/design/0010)
+  // Heptazip: lazy matching of the fast mode (GetOptimalFast(), docs/design/0010)
   UInt16 _nextLen;               // the match at the next position, if pending
   UInt16 _nextBack;
 
@@ -133,11 +133,11 @@ public:
 
   UInt32 m_MatchFinderCycles;
 
-  // Tensor7: the input is coded in chunks of kChunkSize, in parallel (design 0009).
+  // Heptazip: the input is coded in chunks of kChunkSize, in parallel (design 0009).
   CEncProps _props;              // as set, for the coders of the chunks
   UInt32 _numThreads;
   CChunkEncoder *_chunkEncoder;
-  // Tensor7: level of libdeflate for the chunks (design 0012), 0: the coder of 7-Zip
+  // Heptazip: level of libdeflate for the chunks (design 0012), 0: the coder of 7-Zip
   int _libLevel;
 
   void GetMatches();

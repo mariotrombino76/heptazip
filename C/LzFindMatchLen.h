@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* LzFindMatchLen.h -- length of a match for the match finders
-   Tensor7: internal header of LzFind.c and LzFindOpt.c (docs/design/0004). */
+   Heptazip: internal header of LzFind.c and LzFindOpt.c (docs/design/0004). */
 
 #ifndef ZIP7_INC_LZ_FIND_MATCH_LEN_H
 #define ZIP7_INC_LZ_FIND_MATCH_LEN_H

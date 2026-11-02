@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ZstdLibEncoder.cpp
-// Tensor7: Zstandard encoder based on the reference library (third_party/zstd).
+// Heptazip: Zstandard encoder based on the reference library (third_party/zstd).
 
 #include "StdAfx.h"
 

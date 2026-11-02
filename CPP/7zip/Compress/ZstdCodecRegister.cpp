@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ZstdCodecRegister.cpp
-// Tensor7: registers Zstandard as a codec for the 7z format.
+// Heptazip: registers Zstandard as a codec for the 7z format.
 //
 // Method ID 0x4F71101 and name "ZSTD", as in 7-Zip-zstd, so archives are
 // compatible in both directions.

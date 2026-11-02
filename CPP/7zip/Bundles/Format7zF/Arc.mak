@@ -310,11 +310,11 @@ C_OBJS = \
   $O\FloatPlaneLz.obj \
   $O\FloatQuant.obj \
 
-# Tensor7: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# Heptazip: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
 # FLOAT) and the libdeflate compressor (Deflate, design 0012). The rules are in 7zip.mak.
 CFLAGS = $(CFLAGS) -DZ7_ZSTD_LIB_ENCODER -DZ7_DEFLATE_LIBDEFLATE
 
-T7_LIB_OBJS = \
+HZ_LIB_OBJS = \
   $O\debug.obj \
   $O\entropy_common.obj \
   $O\error_private.obj \

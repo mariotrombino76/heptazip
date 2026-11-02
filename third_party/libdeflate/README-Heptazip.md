@@ -21,26 +21,26 @@ File copiati (solo il compressore):
 - `lib/x86/matchfinder_impl.h`, `lib/x86/cpu_features.h`, `lib/arm/matchfinder_impl.h`,
   `lib/arm/cpu_features.h`, `lib/riscv/matchfinder_impl.h`
 
-Il commit `072f3d3` contiene i file originali; le modifiche Tensor7 sono nei commit
+Il commit `072f3d3` contiene i file originali; le modifiche Heptazip sono nei commit
 successivi (`git diff 072f3d3 -- third_party/libdeflate`).
 
-## Modifiche Tensor7
+## Modifiche Heptazip
 
-Tutte marcate `Tensor7` nel codice:
+Tutte marcate `Heptazip` nel codice:
 
 1. **`libdeflate_deflate_compress_chunk()`** (nuova, in `libdeflate.h` e
    `deflate_compress.c`): comprime `in_nbytes` byte dopo `dict_nbytes` byte di storia
    (al più gli ultimi 32 KiB). Se `!final`, nessun blocco è finale e l'uscita finisce con
    un blocco stored vuoto su un confine di byte (come `Z_SYNC_FLUSH` di zlib): le uscite
    dei blocchi di uno stream si concatenano.
-2. **Campi `t7_dict_nbytes` e `t7_final`** in `struct libdeflate_compressor`, impostati
+2. **Campi `hz_dict_nbytes` e `hz_final`** in `struct libdeflate_compressor`, impostati
    solo da `libdeflate_deflate_compress_chunk()` (0 e true altrimenti: le altre funzioni
    si comportano come prima).
 3. **Storia nel match finder** in `deflate_compress_fastest()`, `_greedy()`,
    `_lazy_generic()` e `_near_optimal()`: dopo l'inizializzazione i byte di storia
    entrano nel match finder con le funzioni di skip di libdeflate
    (`ht/hc_matchfinder_skip_bytes()`, `bt_matchfinder_skip_byte()`), senza essere codificati.
-4. **Blocco finale** solo se `t7_final`; `is_first` del parser quasi ottimo confronta con
+4. **Blocco finale** solo se `hz_final`; `is_first` del parser quasi ottimo confronta con
    l'inizio dei dati dopo la storia.
 
 ## Aggiornamento

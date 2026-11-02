@@ -6,7 +6,7 @@
 #include "7zCrc.h"
 #include "CpuArch.h"
 
-/* Tensor7: CRC32 with PCLMULQDQ folding on x86-64 (selected at runtime).
+/* Heptazip: CRC32 with PCLMULQDQ folding on x86-64 (selected at runtime).
    Implementation header with static functions: see C/7zCrcClmul.h */
 #include "7zCrcClmul.h"
 #if defined(Z7_CRC_CLMUL) && (defined(__ARM_FEATURE_CRC32) || defined(Z7_CRC_HW_USE))
@@ -299,7 +299,7 @@ UInt32 Z7_FASTCALL CrcUpdate(UInt32 crc, const void *data, size_t size)
 #endif
 
 #ifdef Z7_CRC_CLMUL
-// Tensor7: set by CrcGenerateTable(), if the CPU supports PCLMULQDQ
+// Heptazip: set by CrcGenerateTable(), if the CPU supports PCLMULQDQ
 static int g_Crc_Clmul;
 
 static UInt32 Z7_FASTCALL CrcUpdate_Clmul(UInt32 crc, const void *data, size_t size)
@@ -399,7 +399,7 @@ void Z7_FASTCALL CrcGenerateTable(void)
 #endif // g_Crc_Algo was declared
 
 #ifdef Z7_CRC_CLMUL
-  g_Crc_Clmul = CrcClmul_IsSupported(); // Tensor7
+  g_Crc_Clmul = CrcClmul_IsSupported(); // Heptazip
 #endif
 }
 
@@ -421,7 +421,7 @@ Z7_CRC_UPDATE_FUNC z7_GetFunc_CrcUpdate(unsigned algo)
 #endif
 
 #ifdef Z7_CRC_CLMUL
-  // Tensor7: 128 = PCLMULQDQ (128-bit folding), if the CPU supports it
+  // Heptazip: 128 = PCLMULQDQ (128-bit folding), if the CPU supports it
   if (algo == 128)
     return g_Crc_Clmul ? &CrcUpdate_Clmul : NULL;
 #endif

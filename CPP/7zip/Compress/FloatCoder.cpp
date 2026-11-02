@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // FloatCoder.cpp
-// Tensor7: "FLOAT" method of 7z (design 0008).
+// Heptazip: "FLOAT" method of 7z (design 0008).
 
 #include "StdAfx.h"
 
