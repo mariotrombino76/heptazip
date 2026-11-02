@@ -231,7 +231,8 @@ enum
   k_Kind_StatusBar,
   k_Kind_Tab,
   k_Kind_Field,           // edit of a dialog: rounded frame (light and dark theme)
-  k_Kind_FieldCombo       // combo box of a dialog: rounded, drawn by us (light and dark)
+  k_Kind_FieldCombo,      // combo box of a dialog: rounded, drawn by us (light and dark)
+  k_Kind_PushButton       // push button of a dialog: rounded, default in the accent color
 };
 
 static const wchar_t * const k_PropProc = L"Heptazip.DarkProc";
@@ -309,6 +310,9 @@ static void ApplyToWindow(HWND wnd)
         || type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON
         || type == BS_GROUPBOX)
       Subclass(wnd, k_Kind_Button);
+    else if ((type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON)
+        && !(style & (BS_ICON | BS_BITMAP)) && ParentIsDialog(wnd))
+      Subclass(wnd, k_Kind_PushButton);
     SetTheme(wnd, L"DarkMode_Explorer");
   }
   else if (ClassIs(name, WC_EDITW))
@@ -830,6 +834,111 @@ static void PaintFieldCombo(HWND wnd, HDC dc)
   }
 }
 
+// ---------- push buttons (both themes)
+
+static const COLORREF k_Ink = RGB(0x0F, 0x1D, 0x2E);   // the ink of the logo
+
+static COLORREF Mix(COLORREF a, COLORREF b, int pctB)
+{
+  return RGB(
+      (GetRValue(a) * (100 - pctB) + GetRValue(b) * pctB) / 100,
+      (GetGValue(a) * (100 - pctB) + GetGValue(b) * pctB) / 100,
+      (GetBValue(a) * (100 - pctB) + GetBValue(b) * pctB) / 100);
+}
+
+static void PaintPushButton(HWND wnd, HDC dc)
+{
+  RECT rc;
+  ::GetClientRect(wnd, &rc);
+  const LONG style = ::GetWindowLongW(wnd, GWL_STYLE);
+  const bool isDefault = (style & BS_TYPEMASK) == BS_DEFPUSHBUTTON;
+  const bool enabled = ::IsWindowEnabled(wnd) != FALSE;
+  const LRESULT state = ::SendMessageW(wnd, BM_GETSTATE, 0, 0);
+  const bool pushed = (state & BST_PUSHED) != 0;
+  const bool hot = (state & BST_HOT) != 0;
+
+  COLORREF fill, edge, text;
+  if (isDefault && enabled)
+  {
+    fill = pushed ? Mix(k_Accent, k_Ink, 20) : hot ? Mix(k_Accent, RGB(255, 255, 255), 18) : k_Accent;
+    edge = fill;
+    text = k_Ink;
+  }
+  else if (g_Dark)
+  {
+    fill = pushed ? RGB(0x2A, 0x2A, 0x2A) : hot ? RGB(0x46, 0x46, 0x46) : RGB(0x37, 0x37, 0x37);
+    edge = RGB(0x4E, 0x4E, 0x4E);
+    text = enabled ? k_Text : k_TextDim;
+  }
+  else
+  {
+    fill = pushed ? RGB(0xE4, 0xE4, 0xE4) : hot ? RGB(0xF4, 0xF4, 0xF4) : RGB(0xFD, 0xFD, 0xFD);
+    edge = RGB(0xC6, 0xC6, 0xC6);
+    text = enabled ? ::GetSysColor(COLOR_BTNTEXT) : ::GetSysColor(COLOR_GRAYTEXT);
+  }
+  DrawRoundFrame(dc, rc, fill, edge);
+
+  wchar_t buf[256];
+  buf[0] = 0;
+  const int len = ::GetWindowTextW(wnd, buf, 256);
+  const HGDIOBJ oldFont = ::SelectObject(dc, (HGDIOBJ)::SendMessageW(wnd, WM_GETFONT, 0, 0));
+  ::SetBkMode(dc, TRANSPARENT);
+  ::SetTextColor(dc, text);
+  const LRESULT ui = ::SendMessageW(wnd, WM_QUERYUISTATE, 0, 0);
+  UINT dt = DT_SINGLELINE | DT_VCENTER | DT_CENTER;
+  if (ui & UISF_HIDEACCEL)
+    dt |= DT_HIDEPREFIX;
+  RECT tr = rc;
+  if (pushed)
+    ::OffsetRect(&tr, 0, 1);
+  ::DrawTextW(dc, buf, len, &tr, dt);
+  if (::GetFocus() == wnd && !(ui & UISF_HIDEFOCUS))
+  {
+    RECT fr = rc;
+    const int in = Scale(3);
+    ::InflateRect(&fr, -in, -in);
+    ::SetTextColor(dc, text);
+    ::SetBkColor(dc, fill);
+    ::DrawFocusRect(dc, &fr);
+  }
+  ::SelectObject(dc, oldFont);
+}
+
+static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, WNDPROC old, LRESULT &res)
+{
+  if (msg == WM_PAINT)
+  {
+    PAINTSTRUCT ps;
+    const HDC dc = ::BeginPaint(wnd, &ps);
+    PaintPushButton(wnd, dc);
+    ::EndPaint(wnd, &ps);
+    res = 0;
+    return true;
+  }
+  if (msg == WM_PRINTCLIENT)
+  {
+    PaintPushButton(wnd, (HDC)wParam);
+    res = 0;
+    return true;
+  }
+  if (msg == WM_ERASEBKGND)
+  {
+    res = 1;
+    return true;
+  }
+  if (msg == BM_SETSTATE || msg == BM_SETSTYLE || msg == WM_ENABLE || msg == WM_SETTEXT
+      || msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_UPDATEUISTATE
+      || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_MOUSEMOVE
+      || msg == WM_MOUSELEAVE || msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CAPTURECHANGED)
+  {
+    // the button can draw itself here: we draw it again
+    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    ::InvalidateRect(wnd, NULL, FALSE);
+    return true;
+  }
+  return false;
+}
+
 static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, WNDPROC old, LRESULT &res)
 {
   if (kind == k_Kind_Field)
@@ -1011,6 +1120,14 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
     ::SetWindowLongPtrW(wnd, GWLP_WNDPROC, (LONG_PTR)old);
     ::RemovePropW(wnd, k_PropProc);
     ::RemovePropW(wnd, k_PropKind);
+    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+  }
+
+  if (kind == k_Kind_PushButton)
+  {
+    LRESULT res = 0;
+    if (PushButtonMessage(wnd, msg, wParam, lParam, old, res))
+      return res;
     return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
   }
 

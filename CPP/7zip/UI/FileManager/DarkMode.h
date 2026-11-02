@@ -22,8 +22,8 @@ high contrast the theme stays light.
 
 Each window is subclassed once (ApplyTree); the subclass procedure does nothing while
 the theme is light, so the theme can be switched while the program runs. Exception: the
-single-line edits and the combo boxes of the dialogs have a rounded frame (focus in the
-color of the logo) in both themes.
+single-line edits, the combo boxes and the push buttons of the dialogs are drawn by us
+in both themes: rounded, focus and default button in the color of the logo.
 */
 
 namespace NDarkMode {
