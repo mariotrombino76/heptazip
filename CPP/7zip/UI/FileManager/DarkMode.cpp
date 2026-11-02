@@ -229,7 +229,9 @@ enum
   k_Kind_ListView,        // text color of the header
   k_Kind_Button,          // check box, radio button, group box
   k_Kind_StatusBar,
-  k_Kind_Tab
+  k_Kind_Tab,
+  k_Kind_Field,           // edit of a dialog: rounded frame (light and dark theme)
+  k_Kind_FieldCombo       // combo box of a dialog: rounded, drawn by us (light and dark)
 };
 
 static const wchar_t * const k_PropProc = L"Heptazip.DarkProc";
@@ -263,6 +265,13 @@ static void ThemeTooltips(HWND tooltip)
 static bool ClassIs(const wchar_t *name, const wchar_t *s)
 {
   return ::lstrcmpiW(name, s) == 0;
+}
+
+static bool ParentIsDialog(HWND wnd)
+{
+  wchar_t name[64];
+  const HWND parent = ::GetParent(wnd);
+  return parent && ::GetClassNameW(parent, name, 64) && ClassIs(name, L"#32770");
 }
 
 static void ApplyToWindow(HWND wnd)
@@ -303,10 +312,27 @@ static void ApplyToWindow(HWND wnd)
     SetTheme(wnd, L"DarkMode_Explorer");
   }
   else if (ClassIs(name, WC_EDITW))
+  {
     SetTheme(wnd, L"DarkMode_CFD");
+    // single-line fields of the dialogs: rounded frame (our non-client area)
+    if (ParentIsDialog(wnd) && !(style & (WS_VSCROLL | WS_HSCROLL | ES_MULTILINE))
+        && ((style & WS_BORDER) || (::GetWindowLongW(wnd, GWL_EXSTYLE) & WS_EX_CLIENTEDGE)))
+    {
+      if (!::GetPropW(wnd, k_PropProc))
+      {
+        Subclass(wnd, k_Kind_Field);
+        ::SetWindowPos(wnd, NULL, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+      }
+    }
+  }
   else if (ClassIs(name, WC_COMBOBOXW))
   {
     SetTheme(wnd, L"DarkMode_CFD");
+    const LONG cbType = style & 3;  // CBS_SIMPLE 1, CBS_DROPDOWN 2, CBS_DROPDOWNLIST 3
+    if (ParentIsDialog(wnd) && cbType != CBS_SIMPLE
+        && !(style & (CBS_OWNERDRAWFIXED | CBS_OWNERDRAWVARIABLE)))
+      Subclass(wnd, k_Kind_FieldCombo);
     COMBOBOXINFO ci;
     memset(&ci, 0, sizeof(ci));
     ci.cbSize = sizeof(ci);
@@ -670,6 +696,201 @@ static void PaintTab(HWND wnd, HDC dc)
   ::SelectObject(dc, oldFont);
 }
 
+// ---------- rounded fields (both themes)
+
+static int g_Dpi;
+
+static int Scale(int v)
+{
+  if (g_Dpi == 0)
+  {
+    g_Dpi = 96;
+    const HDC dc = ::GetDC(NULL);
+    if (dc)
+    {
+      g_Dpi = ::GetDeviceCaps(dc, LOGPIXELSX);
+      ::ReleaseDC(NULL, dc);
+    }
+  }
+  return ::MulDiv(v, g_Dpi, 96);
+}
+
+static const COLORREF k_Accent = RGB(0x2E, 0xC4, 0xB6);   // the core of the logo
+
+static COLORREF DialogBack() { return g_Dark ? k_Back : ::GetSysColor(COLOR_BTNFACE); }
+
+static COLORREF FieldBack(HWND wnd, bool editable)
+{
+  if (!::IsWindowEnabled(wnd) || !editable)
+    return g_Dark ? k_Back : ::GetSysColor(COLOR_BTNFACE);
+  return g_Dark ? k_Ctrl : ::GetSysColor(COLOR_WINDOW);
+}
+
+static COLORREF FieldEdge(HWND wnd, bool focused)
+{
+  if (focused)
+    return k_Accent;
+  if (!::IsWindowEnabled(wnd))
+    return g_Dark ? RGB(0x40, 0x40, 0x40) : RGB(0xD8, 0xD8, 0xD8);
+  return g_Dark ? k_Edge : RGB(0xB8, 0xB8, 0xB8);
+}
+
+static int FieldBorder() { return Scale(2); }
+static int FieldRadius() { return Scale(5); }
+
+// the rounded frame in rc: corners in the color of the dialog, the inside in fill
+static void DrawRoundFrame(HDC dc, const RECT &rc, COLORREF fill, COLORREF edge)
+{
+  const HBRUSH back = ::CreateSolidBrush(DialogBack());
+  ::FillRect(dc, &rc, back);
+  ::DeleteObject(back);
+  const HBRUSH fillBrush = ::CreateSolidBrush(fill);
+  const HPEN pen = ::CreatePen(PS_SOLID, Scale(1), edge);
+  const HGDIOBJ oldB = ::SelectObject(dc, fillBrush);
+  const HGDIOBJ oldP = ::SelectObject(dc, pen);
+  const int d = FieldRadius() * 2;
+  ::RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, d, d);
+  ::SelectObject(dc, oldB);
+  ::SelectObject(dc, oldP);
+  ::DeleteObject(fillBrush);
+  ::DeleteObject(pen);
+}
+
+static void PaintFieldFrame(HWND wnd)
+{
+  const HDC dc = ::GetWindowDC(wnd);
+  if (!dc)
+    return;
+  RECT wr;
+  ::GetWindowRect(wnd, &wr);
+  RECT rc = { 0, 0, wr.right - wr.left, wr.bottom - wr.top };
+  // only the frame: the edit draws its client area
+  RECT client;
+  ::GetClientRect(wnd, &client);
+  ::MapWindowPoints(wnd, NULL, (POINT *)&client, 2);
+  ::OffsetRect(&client, -wr.left, -wr.top);
+  ::ExcludeClipRect(dc, client.left, client.top, client.right, client.bottom);
+  const LONG style = ::GetWindowLongW(wnd, GWL_STYLE);
+  DrawRoundFrame(dc, rc, FieldBack(wnd, !(style & ES_READONLY)), FieldEdge(wnd, ::GetFocus() == wnd));
+  ::ReleaseDC(wnd, dc);
+}
+
+static void DrawChevron(HDC dc, int cx, int cy, COLORREF color)
+{
+  const int w = Scale(4);
+  const HPEN pen = ::CreatePen(PS_SOLID, Scale(1), color);
+  const HGDIOBJ old = ::SelectObject(dc, pen);
+  const POINT pts[3] = { { cx - w, cy - w / 2 }, { cx, cy + w / 2 }, { cx + w, cy - w / 2 } };
+  ::Polyline(dc, pts, 3);
+  // the last pixel of Polyline is not drawn
+  ::SetPixel(dc, pts[2].x, pts[2].y, color);
+  ::SelectObject(dc, old);
+  ::DeleteObject(pen);
+}
+
+static void PaintFieldCombo(HWND wnd, HDC dc)
+{
+  RECT rc;
+  ::GetClientRect(wnd, &rc);
+  const LONG style = ::GetWindowLongW(wnd, GWL_STYLE);
+  const bool list = (style & 3) == CBS_DROPDOWNLIST;
+  const bool enabled = ::IsWindowEnabled(wnd) != FALSE;
+  const bool dropped = ::SendMessageW(wnd, CB_GETDROPPEDSTATE, 0, 0) != 0;
+  const HWND focus = ::GetFocus();
+  const bool focused = focus == wnd || (focus && ::GetParent(focus) == wnd) || dropped;
+  const COLORREF fill = FieldBack(wnd, true);
+  DrawRoundFrame(dc, rc, fill, FieldEdge(wnd, focused));
+
+  const COLORREF text = enabled ? (g_Dark ? k_Text : ::GetSysColor(COLOR_WINDOWTEXT))
+      : (g_Dark ? k_TextDim : ::GetSysColor(COLOR_GRAYTEXT));
+  const int arrowW = ::GetSystemMetrics(SM_CXVSCROLL);
+  DrawChevron(dc, rc.right - arrowW / 2 - Scale(2), (rc.top + rc.bottom) / 2, text);
+
+  if (list)
+  {
+    const LRESULT sel = ::SendMessageW(wnd, CB_GETCURSEL, 0, 0);
+    if (sel != CB_ERR)
+    {
+      const LRESULT len = ::SendMessageW(wnd, CB_GETLBTEXTLEN, (WPARAM)sel, 0);
+      if (len > 0 && len < 1024)
+      {
+        wchar_t buf[1024];
+        buf[0] = 0;
+        ::SendMessageW(wnd, CB_GETLBTEXT, (WPARAM)sel, (LPARAM)buf);
+        const HGDIOBJ oldFont = ::SelectObject(dc, (HGDIOBJ)::SendMessageW(wnd, WM_GETFONT, 0, 0));
+        ::SetBkMode(dc, TRANSPARENT);
+        ::SetTextColor(dc, text);
+        RECT tr = rc;
+        tr.left += Scale(6);
+        tr.right -= arrowW + Scale(2);
+        ::DrawTextW(dc, buf, (int)len, &tr, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+        ::SelectObject(dc, oldFont);
+      }
+    }
+  }
+}
+
+static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, WNDPROC old, LRESULT &res)
+{
+  if (kind == k_Kind_Field)
+  {
+    if (msg == WM_NCCALCSIZE)
+    {
+      // our frame: FieldBorder() pixels on each side
+      RECT *r = (RECT *)lParam;
+      const int b = FieldBorder();
+      ::InflateRect(r, -b, -b);
+      res = 0;
+      return true;
+    }
+    if (msg == WM_NCPAINT)
+    {
+      PaintFieldFrame(wnd);
+      res = 0;
+      return true;
+    }
+    if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE || msg == EM_SETREADONLY)
+    {
+      res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+      PaintFieldFrame(wnd);
+      return true;
+    }
+    return false;
+  }
+  // k_Kind_FieldCombo
+  if (msg == WM_PAINT)
+  {
+    PAINTSTRUCT ps;
+    const HDC dc = ::BeginPaint(wnd, &ps);
+    PaintFieldCombo(wnd, dc);
+    ::EndPaint(wnd, &ps);
+    res = 0;
+    return true;
+  }
+  if (msg == WM_PRINTCLIENT)
+  {
+    PaintFieldCombo(wnd, (HDC)wParam);
+    res = 0;
+    return true;
+  }
+  if (msg == WM_ERASEBKGND)
+  {
+    res = 1;
+    return true;
+  }
+  if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE || msg == WM_LBUTTONDOWN
+      || msg == WM_LBUTTONUP || msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR
+      || msg == WM_MOUSEWHEEL || msg == WM_CAPTURECHANGED || msg == WM_COMMAND || msg == WM_SETTEXT
+      || msg == CB_SETCURSEL || msg == CB_SELECTSTRING || msg == CB_SHOWDROPDOWN || msg == CB_RESETCONTENT)
+  {
+    // the combo box can draw itself here: we draw it again
+    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    ::InvalidateRect(wnd, NULL, FALSE);
+    return true;
+  }
+  return false;
+}
+
 // ---------- menu bar (undocumented UAH messages, as in Notepad++ and win32-darkmode)
 
 #define WM_UAHDRAWMENU         0x0091
@@ -790,6 +1011,14 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
     ::SetWindowLongPtrW(wnd, GWLP_WNDPROC, (LONG_PTR)old);
     ::RemovePropW(wnd, k_PropProc);
     ::RemovePropW(wnd, k_PropKind);
+    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+  }
+
+  if (kind == k_Kind_Field || kind == k_Kind_FieldCombo)
+  {
+    LRESULT res = 0;
+    if (FieldMessage(kind, wnd, msg, wParam, lParam, old, res))
+      return res;
     return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
   }
 
