@@ -46,6 +46,7 @@ extern bool g_IsNT;
 
 static const UInt32 kLangIDs[] =
 {
+  IDT_COMPRESS_PROFILE,
   IDT_COMPRESS_ARCHIVE,
   IDT_COMPRESS_UPDATE_MODE,
   IDT_COMPRESS_FORMAT,
@@ -108,6 +109,25 @@ static const UInt32 kZstd_MAX_DictSize_Chain = (UInt32)1 << kMaxDictChain;
 */
 
 static LPCSTR const kExeExt = ".exe";
+
+// Heptazip: profiles of the dialog (format, level, Parameters field)
+struct CProfile
+{
+  UInt32 StringID;
+  const char *Format;
+  UInt32 Level;
+  const char *Params;
+};
+
+static const CProfile k_Profiles[] =
+{
+  { IDS_COMPRESS_PROFILE_CUSTOM,       "",    0, "" },
+  { IDS_COMPRESS_PROFILE_FASTEST,      "7z",  3, "0=zstd" },
+  { IDS_COMPRESS_PROFILE_FAST_EXTRACT, "7z",  9, "0=brotli" },
+  { IDS_COMPRESS_PROFILE_BALANCED,     "7z",  5, "" },
+  { IDS_COMPRESS_PROFILE_BEST,         "7z",  9, "" },
+  { IDS_COMPRESS_PROFILE_COMPATIBLE,   "zip", 5, "" }
+};
 
 static const UInt32 g_Levels[] =
 {
@@ -493,6 +513,12 @@ bool CCompressDialog::OnInit()
 
   m_Volume.Attach(GetItem(IDC_COMPRESS_VOLUME));
   m_Params.Attach(GetItem(IDE_COMPRESS_PARAMETERS));
+
+  _profileIsChanging = false;
+  m_Profile.Attach(GetItem(IDC_COMPRESS_PROFILE));
+  for (unsigned i = 0; i < Z7_ARRAY_SIZE(k_Profiles); i++)
+    m_Profile.AddString(LangString(k_Profiles[i].StringID));
+  m_Profile.SetCurSel(0);
 
   AddVolumeItems(m_Volume);
 
@@ -1312,6 +1338,73 @@ bool CCompressDialog::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 
+/* Heptazip: profiles. A profile selects the format and the level with the controls of
+   the dialog (as the user would do) and sets the Parameters field: "0=zstd" and
+   "0=brotli" replace the method of the combo box (zstd and brotli are not in its list).
+   A manual change of the format or of the level returns to "Custom". */
+
+void CCompressDialog::ApplyProfile(int index)
+{
+  if (index <= 0 || (unsigned)index >= Z7_ARRAY_SIZE(k_Profiles))
+    return;
+  const CProfile &p = k_Profiles[(unsigned)index];
+  _profileIsChanging = true;
+  {
+    const unsigned count = (unsigned)m_Format.GetCount();
+    for (unsigned i = 0; i < count; i++)
+    {
+      const CArcInfoEx &ai = (*ArcFormats)[(unsigned)m_Format.GetItemData(i)];
+      if (ai.Name.IsEqualTo_Ascii_NoCase(p.Format))
+      {
+        if ((int)i != m_Format.GetCurSel())
+        {
+          m_Format.SetCurSel((int)i);
+          OnCommand(CBN_SELCHANGE, IDC_COMPRESS_FORMAT, 0);
+        }
+        break;
+      }
+    }
+  }
+  {
+    const unsigned count = (unsigned)m_Level.GetCount();
+    for (unsigned i = 0; i < count; i++)
+      if ((UInt32)m_Level.GetItemData(i) == p.Level)
+      {
+        m_Level.SetCurSel((int)i);
+        OnCommand(CBN_SELCHANGE, IDC_COMPRESS_LEVEL, 0);
+        break;
+      }
+  }
+  UString params;
+  params.SetFromAscii(p.Params);
+  m_Params.SetText(params);
+  if (!params.IsEmpty())
+  {
+    // the method of the combo box is not used
+    EnableItem(IDC_COMPRESS_METHOD, false);
+    EnableItem(IDC_COMPRESS_DICTIONARY, false);
+    EnableItem(IDC_COMPRESS_ORDER, false);
+  }
+  _profileIsChanging = false;
+}
+
+void CCompressDialog::Profile_SetCustom()
+{
+  if (_profileIsChanging)
+    return;
+  const int cur = m_Profile.GetCurSel();
+  if (cur <= 0)
+    return;
+  m_Profile.SetCurSel(0);
+  // the method of the profile must not remain without the profile
+  UString params;
+  m_Params.GetText(params);
+  UString profileParams;
+  profileParams.SetFromAscii(k_Profiles[(unsigned)cur].Params);
+  if (!profileParams.IsEmpty() && params == profileParams)
+    m_Params.SetText(L"");
+}
+
 bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
 {
   if (code == CBN_SELCHANGE)
@@ -1338,8 +1431,13 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
         return true;
       }
       
+      case IDC_COMPRESS_PROFILE:
+        ApplyProfile(m_Profile.GetCurSel());
+        return true;
+
       case IDC_COMPRESS_FORMAT:
       {
+        Profile_SetCustom();
         const bool isSFX = IsSFX();
         SaveOptionsInMem();
         FormatChanged(true); // isChanged
@@ -1349,6 +1447,7 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
       
       case IDC_COMPRESS_LEVEL:
       {
+        Profile_SetCustom();
         Get_FormatOptions().ResetForLevelChange();
 
         SetMethod(); // call it if level changes method

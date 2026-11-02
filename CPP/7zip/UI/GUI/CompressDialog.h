@@ -168,6 +168,8 @@ private:
   UStringVector _memUse_Strings;
 
   NWindows::NControl::CDialogChildControl m_Params;
+  NWindows::NControl::CComboBox m_Profile;   // Heptazip
+  bool _profileIsChanging;
 
   NWindows::NControl::CComboBox m_UpdateMode;
   NWindows::NControl::CComboBox m_PathMode;
@@ -351,6 +353,8 @@ public:
   // void CheckVolumeEnable();
   void EnableMultiCombo(unsigned id);
   void FormatChanged(bool isChanged);
+  void ApplyProfile(int index);
+  void Profile_SetCustom();
 
   void OnButtonSetArchive();
   bool IsSFX();

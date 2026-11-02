@@ -23,6 +23,7 @@
 #define IDC_COMPRESS_PATH_MODE           116
 #define IDC_COMPRESS_MEM_USE             117
 // #define IDC_COMPRESS_DICTIONARY2         118
+#define IDC_COMPRESS_PROFILE             150
 
 #define IDE_COMPRESS_PASSWORD1           120
 #define IDE_COMPRESS_PASSWORD2           121
@@ -104,6 +105,15 @@
 #define IDX_COMPRESS_ATIME              4084
 #define IDX_COMPRESS_ZTIME              4085
 #define IDX_COMPRESS_PRESERVE_ATIME     4086
+
+// Heptazip: profiles
+#define IDT_COMPRESS_PROFILE               4100
+#define IDS_COMPRESS_PROFILE_CUSTOM        4101
+#define IDS_COMPRESS_PROFILE_FASTEST       4102
+#define IDS_COMPRESS_PROFILE_FAST_EXTRACT  4103
+#define IDS_COMPRESS_PROFILE_BALANCED      4104
+#define IDS_COMPRESS_PROFILE_BEST          4105
+#define IDS_COMPRESS_PROFILE_COMPATIBLE    4106
 
 #define IDS_COMPRESS_SEC                4090
 #define IDS_COMPRESS_NS                 4091
