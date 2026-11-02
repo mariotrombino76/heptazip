@@ -355,6 +355,8 @@ public:
   void FormatChanged(bool isChanged);
   void ApplyProfile(int index);
   void Profile_SetCustom();
+  void Profile_Detect();
+  void Params_UpdateMethodEnable();
 
   void OnButtonSetArchive();
   bool IsSFX();
