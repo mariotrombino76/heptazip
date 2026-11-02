@@ -1375,8 +1375,7 @@ void CCompressDialog::ApplyProfile(int index)
         break;
       }
   }
-  UString params;
-  params.SetFromAscii(p.Params);
+  const UString params (p.Params);
   m_Params.SetText(params);
   if (!params.IsEmpty())
   {
@@ -1399,8 +1398,7 @@ void CCompressDialog::Profile_SetCustom()
   // the method of the profile must not remain without the profile
   UString params;
   m_Params.GetText(params);
-  UString profileParams;
-  profileParams.SetFromAscii(k_Profiles[(unsigned)cur].Params);
+  const UString profileParams (k_Profiles[(unsigned)cur].Params);
   if (!profileParams.IsEmpty() && params == profileParams)
     m_Params.SetText(L"");
 }
