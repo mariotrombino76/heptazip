@@ -26,6 +26,7 @@
 #include "../Agent/IFolderArchive.h"
 
 #include "App.h"
+#include "DarkMode.h"
 #include "ExtractCallback.h"
 #include "FSFolder.h"
 #include "FormatUtils.h"
@@ -594,6 +595,9 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
 
   // InitListCtrl();
   RefreshListCtrl();
+
+  // Heptazip: dark theme (a panel created later, with F9)
+  NDarkMode::ApplyTree(*this);
   
   return true;
 }

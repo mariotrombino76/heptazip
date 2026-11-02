@@ -12,6 +12,8 @@
 #define IDI_TB_MOVE     204
 #define IDI_TB_DELETE   205
 #define IDI_TB_INFO     206
+// the same icons for the dark theme: IDI_TB_* + IDI_TB_DARK_OFFSET
+#define IDI_TB_DARK_OFFSET  10
 
 #define IDM_HASH_ALL             101
 #define IDM_CRC32                102
@@ -95,6 +97,11 @@
 #define IDM_VIEW_STANDARD_TOOLBAR           751
 #define IDM_VIEW_TOOLBARS_LARGE_BUTTONS     752
 #define IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT 753
+
+#define IDM_VIEW_THEME           770
+#define IDM_VIEW_THEME_SYSTEM    771
+#define IDM_VIEW_THEME_LIGHT     772
+#define IDM_VIEW_THEME_DARK      773
 
 #define IDM_VIEW_TIME_POPUP      760
 #define IDM_VIEW_TIME            761

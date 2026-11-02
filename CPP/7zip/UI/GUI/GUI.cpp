@@ -28,6 +28,7 @@
 #include "../Common/ExitCode.h"
 
 #include "../FileManager/StringUtils.h"
+#include "../FileManager/DarkMode.h"
 #include "../FileManager/LangUtils.h"
 
 #include "BenchmarkDialog.h"
@@ -444,6 +445,9 @@ int APIENTRY WinMain(HINSTANCE  hInstance, HINSTANCE /* hPrevInstance */,
   #ifdef Z7_LANG
   LoadLangOneTime();
   #endif
+
+  // Heptazip: dark theme of the dialogs (follows Windows or the choice in 7zFM)
+  NDarkMode::Init();
 
   // setlocale(LC_COLLATE, ".ACP");
   try

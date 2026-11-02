@@ -247,6 +247,7 @@ public:
   void SetBookmark(unsigned index) { GetFocusedPanel().SetBookmark(index); }
 
   void ReloadToolbars();
+  void ApplyTheme();  // Heptazip: after a change of the dark/light theme
   void ReadToolbar()
   {
     const UInt32 mask = ReadToolbarsMask();

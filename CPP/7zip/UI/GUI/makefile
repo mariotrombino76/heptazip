@@ -127,6 +127,7 @@ FM_OBJS = \
 
 FM_OBJS = $(FM_OBJS) \
   $O\BrowseDialog.obj \
+  $O\DarkMode.obj \
   $O\ComboDialog.obj \
   $O\SysIconUtils.obj \
 
