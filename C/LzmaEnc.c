@@ -2398,6 +2398,12 @@ void LzmaEnc_Destroy(CLzmaEncHandle p, ISzAllocPtr alloc, ISzAllocPtr allocBig)
 }
 
 
+#ifdef Z7_LZMA_TOKEN_TRACE
+/* Heptazip, research only: called for each decision of the parser after the first
+   byte: (len, MARK_LIT for a literal / 0..3 rep index / dist + LZMA_NUM_REPS) */
+void (*g_LzmaTokenTrace)(unsigned len, UInt32 backRes);
+#endif
+
 Z7_NO_INLINE
 static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, UInt32 maxPackSize, UInt32 maxUnpackSize)
 {
@@ -2471,6 +2477,12 @@ static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, UInt32 maxPackSize, UInt32 maxUnpa
 
     #ifdef SHOW_STAT2
     printf("\n pos = %6X, len = %3u  pos = %6u", nowPos32, len, dist);
+    #endif
+
+    #ifdef Z7_LZMA_TOKEN_TRACE
+    // Heptazip, research only (tools/research/lzstatic): the decisions of the parser
+    if (g_LzmaTokenTrace)
+      g_LzmaTokenTrace(len, dist);
     #endif
 
     if (dist == MARK_LIT)
