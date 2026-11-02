@@ -79,6 +79,15 @@ add_executable(fuzz_replay
   ${SEVENZIP_ZSTD_OBJECTS})
 target_compile_definitions(fuzz_replay PRIVATE FUZZ_REPLAY)
 target_link_libraries(fuzz_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
+# Lo stesso per fuzz_codec (decoder senza gestore): tests/fuzz/regress-codec/<metodo>/.
+add_executable(fuzz_codec_replay
+  fuzz/fuzz_codec.cpp
+  $<TARGET_OBJECTS:sevenzip_c>
+  $<TARGET_OBJECTS:sevenzip_cpp>
+  ${SEVENZIP_ASM_OBJECTS}
+  ${SEVENZIP_ZSTD_OBJECTS})
+target_compile_definitions(fuzz_codec_replay PRIVATE FUZZ_REPLAY)
+target_link_libraries(fuzz_codec_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # fuzz_archive (libFuzzer) non e' un test di CTest: si lancia con tools/fuzz/run-campaign.sh.
 set(_fuzz_targets "")
@@ -111,7 +120,7 @@ endif()
 
 # Gli oggetti assembly (SEVENZIP_ASM) sono generati nella directory principale.
 if(TARGET sevenzip_asm)
-  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt unit_com_try fuzz_replay ${_fuzz_targets})
+  foreach(_t extract_trace unit_7zextract_mt update_growing mf_bench unit_7zupdate_mt unit_com_try fuzz_replay fuzz_codec_replay ${_fuzz_targets})
     add_dependencies(${_t} sevenzip_asm)
   endforeach()
 endif()
@@ -224,6 +233,9 @@ add_test(NAME fuzz_regress
 set(_fuzz_env "${_test_env}")
 list(TRANSFORM _fuzz_env REPLACE "^ASAN_OPTIONS=(.*)" "ASAN_OPTIONS=\\1:max_allocation_size_mb=1024")
 set_tests_properties(fuzz_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_fuzz_env}")
+add_test(NAME fuzz_codec_regress
+  COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:fuzz_codec_replay> ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/regress-codec)
+set_tests_properties(fuzz_codec_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_fuzz_env}")
 
 # Formato FLOAT (design 0008): round-trip, scelta del tipo, input corrotti e troncati
 add_executable(unit_float_plane unit_float_plane.c

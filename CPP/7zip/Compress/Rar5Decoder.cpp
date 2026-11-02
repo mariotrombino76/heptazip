@@ -556,7 +556,11 @@ public:
     numBits += _bitPos;
     const Byte *buf = _buf;
     // UInt64 v = GetBe64(buf);
-    v >>= 64 - numBits;
+    // Tensor7: with aligned distances (numBits == kNumAlignBits) the caller reads 0 bits;
+    // at _bitPos == 0 a single shift by 64 would be undefined. Two shifts give 0 (masked
+    // anyway) without a branch.
+    v >>= 1;
+    v >>= 63 - numBits;
     _buf = buf + (numBits >> 3);
     _bitPos = numBits & 7;
     return (size_t)(v & mask);
@@ -571,7 +575,9 @@ public:
   {
     const UInt32 mask = ((UInt32)1 << numBits) - 1;
     numBits += _bitPos;
-    v >>= 32 - numBits;
+    // Tensor7: numBits can be 0 here too (see the 64-bit ReadBits_Big).
+    v >>= 1;
+    v >>= 31 - numBits;
     _buf += numBits >> 3;
     _bitPos = numBits & 7;
     return v & mask;

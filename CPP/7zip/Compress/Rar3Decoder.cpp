@@ -862,8 +862,12 @@ HRESULT CDecoder::CodeReal(ICompressProgressInfo *progress)
     if (InputEofError())
       return S_FALSE;
 
-    const UInt64 packSize = m_InBitStream.BitDecoder.GetProcessedSize();
-    RINOK(progress->SetRatioInfo(&packSize, &_writtenFileSize))
+    // Tensor7: progress may be NULL (ICompressCoder::Code), as in the other decoders.
+    if (progress)
+    {
+      const UInt64 packSize = m_InBitStream.BitDecoder.GetProcessedSize();
+      RINOK(progress->SetRatioInfo(&packSize, &_writtenFileSize))
+    }
     if (!keepDecompressing)
       break;
   }
@@ -871,8 +875,11 @@ HRESULT CDecoder::CodeReal(ICompressProgressInfo *progress)
   _solidAllowed = true;
 
   RINOK(WriteBuf())
-  const UInt64 packSize = m_InBitStream.BitDecoder.GetProcessedSize();
-  RINOK(progress->SetRatioInfo(&packSize, &_writtenFileSize))
+  if (progress)
+  {
+    const UInt64 packSize = m_InBitStream.BitDecoder.GetProcessedSize();
+    RINOK(progress->SetRatioInfo(&packSize, &_writtenFileSize))
+  }
   if (_writtenFileSize < _unpackSize)
     return S_FALSE;
 
