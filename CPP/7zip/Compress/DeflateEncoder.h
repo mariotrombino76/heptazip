@@ -137,6 +137,8 @@ public:
   CEncProps _props;              // as set, for the coders of the chunks
   UInt32 _numThreads;
   CChunkEncoder *_chunkEncoder;
+  // Tensor7: level of libdeflate for the chunks (design 0012), 0: the coder of 7-Zip
+  int _libLevel;
 
   void GetMatches();
   void MovePos(UInt32 num);

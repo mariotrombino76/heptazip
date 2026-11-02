@@ -88,6 +88,20 @@ libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
 			    void *out, size_t out_nbytes_avail);
 
 /*
+ * Tensor7: libdeflate_deflate_compress_chunk() compresses (in_nbytes) bytes after
+ * (dict_nbytes) bytes of history at (in) (only the last 32768 are used).  If
+ * !final, the output does not end the stream: it ends with an empty stored
+ * block on a byte boundary, and the output of the next chunk can follow it.
+ * Returns the compressed size, or 0 if the output buffer is too small (or the
+ * chunk is not final and very small).
+ */
+LIBDEFLATEAPI size_t
+libdeflate_deflate_compress_chunk(struct libdeflate_compressor *compressor,
+				  const void *in, size_t dict_nbytes,
+				  size_t in_nbytes, int final,
+				  void *out, size_t out_nbytes_avail);
+
+/*
  * libdeflate_deflate_compress_bound() returns a worst-case upper bound on the
  * number of bytes of compressed data that may be produced by compressing any
  * buffer of length less than or equal to 'in_nbytes' using

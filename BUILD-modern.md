@@ -27,6 +27,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
 | `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
+| `SEVENZIP_LIBDEFLATE` | `ON` | compressore Deflate di `third_party/libdeflate` per gzip, zip e 7z (senza: l'encoder di 7-Zip) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 
 Nota: con GCC `-Wmaybe-uninitialized` e `-Wstringop-overflow` non sono trattati come errori, perché con

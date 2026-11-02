@@ -18,9 +18,9 @@ si aprono con qualunque 7-Zip.
   identici byte per byte a quelli a un thread.
 - **gzip e zip in parallelo**: Deflate a blocchi su tutti i core, 8,6 volte più veloce
   (`-tgzip -mx5`: 105 MB/s, meglio di pigz -9 come rapporto), file leggibili da
-  qualunque gzip/unzip e identici per ogni numero di thread. I livelli `-mx1`..`-mx4`
-  fanno lazy matching: `-mx3` comprime più di pigz -6 ed è più veloce, `-mx4` ha il
-  rapporto di pigz -9 a 1,8 volte la velocità. Decompressione Deflate 2,7-3 volte più
+  qualunque gzip/unzip e identici per ogni numero di thread. I blocchi sono compressi
+  da libdeflate: `-mx3` comprime più di pigz -6 a 2,5 volte la velocità (820 MB/s),
+  `-mx1` supera 1 GB/s. Decompressione Deflate 2,7-3 volte più
   veloce (silesia 800 MB/s, come libdeflate entro l'8%; sul corpus più veloce di libdeflate).
 - **Più velocità**: assembly attivo di default (LZMA 1,4x in decompressione), CRC32 con
   PCLMULQDQ, match finder ottimizzato, decoder SIMD (AVX2, NEON).
@@ -49,4 +49,4 @@ testo della licenza. Dettagli, file per file: [LICENSE-Tensor7](LICENSE-Tensor7)
 
 7-Zip è di Igor Pavlov: il codice originale mantiene le sue licenze (GNU LGPL, con la
 restrizione unRAR per il codice RAR, e le parti BSD; vedi `DOC/License.txt`). zstd è
-distribuito con licenza BSD. Tensor7 non è un prodotto ufficiale di 7-Zip.
+distribuito con licenza BSD, il compressore di libdeflate con licenza MIT. Tensor7 non è un prodotto ufficiale di 7-Zip.

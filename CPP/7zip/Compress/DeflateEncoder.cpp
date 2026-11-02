@@ -10,6 +10,9 @@
 #include "../Common/CWrappers.h"
 #include "../Common/StreamObjects.h"
 #include "../Common/StreamUtils.h"
+#ifdef Z7_DEFLATE_LIBDEFLATE
+#include "libdeflate.h"
+#endif
 #ifndef Z7_ST
 #include "../Common/MtTaskPool.h"
 #endif
@@ -114,7 +117,8 @@ void CEncProps::Normalize()
      mode now does lazy matching, with a longer search at each level (docs/design/0010;
      silesia, 20 threads: -mx1 is as fast as before with a better ratio, -mx3 is faster
      than pigz -6 with a better ratio, -mx4 has the ratio of pigz -9 at 1.8 times its
-     speed). */
+     speed). With libdeflate (design 0012) this coder is used only for Deflate64 and for
+     explicit properties. */
   if (algo == 0 && level < 5)
   {
     static const Byte kFastFb[5] = { 32, 32, 32, 64, 128 };
@@ -159,6 +163,31 @@ void CCoder::SetProps(const CEncProps *props2)
   }
 }
 
+/* Tensor7: the chunks are coded by libdeflate (design 0012), at the level with a better
+   ratio than the coder of 7-Zip at the same -mx (silesia, 1 MiB chunks: -mx1 32.78%
+   instead of 32.98%, -mx3 31.85% / 32.14%, -mx5 30.61% / 30.99%, -mx9 30.53% / 30.56%),
+   with less CPU time (2 to 5 times less; -mx5 about the same). The coder of 7-Zip codes
+   Deflate64, and the properties set explicitly (-mfb, -mmc, -mpass, -ma). */
+static int GetLibLevel(const CEncProps &p, bool deflate64Mode)
+{
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  if (deflate64Mode || p.algo >= 0 || p.fb >= 0 || p.btMode >= 0 || p.mc != 0
+      || p.numPasses != (UInt32)(Int32)-1)
+    return 0;
+  static const Byte kLibLevels[10] = { 4, 4, 5, 6, 7, 10, 10, 11, 11, 12 };
+  int level = p.Level;
+  if (level < 0)
+    level = 5;
+  if (level > 9)
+    level = 9;
+  return kLibLevels[level];
+  #else
+  UNUSED_VAR(p)
+  UNUSED_VAR(deflate64Mode)
+  return 0;
+  #endif
+}
+
 CCoder::CCoder(bool deflate64Mode):
   m_Values(NULL),
   m_OnePosMatchesMemory(NULL),
@@ -167,7 +196,8 @@ CCoder::CCoder(bool deflate64Mode):
   m_Deflate64Mode(deflate64Mode),
   m_Tables(NULL),
   _numThreads(1),
-  _chunkEncoder(NULL)
+  _chunkEncoder(NULL),
+  _libLevel(0)
 {
   m_MatchMaxLen = deflate64Mode ? kMatchMaxLen64 : kMatchMaxLen32;
   m_NumLenCombinations = deflate64Mode ? kNumLenSymbols64 : kNumLenSymbols32;
@@ -176,6 +206,7 @@ CCoder::CCoder(bool deflate64Mode):
   {
     CEncProps props;
     SetProps(&props);
+    _libLevel = GetLibLevel(props, deflate64Mode);
   }
   MatchFinder_Construct(&_lzInWindow);
 }
@@ -262,6 +293,7 @@ HRESULT CCoder::BaseSetEncoderProperties2(const PROPID *propIDs, const PROPVARIA
   }
   SetProps(&props);
   _props = props;
+  _libLevel = GetLibLevel(props, m_Deflate64Mode);
   _numThreads = numThreads;
   // the coders of the chunks are created again with the new properties
   DeleteChunkEncoder();
@@ -1182,13 +1214,44 @@ public:
   HRESULT Res;
   CMyComPtr2_Create<ISequentialOutStream, CDynBufSeqOutStream> Out;
   CRecordVector<CCoder *> *Coders;
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  CRecordVector<libdeflate_compressor *> *LibCoders;  // if libdeflate codes the chunks
+  CByteBuffer LibOut;
+  size_t LibOutSize;
+  #endif
 
-  CChunkSlot(): PrefixSize(0), DataSize(0), Final(false), Res(S_OK), Coders(NULL) {}
+  CChunkSlot(): PrefixSize(0), DataSize(0), Final(false), Res(S_OK), Coders(NULL)
+    #ifdef Z7_DEFLATE_LIBDEFLATE
+      , LibCoders(NULL), LibOutSize(0)
+    #endif
+    {}
   void Run(unsigned workerIndex) Z7_DEFLATE_TASK_OVERRIDE;
+  const Byte *GetOut(size_t &size) const
+  {
+    #ifdef Z7_DEFLATE_LIBDEFLATE
+    if (LibCoders)
+    {
+      size = LibOutSize;
+      return LibOut;
+    }
+    #endif
+    size = Out->GetSize();
+    return Out->GetBuffer();
+  }
 };
 
 void CChunkSlot::Run(unsigned workerIndex)
 {
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  if (LibCoders)
+  {
+    LibOutSize = libdeflate_deflate_compress_chunk((*LibCoders)[workerIndex],
+        In, PrefixSize, DataSize, Final ? 1 : 0, LibOut, LibOut.Size());
+    // 0: the output buffer is too small (it has the size of the bound)
+    Res = (LibOutSize != 0) ? S_OK : E_FAIL;
+    return;
+  }
+  #endif
   // no exception may leave Run()
   try
   {
@@ -1207,6 +1270,9 @@ class CChunkEncoder
 public:
   CObjectVector<CChunkSlot> Slots;
   CRecordVector<CCoder *> Coders;   // one per thread
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  CRecordVector<libdeflate_compressor *> LibCoders;   // one per thread
+  #endif
   #ifndef Z7_ST
   CMtTaskPool Pool;
   #endif
@@ -1219,6 +1285,10 @@ public:
     #endif
     FOR_VECTOR (i, Coders)
       delete Coders[i];
+    #ifdef Z7_DEFLATE_LIBDEFLATE
+    FOR_VECTOR (k, LibCoders)
+      libdeflate_free_compressor(LibCoders[k]);
+    #endif
   }
   HRESULT Code(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
       ICompressProgressInfo *progress);
@@ -1270,19 +1340,55 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
   const unsigned numSlots = (numThreads == 1) ? 1 : numThreads + numThreads / 2 + 1;
   while (Slots.Size() < numSlots)
     Slots.AddNew();
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  const bool useLib = (main._libLevel != 0);
+  if (useLib)
+  {
+    const unsigned numCoders = numThreads;
+    while (LibCoders.Size() < numCoders)
+    {
+      libdeflate_compressor *c = libdeflate_alloc_compressor(main._libLevel);
+      if (!c)
+        return E_OUTOFMEMORY;
+      LibCoders.Add(c);
+    }
+  }
+  #endif
   for (unsigned i = 0; i < numSlots; i++)
   {
-    Slots[i].In.AllocAtLeast(history + kChunkSize);
-    Slots[i].Coders = &Coders;
+    CChunkSlot &s = Slots[i];
+    s.In.AllocAtLeast(history + kChunkSize);
+    s.Coders = &Coders;
+    #ifdef Z7_DEFLATE_LIBDEFLATE
+    s.LibCoders = useLib ? &LibCoders : NULL;
+    if (useLib)
+      // + the empty stored block of a chunk that is not final
+      s.LibOut.AllocAtLeast(libdeflate_deflate_compress_bound(LibCoders[0], kChunkSize) + 16);
+    #endif
   }
 
-  // The first chunk. If the input ends there, it is coded here, as by 7-Zip.
+  // The first chunk. If the input ends there, it is coded here as a whole.
   {
     CChunkSlot &s = Slots[0];
     size_t len = kChunkSize;
     RINOK(ReadStream(inStream, s.In, &len))
     if (len < kChunkSize)
     {
+      #ifdef Z7_DEFLATE_LIBDEFLATE
+      if (useLib)
+      {
+        const size_t size = libdeflate_deflate_compress(LibCoders[0], s.In, len, s.LibOut, s.LibOut.Size());
+        if (size == 0)
+          return E_FAIL;
+        RINOK(WriteStream(outStream, s.LibOut, size))
+        if (progress)
+        {
+          const UInt64 inSize = len, outSize = size;
+          RINOK(progress->SetRatioInfo(&inSize, &outSize))
+        }
+        return S_OK;
+      }
+      #endif
       CMyComPtr2_Create<ISequentialInStream, CBufInStream> bufStream;
       bufStream->Init(s.In, len);
       return main.CodeStream(bufStream, outStream, 0, true, progress);
@@ -1292,6 +1398,9 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
     s.Final = false;
   }
 
+  #ifdef Z7_DEFLATE_LIBDEFLATE
+  if (!useLib)
+  #endif
   while (Coders.Size() < numThreads)
   {
     CCoder *c = new CCoder(main.m_Deflate64Mode);
@@ -1364,10 +1473,12 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
     }
     #endif
     RINOK(s.Res)
-    RINOK(WriteStream(outStream, s.Out->GetBuffer(), s.Out->GetSize()))
+    size_t outSize;
+    const Byte *outData = s.GetOut(outSize);
+    RINOK(WriteStream(outStream, outData, outSize))
     finalWritten = s.Final;
     inProcessed += s.DataSize;
-    outProcessed += s.Out->GetSize();
+    outProcessed += outSize;
     if (progress)
     {
       RINOK(progress->SetRatioInfo(&inProcessed, &outProcessed))

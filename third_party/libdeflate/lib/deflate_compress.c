@@ -467,6 +467,14 @@ struct libdeflate_compressor {
 	size_t max_passthrough_size;
 
 	/*
+	 * Tensor7: libdeflate_deflate_compress_chunk().  The first t7_dict_nbytes
+	 * bytes of the input are history: they go in the matchfinder, but are not
+	 * coded.  If !t7_final, no block is marked as the final one.
+	 */
+	size_t t7_dict_nbytes;
+	bool t7_final;
+
+	/*
 	 * The maximum search depth: consider at most this many potential
 	 * matches at each position
 	 */
@@ -2465,6 +2473,13 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 
 	ht_matchfinder_init(&c->p.f.ht_mf);
 
+	/* Tensor7: the history goes in the matchfinder, but is not coded */
+	if (c->t7_dict_nbytes != 0) {
+		ht_matchfinder_skip_bytes(&c->p.f.ht_mf, &in_cur_base, in_next,
+					  in_end, c->t7_dict_nbytes, &next_hash);
+		in_next += c->t7_dict_nbytes;
+	}
+
 	do {
 		/* Starting a new DEFLATE block */
 
@@ -2521,7 +2536,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
-				     c->p.f.sequences, in_next == in_end);
+				     c->p.f.sequences,
+				     in_next == in_end && c->t7_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -2551,6 +2567,14 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	u32 next_hashes[2] = {0, 0};
 
 	hc_matchfinder_init(&c->p.g.hc_mf, GREEDY_MULTI_HOP);
+
+	/* Tensor7: the history goes in the matchfinder, but is not coded */
+	if (c->t7_dict_nbytes != 0) {
+		hc_matchfinder_skip_bytes(&c->p.g.hc_mf, &in_cur_base, in_next,
+					  in_end, c->t7_dict_nbytes, next_hashes,
+					  GREEDY_MULTI_HOP);
+		in_next += c->t7_dict_nbytes;
+	}
 
 	do {
 		/* Starting a new DEFLATE block */
@@ -2612,7 +2636,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
-				     c->p.g.sequences, in_next == in_end);
+				     c->p.g.sequences,
+				     in_next == in_end && c->t7_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -2629,6 +2654,14 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	u32 next_hashes[2] = {0, 0};
 
 	hc_matchfinder_init(&c->p.g.hc_mf, LAZY_MULTI_HOP);
+
+	/* Tensor7: the history goes in the matchfinder, but is not coded */
+	if (c->t7_dict_nbytes != 0) {
+		hc_matchfinder_skip_bytes(&c->p.g.hc_mf, &in_cur_base, in_next,
+					  in_end, c->t7_dict_nbytes, next_hashes,
+					  LAZY_MULTI_HOP);
+		in_next += c->t7_dict_nbytes;
+	}
 
 	do {
 		/* Starting a new DEFLATE block */
@@ -2824,7 +2857,8 @@ have_cur_match:
 
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
-				     c->p.g.sequences, in_next == in_end);
+				     c->p.g.sequences,
+				     in_next == in_end && c->t7_final);
 	} while (in_next != in_end && !os->overflow);
 }
 
@@ -3652,6 +3686,27 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	bt_matchfinder_init(&c->p.n.bt_mf);
 	deflate_near_optimal_init_stats(c);
 
+	/*
+	 * Tensor7: the history goes in the matchfinder, but is not coded.  It is
+	 * at most MATCHFINDER_WINDOW_SIZE bytes: no slide is needed.
+	 */
+	if (c->t7_dict_nbytes != 0) {
+		const u8 * const in_dict_end = in_next + c->t7_dict_nbytes;
+
+		do {
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+			if (max_len >= BT_MATCHFINDER_REQUIRED_NBYTES)
+				bt_matchfinder_skip_byte(&c->p.n.bt_mf,
+							 in_cur_base,
+							 in_next - in_cur_base,
+							 nice_len,
+							 c->max_search_depth,
+							 next_hashes);
+		} while (++in_next != in_dict_end);
+		in_block_begin = in_next;
+	}
+
 	do {
 		/* Starting a new DEFLATE block */
 		const u8 * const in_max_block_end = choose_max_block_end(
@@ -3840,7 +3895,8 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			struct lz_match *orig_cache_ptr = cache_ptr;
 			const u8 *in_block_end = prev_end_block_check;
 			u32 block_length = in_block_end - in_block_begin;
-			bool is_first = (in_block_begin == in);
+			bool is_first = (in_block_begin ==
+					 in + c->t7_dict_nbytes);
 			bool is_final = false;
 			u32 num_bytes_to_rewind = in_next - in_block_end;
 			size_t cache_len_rewound;
@@ -3874,8 +3930,9 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			 * all; just end the block at the current position.
 			 */
 			u32 block_length = in_next - in_block_begin;
-			bool is_first = (in_block_begin == in);
-			bool is_final = (in_next == in_end);
+			bool is_first = (in_block_begin ==
+					 in + c->t7_dict_nbytes);
+			bool is_final = (in_next == in_end && c->t7_final);
 
 			deflate_near_optimal_merge_stats(c);
 			deflate_optimize_and_flush_block(
@@ -3986,6 +4043,8 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	 * compress very small inputs.
 	 */
 	c->max_passthrough_size = 55 - (compression_level * 4);
+	c->t7_dict_nbytes = 0;	/* Tensor7 */
+	c->t7_final = true;
 
 	switch (compression_level) {
 	case 0:
@@ -4128,6 +4187,73 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	}
 
 	/* Return the compressed size in bytes. */
+	return os.next - (u8 *)out;
+}
+
+/*
+ * Tensor7: compresses the (in_nbytes) bytes after (dict_nbytes) bytes of history
+ * at (in): the matches can refer to the history, as in a single stream.  If
+ * !final, no block is the final one, and an empty stored block ends the output
+ * on a byte boundary (as zlib's Z_SYNC_FLUSH): the outputs of the chunks of a
+ * stream can be concatenated.  Returns 0 if (out_nbytes_avail) is too small, or
+ * for a chunk that is not final and has at most max_passthrough_size bytes.
+ */
+LIBDEFLATEAPI size_t
+libdeflate_deflate_compress_chunk(struct libdeflate_compressor *c,
+				  const void *in, size_t dict_nbytes,
+				  size_t in_nbytes, int final,
+				  void *out, size_t out_nbytes_avail)
+{
+	struct deflate_output_bitstream os;
+
+	if (dict_nbytes > MATCHFINDER_WINDOW_SIZE) {
+		in = (const u8 *)in + (dict_nbytes - MATCHFINDER_WINDOW_SIZE);
+		dict_nbytes = MATCHFINDER_WINDOW_SIZE;
+	}
+	if (dict_nbytes == 0 && final)
+		return libdeflate_deflate_compress(c, in, in_nbytes,
+						   out, out_nbytes_avail);
+	if (unlikely(in_nbytes <= c->max_passthrough_size)) {
+		/* the stored blocks do not need the history */
+		if (!final)
+			return 0;
+		return deflate_compress_none((const u8 *)in + dict_nbytes,
+					     in_nbytes, out, out_nbytes_avail);
+	}
+
+	os.bitbuf = 0;
+	os.bitcount = 0;
+	os.next = out;
+	os.end = os.next + out_nbytes_avail;
+	os.overflow = false;
+
+	c->t7_dict_nbytes = dict_nbytes;
+	c->t7_final = (final != 0);
+	(*c->impl)(c, in, dict_nbytes + in_nbytes, &os);
+	c->t7_dict_nbytes = 0;
+	c->t7_final = true;
+
+	if (os.overflow)
+		return 0;
+	ASSERT(os.bitcount <= 7);
+	if (!final) {
+		/* empty stored block: BFINAL = 0, BTYPE = 00, then LEN and NLEN */
+		if (os.end - os.next < 2 + 4)
+			return 0;
+		os.bitcount += 3;
+		while (os.bitcount > 0) {
+			*os.next++ = (u8)os.bitbuf;
+			os.bitbuf >>= 8;
+			os.bitcount = os.bitcount > 8 ? os.bitcount - 8 : 0;
+		}
+		*os.next++ = 0x00;
+		*os.next++ = 0x00;
+		*os.next++ = 0xFF;
+		*os.next++ = 0xFF;
+	} else if (os.bitcount) {
+		ASSERT(os.next < os.end);
+		*os.next++ = os.bitbuf;
+	}
 	return os.next - (u8 *)out;
 }
 

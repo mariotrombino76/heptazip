@@ -254,6 +254,50 @@ corpus   libdeflate  -9                         66.20%     106.7    1588.8      
   davanti a pigz su entrambi gli assi a ogni livello confrontabile, e a libdeflate nel
   tempo reale di compressione; libdeflate resta più efficiente per core in compressione.
 
+## Deflate con libdeflate nei blocchi paralleli (2026-11-02)
+
+Design 0012: i blocchi da 1 MiB del Deflate parallelo sono compressi da libdeflate
+(modificato per la storia e i blocchi non finali), al livello con il rapporto migliore
+dell'encoder di 7-Zip a ogni `-mx`.
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -tgzip -mx1                32.78%    1035.7     796.0        3.3      0.26       66        7
+silesia  7zz-modern  -tgzip -mx3                31.85%     819.8     810.3        4.6      0.26       70        7
+silesia  7zz-modern  -tgzip -mx4                31.68%     683.1     807.9        5.6      0.26       70        7
+silesia  7zz-modern  -tgzip -mx5                30.61%     103.8     803.6       38.1      0.26      204        7
+silesia  7zz-modern  -tgzip -mx9                30.53%      53.7     801.1       71.4      0.26      210        8
+silesia  7zz-26.05   -tgzip -mx1                33.15%      75.1     284.7        2.9      0.76        7        6
+silesia  7zz-26.05   -tgzip -mx5                30.96%      12.3     300.6       17.7      0.72        7        6
+silesia  pigz        -6 -p 20                   32.20%     331.9     322.8       12.2      0.75       16        2
+silesia  pigz        -9 -p 20                   31.92%     152.1     318.0       26.0      0.78       16        2
+silesia  gzip        -6                         32.19%      38.0     245.1        5.8      0.88        2        2
+silesia  libdeflate  -1                         34.68%     262.3     841.1        0.8      0.25      274      273
+silesia  libdeflate  -6                         31.85%     138.8     806.1        1.6      0.26      268      268
+silesia  libdeflate  -9                         31.48%      70.6     880.1        3.1      0.24      268      267
+silesia  libdeflate  -12                        30.52%       8.2     864.6       26.7      0.24      273      265
+corpus   7zz-modern  -tgzip -mx1                66.47%     895.7    2029.5        2.0      0.05       75        7
+corpus   7zz-modern  -tgzip -mx3                66.26%     774.0    2039.1        2.4      0.05       80        7
+corpus   7zz-modern  -tgzip -mx4                66.23%     724.9    2028.7        2.6      0.05       79        8
+corpus   7zz-modern  -tgzip -mx5                66.01%     225.7    2058.8        8.2      0.05      165        7
+corpus   7zz-modern  -tgzip -mx9                66.00%     143.0    2109.7       11.7      0.04      166        7
+corpus   7zz-26.05   -tgzip -mx1                66.61%      80.8     670.9        1.4      0.16        7        6
+corpus   7zz-26.05   -tgzip -mx5                66.07%      30.2     735.4        3.9      0.15        7        6
+corpus   pigz        -6 -p 20                   66.37%     458.0     580.4        4.7      0.24       16        2
+corpus   pigz        -9 -p 20                   66.32%     297.6     556.1        6.7      0.24       17        2
+corpus   gzip        -6                         66.37%      52.2     285.2        2.2      0.40        2        2
+corpus   libdeflate  -1                         66.96%     189.6    1513.5        0.6      0.07      182      182
+corpus   libdeflate  -6                         66.26%     131.5    1507.5        0.9      0.06      182      181
+corpus   libdeflate  -9                         66.20%     107.1    1517.4        1.1      0.07      182      181
+corpus   libdeflate  -12                        65.99%      24.8    1559.6        4.7      0.07      187      181
+```
+
+- Ogni livello comprime meglio di prima ed è più veloce o uguale: `-mx1` 1036 MB/s,
+  `-mx3` 820 MB/s al 31,85% (pigz -6: 332 MB/s al 32,20%), `-mx5` 30,61% (prima 30,99%),
+  `-mx9` 3,6 volte più veloce.
+- Decompressione (design 0011): 800 MB/s su silesia, 2 GB/s sul corpus.
+
 ## Blocchi LZMA2: compromesso misurato
 
 `tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione, build con il decoder

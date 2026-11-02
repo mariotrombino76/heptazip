@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Stato** | Implementato, attivo di default (gzip, zip, 7z con Deflate/Deflate64, `-mx1`..`-mx4`) |
+| **Stato** | Implementato; dal design 0012 gzip, zip e 7z con Deflate usano libdeflate: questo encoder resta per Deflate64, le proprietà esplicite e le build senza libdeflate |
 | **Data** | 2026-11-02 |
 | **Fase** | 2: prestazioni |
 | **Riferimento upstream** | 7-Zip 26.05 (`b88c6bc`) |

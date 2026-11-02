@@ -17,7 +17,7 @@ add_executable(extract_trace
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(extract_trace PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Test unitari del modulo di estrazione parallela (7zExtractMt).
@@ -26,7 +26,7 @@ add_executable(unit_7zextract_mt
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Archivio creato con una callback che dichiara per un file una dimensione diversa da
@@ -36,7 +36,7 @@ add_executable(update_growing
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(update_growing PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Banco di prova dei match finder (strumento, non test: docs/design/0005).
@@ -44,7 +44,7 @@ add_executable(mf_bench
   ${CMAKE_SOURCE_DIR}/tools/mfbench/mf_bench.c
   $<TARGET_OBJECTS:sevenzip_c>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})  # C/FloatPlaneLz.c usa l'encoder zstd
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})  # C/FloatPlaneLz.c usa l'encoder zstd
 target_link_libraries(mf_bench PRIVATE sevenzip_flags Threads::Threads)
 
 # Test unitari del modulo di compressione parallela (7zUpdateMt, docs/design/0003).
@@ -53,7 +53,7 @@ add_executable(unit_7zupdate_mt
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(unit_7zupdate_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 if(SEVENZIP_ZSTD_ENCODER)
   # i controlli sulla stima dell'encoder zstd
@@ -66,7 +66,7 @@ add_executable(unit_com_try
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(unit_com_try PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Fuzzing dei gestori di archivio (design 0007). fuzz_replay e' lo stesso harness senza
@@ -76,7 +76,7 @@ add_executable(fuzz_replay
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_compile_definitions(fuzz_replay PRIVATE FUZZ_REPLAY)
 target_link_libraries(fuzz_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 # Lo stesso per fuzz_codec (decoder senza gestore): tests/fuzz/regress-codec/<metodo>/.
@@ -85,7 +85,7 @@ add_executable(fuzz_codec_replay
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_compile_definitions(fuzz_codec_replay PRIVATE FUZZ_REPLAY)
 target_link_libraries(fuzz_codec_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
@@ -100,11 +100,11 @@ if(SEVENZIP_FUZZ)
     $<TARGET_OBJECTS:sevenzip_c>
     $<TARGET_OBJECTS:sevenzip_cpp>
     ${SEVENZIP_ASM_OBJECTS}
-    ${SEVENZIP_ZSTD_OBJECTS})
+    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
   target_link_libraries(fuzz_archive PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_archive PRIVATE -fsanitize=fuzzer)
   add_executable(fuzz_float fuzz/fuzz_float.c
-    $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS})
+    $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
   target_link_libraries(fuzz_float PRIVATE sevenzip_flags Threads::Threads)
   target_link_options(fuzz_float PRIVATE -fsanitize=fuzzer)
   add_executable(fuzz_codec
@@ -112,7 +112,7 @@ if(SEVENZIP_FUZZ)
     $<TARGET_OBJECTS:sevenzip_c>
     $<TARGET_OBJECTS:sevenzip_cpp>
     ${SEVENZIP_ASM_OBJECTS}
-    ${SEVENZIP_ZSTD_OBJECTS})
+    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
   target_link_libraries(fuzz_codec PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_codec PRIVATE -fsanitize=fuzzer)
   set(_fuzz_targets fuzz_archive fuzz_float fuzz_codec)
@@ -239,7 +239,7 @@ set_tests_properties(fuzz_codec_regress PROPERTIES TIMEOUT 300 ENVIRONMENT "${_f
 
 # Formato FLOAT (design 0008): round-trip, scelta del tipo, input corrotti e troncati
 add_executable(unit_float_plane unit_float_plane.c
-  $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS})
+  $<TARGET_OBJECTS:sevenzip_c> ${SEVENZIP_ASM_OBJECTS} ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
 target_link_libraries(unit_float_plane PRIVATE sevenzip_flags Threads::Threads m)
 if(TARGET sevenzip_asm)
   add_dependencies(unit_float_plane sevenzip_asm)

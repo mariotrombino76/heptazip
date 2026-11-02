@@ -35,6 +35,10 @@ quale licenza ha ciascuna parte del codice.
    third_party/zstd: Zstandard 1.5.7, Copyright (c) Meta Platforms, Inc. and
    affiliates, licenza BSD (third_party/zstd/LICENSE) o GPLv2 (COPYING), a scelta.
 
+   third_party/libdeflate: compressore di libdeflate (master 0758d0a), Copyright 2016
+   Eric Biggers, Copyright 2024 Google LLC, licenza MIT (third_party/libdeflate/COPYING);
+   con modifiche di Tensor7 descritte in third_party/libdeflate/README-Tensor7.md.
+
 
 Licenza BSD a 2 clausole (BSD-2-Clause)
 ---------------------------------------
