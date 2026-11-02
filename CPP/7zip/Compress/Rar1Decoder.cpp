@@ -446,6 +446,12 @@ HRESULT CDecoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *
 
   while (m_UnpackSize != 0)
   {
+    /* Heptazip: the end of the input. The bit decoder reads up to 4 bytes after the
+       data; more means that the data ended before (m_UnpackSize) bytes: without this
+       check the decoder went on with the virtual bytes after the end up to the declared
+       size (issue #14), as Rar2/Rar3 do not. */
+    if (m_InBitStream.ExtraBitsWereRead_Fast())
+      return S_FALSE;
     if (!StMode)
     {
       if (--FlagsCnt < 0)
