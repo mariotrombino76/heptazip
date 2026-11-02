@@ -5938,7 +5938,7 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
         return S_FALSE;
     }
     RINOK(ReadToBuffer_Growing(_data, FirstHeader.HeaderSize,
-        [this](void *data, size_t *size) { return Decoder.Read(data, size); }))
+        [this](void *buf, size_t *len) { return Decoder.Read(buf, len); }))
     
     #ifdef NSIS_SCRIPT
     if (IsSolid)
@@ -5956,7 +5956,7 @@ HRESULT CInArchive::Open2(const Byte *sig, size_t size)
   {
     ISequentialInStream *stream = _stream;
     RINOK(ReadToBuffer_Growing(_data, FirstHeader.HeaderSize,
-        [stream](void *data, size_t *size) { return ReadStream(stream, data, size); }))
+        [stream](void *buf, size_t *len) { return ReadStream(stream, buf, len); }))
   }
 
   #ifdef NUM_SPEED_TESTS
