@@ -14,7 +14,20 @@ Instead of one LIT/MATCH decision per literal (LZMA isMatch), one sequence per m
   match: the first literal of the run)
 Static tables per block (entropy + table cost)."""
 
+import os
 import sys
+
+NOCROSS = os.environ.get("LZS_NOCROSS") == "1"   # no context from another stream
+JOINT = os.environ.get("LZS_JOINT") == "1"       # (length class, slot) as one symbol
+RUNPOS = os.environ.get("LZS_RUNPOS") == "1"     # posState of the start of the run
+
+
+def len_class(n):
+    """length - 2 -> class (0..15 direct, then 2 per power of 2) and extra bits"""
+    if n < 16:
+        return n, 0
+    b = n.bit_length() - 1
+    return 16 + 2 * (b - 4) + ((n >> (b - 1)) & 1), b - 1
 
 import numpy as np
 
@@ -71,12 +84,18 @@ def main():
                 reps.insert(0, d)
         else:
             t = 0
-        out["mtype"].append((pos, prev_type * 2 + (run == 0), t))
+        out["mtype"].append((pos, prev_type if NOCROSS else prev_type * 2 + (run == 0), t))
         if t == 0:
             dist = b - 4
-            out["len"].append((pos, pos & 3, ln - 2))
             slot = lzstatic.pos_slot(dist)
-            out["slot"].append((pos, min(ln - 2, 3), slot))
+            ps = (pos - run) & 3 if RUNPOS else pos & 3
+            if JOINT:
+                lc, lnb = len_class(ln - 2)
+                raw += lnb
+                out["len"].append((pos, 0 if NOCROSS else ps, lc * 64 + slot))
+            else:
+                out["len"].append((pos, 0 if NOCROSS else ps, ln - 2))
+                out["slot"].append((pos, 0 if NOCROSS else min(ln - 2, 3), slot))
             if slot >= 4:
                 fb = (slot >> 1) - 1
                 extra = dist - ((2 | (slot & 1)) << fb)
@@ -87,7 +106,7 @@ def main():
                     out["align"].append((pos, 0, extra & 15))
             reps = [dist + 1] + reps[:3]
         elif t != 2:
-            out["replen"].append((pos, pos & 3, ln - 2))
+            out["replen"].append((pos, 0 if NOCROSS else pos & 3, ln - 2))
         prev_type = t
         run = 0
         after_match = True
@@ -96,7 +115,7 @@ def main():
     code, nb, extra = code_of(run)
     out["runlen"].append((pos, prev_type, code))
     raw += nb
-    nsyms = {"runlen": 64, "mtype": 6, "lit": 256, "mlitx": 256, "len": 272, "replen": 272,
+    nsyms = {"runlen": 80, "mtype": 6, "lit": 256, "mlitx": 256, "len": 64 * 40 if JOINT else 272, "replen": 272,
              "slot": 64, "foot": 64, "align": 16}
     for block in (262144, 1048576):
         res = {}
