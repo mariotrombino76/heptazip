@@ -37,6 +37,8 @@ basta `-mf=off`.
 
 ## Documentazione
 
+- [Wiki](https://github.com/mariotrombino76/heptazip/wiki): installazione, guida rapida,
+  quale metodo usare, prestazioni, compatibilità, domande frequenti.
 - [BUILD-modern.md](BUILD-modern.md): compilare, testare, usare le opzioni nuove.
 - [docs/design](docs/design): una nota per ogni scelta (formati, misure, alternative).
 - [docs/benchmark-mercato.md](docs/benchmark-mercato.md): confronto con zstd, xz,
