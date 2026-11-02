@@ -176,6 +176,20 @@ questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 Un solo documento JSON su stdout, con gli stessi campi di `-slt` (nomi in camelCase, date
 ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
 
+## Gestori di archivi di Linux (Ark, File Roller)
+
+Tensor7 non ha una GUI per Linux, ma i gestori di archivi dei desktop eseguono 7-Zip e
+ne leggono l'output, quindi usano il motore di Tensor7 se lo trovano nel PATH:
+
+```sh
+sudo install -m 755 build/7zz /usr/local/bin/7zz      # File Roller (GNOME) usa 7zz
+sudo ln -sf /usr/local/bin/7zz /usr/local/bin/7z      # Ark (KDE) esegue 7z
+```
+
+La prima riga del banner resta quella di 7-Zip (`7-Zip (z) 26.05 ...`): Ark legge un
+elenco solo dopo questa riga. Il test `gui_compat` legge l'output di `7zz` con le regole
+di Ark e di File Roller (7z, zip, tar, gzip).
+
 ## Test automatici (CTest)
 
 ```sh
