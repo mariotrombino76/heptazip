@@ -16,6 +16,9 @@ si aprono con qualunque 7-Zip.
 - **zstd** nel formato 7z, per profili "ultra-veloci".
 - **Estrazione e compressione parallele** dei folder 7z (`-mpfd`, `-mpfc`), con archivi
   identici byte per byte a quelli a un thread.
+- **gzip e zip in parallelo**: Deflate a blocchi su tutti i core, 8,6 volte più veloce
+  (`-tgzip -mx5`: 105 MB/s, meglio di pigz -9 come rapporto), file leggibili da
+  qualunque gzip/unzip e identici per ogni numero di thread.
 - **Più velocità**: assembly attivo di default (LZMA 1,4x in decompressione), CRC32 con
   PCLMULQDQ, match finder ottimizzato, decoder SIMD (AVX2, NEON).
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,

@@ -104,6 +104,42 @@ load 1m alla fine: 2.43
 Priorità che ne seguono: politica dei blocchi LZMA2 per file grandi (punto 1), poi una
 valutazione di un metodo BWT per i testi (punto 2).
 
+## Deflate e BZip2 nei loro formati (2026-11-02)
+
+`market-bench.py --only 'gzip|bzip2|pigz|libdeflate'`, con il Deflate a blocchi in
+parallelo (design 0009). libdeflate e lbzip2 non sono disponibili.
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -tgzip -mx1                33.15%     512.0     305.1        7.5      0.70       80        6
+silesia  7zz-modern  -tgzip -mx5                30.99%     104.9     320.3       37.8      0.67       94        6
+silesia  7zz-modern  -tgzip -mx9                30.56%      15.3     313.2      263.8      0.68      110        6
+silesia  7zz-modern  -tbzip2 -mx5               25.76%      84.8     107.9       45.2      2.93      206       11
+silesia  7zz-modern  -tbzip2 -mx9               25.58%      12.8     101.3      310.2      2.91      217       11
+silesia  7zz-26.05   -tgzip -mx5                30.96%      12.2     298.1       17.6      0.72        7        6
+silesia  7zz-26.05   -tbzip2 -mx5               25.76%      78.9     108.4       49.1      2.91      206       11
+silesia  pigz        -6 -p 20                   32.20%     339.8     319.0       12.3      0.76       16        2
+silesia  pigz        -9 -p 20                   31.92%     151.8     311.3       25.8      0.78       16        2
+silesia  gzip        -6                         32.19%      37.9     245.6        5.7      0.87        2        2
+silesia  bzip2       -9                         25.76%      18.4      49.5       11.7      4.35        8        5
+corpus   7zz-modern  -tgzip -mx1                66.61%     493.1     825.5        4.1      0.13      100        6
+corpus   7zz-modern  -tgzip -mx5                66.09%     205.0     870.3        9.0      0.12      110        6
+corpus   7zz-26.05   -tgzip -mx5                66.07%      29.8     742.7        3.9      0.14        7        6
+corpus   pigz        -6 -p 20                   66.37%     436.5     550.8        4.6      0.23       17        2
+corpus   pigz        -9 -p 20                   66.32%     298.3     537.4        6.7      0.24       17        2
+corpus   bzip2       -9                         64.66%      18.8      34.0        6.1      3.39        8        5
+```
+
+- **gzip/zip**: Deflate era a un thread (12 MB/s). Ora `-mx5` comprime a 105 MB/s
+  (8,6×) con il rapporto migliore della tabella (0,9 punti meglio di pigz -9), `-mx1` a
+  512 MB/s (più di pigz -6, rapporto peggiore). Il decoder è come pigz e più veloce di
+  gzip. Manca un livello intermedio che batta pigz -6 su entrambi gli assi (design 0009,
+  §8).
+- **bzip2**: già parallelo in 7-Zip. `-mx5` (predefinito, blocchi da 900k come
+  `bzip2 -9`, stesso file) è 4,6 volte più veloce in compressione e 2,2 in
+  decompressione di bzip2. `-mx9` fa 7 passate: 7 volte la CPU per lo 0,7%.
+
 ## Blocchi LZMA2: compromesso misurato
 
 `tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione, build con il decoder

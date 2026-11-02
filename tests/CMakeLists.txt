@@ -250,6 +250,13 @@ set_tests_properties(unit_float_plane PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_te
 add_test(NAME unit_crc_clmul COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_crc_clmul>)
 set_tests_properties(unit_crc_clmul PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
+# Deflate a blocchi in parallelo (docs/design/0009): .gz e .zip identici per ogni -mmt,
+# letti da zlib (decoder indipendente).
+add_test(NAME deflate_mt
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/deflate_mt.py
+          --7zz ${_7zz})
+set_tests_properties(deflate_mt PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
+
 # Output JSON di "l -json" confrontato con "-slt" (docs/json-output.md).
 add_test(NAME list_json
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/list_json.py

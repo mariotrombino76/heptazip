@@ -976,7 +976,16 @@ static HRESULT UpdateArchive(
 
   CMyComPtr2_Create<ICompressCoder, NEncoder::CCOMCoder> deflateEncoder;
 
-  RINOK(props.SetCoderProps(deflateEncoder.ClsPtr(), NULL))
+  {
+    // Tensor7: the Deflate encoder codes in parallel (design 0009); as for bzip2, the
+    // number of threads (-mmt, all the processors by default) goes to the coder.
+    CMethodProps props2 = props;
+#ifndef Z7_ST
+    if (props2.FindProp(NCoderPropID::kNumThreads) < 0)
+      props2.AddProp_NumThreads(props._numThreads);
+#endif
+    RINOK(props2.SetCoderProps(deflateEncoder.ClsPtr(), NULL))
+  }
   RINOK(deflateEncoder.Interface()->Code(crcStream, outStream, NULL, NULL, lps))
 
   item.Crc = crcStream->GetCRC();

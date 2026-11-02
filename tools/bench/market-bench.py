@@ -47,6 +47,16 @@ def seven(name, binary, opts):
     }
 
 
+def seven_fmt(name, binary, fmt, opts, ext):
+    """Profilo per 7zz con un formato a stream (gzip, bzip2): stessi file di gzip/bzip2."""
+    return {
+        "tool": name, "profile": " ".join([f"-t{fmt}", *opts]), "need": binary,
+        "comp": lambda src, dst: ([binary, "a", f"-t{fmt}", *opts, "-bso0", "-bsp0", str(dst), str(src)], None),
+        "decomp": lambda arc: ([binary, "e", "-so", "-bso0", "-bse0", "-bsp0", str(arc)], None),
+        "ext": ext,
+    }
+
+
 def stream(name, exe, copts, dopts, ext, stdin=True):
     """Profilo per uno strumento a stream: input -> stdout."""
     return {
@@ -63,9 +73,17 @@ def profiles(fork, upstream):
                  ["-m0=zstd", "-mx3"], ["-m0=zstd", "-mx19"],
                  ["-m0=FLOAT"]):   # pesi dei modelli AI (design 0008); su altri dati ~ copia
         p.append(seven("7zz-modern", fork, opts))
+    # Deflate e BZip2 di 7-Zip nei loro formati, contro gzip/pigz/libdeflate e bzip2/lbzip2
+    # (-tbzip2 -mx5 e' il predefinito, blocchi da 900k come bzip2 -9; -mx9 fa 7 passate)
+    for fmt, opts, ext in (("gzip", ["-mx1"], ".gz"), ("gzip", ["-mx5"], ".gz"),
+                           ("gzip", ["-mx9"], ".gz"),
+                           ("bzip2", ["-mx5"], ".bz2"), ("bzip2", ["-mx9"], ".bz2")):
+        p.append(seven_fmt("7zz-modern", fork, fmt, opts, ext))
     if upstream:
         for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"]):
             p.append(seven("7zz-26.05", upstream, opts))
+        for fmt, opts, ext in (("gzip", ["-mx5"], ".gz"), ("bzip2", ["-mx5"], ".bz2")):
+            p.append(seven_fmt("7zz-26.05", upstream, fmt, opts, ext))
     p += [
         stream("zstd", "zstd", ["-3", "-T0", "-q"], ["-d", "-q"], ".zst"),
         stream("zstd", "zstd", ["-19", "-T0", "-q"], ["-d", "-q"], ".zst"),
@@ -79,6 +97,8 @@ def profiles(fork, upstream):
         stream("pigz", "pigz", ["-6", "-p", str(NCPU)], ["-d"], ".gz"),
         stream("pigz", "pigz", ["-9", "-p", str(NCPU)], ["-d"], ".gz"),
         stream("gzip", "gzip", ["-6"], ["-d"], ".gz"),
+        stream("libdeflate", "libdeflate-gzip", ["-6"], ["-d"], ".gz"),
+        stream("libdeflate", "libdeflate-gzip", ["-12"], ["-d"], ".gz"),
         stream("bzip2", "bzip2", ["-9"], ["-d"], ".bz2"),
         stream("lbzip2", "lbzip2", ["-9", f"-n{NCPU}"], ["-d", f"-n{NCPU}"], ".bz2"),
         stream("bzip3", "bzip3", ["-j", str(NCPU)], ["-d", "-j", str(NCPU)], ".bz3"),

@@ -35,6 +35,7 @@ const UInt32 kNumOptsBase = 1 << 12;
 const UInt32 kNumOpts = kNumOptsBase + kMatchMaxLen;
 
 class CCoder;
+class CChunkEncoder;
 
 struct CTables: public CLevels
 {
@@ -129,6 +130,11 @@ public:
 
   UInt32 m_MatchFinderCycles;
 
+  // Tensor7: the input is coded in chunks of kChunkSize, in parallel (design 0009).
+  CEncProps _props;              // as set, for the coders of the chunks
+  UInt32 _numThreads;
+  CChunkEncoder *_chunkEncoder;
+
   void GetMatches();
   void MovePos(UInt32 num);
   UInt32 Backward(UInt32 &backRes, UInt32 cur);
@@ -162,6 +168,16 @@ public:
   void CodeBlock(unsigned tableIndex, bool finalBlock);
 
   void SetProps(const CEncProps *props2);
+
+  /* Codes the stream as part of a larger Deflate stream: the first (prefixSize) bytes are
+     only history for the matches (the end of the previous chunk), and a chunk that is not
+     the final one ends with an empty stored block, so that the next chunk starts on a byte
+     boundary. With (prefixSize == 0) and (finalChunk) it is the usual coding. */
+  HRESULT CodeStream(ISequentialInStream *inStream, ISequentialOutStream *outStream,
+      UInt32 prefixSize, bool finalChunk, ICompressProgressInfo *progress);
+  friend class CChunkEncoder;
+  friend class CChunkSlot;
+  void DeleteChunkEncoder();
 public:
   CCoder(bool deflate64Mode = false);
   ~CCoder();

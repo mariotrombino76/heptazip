@@ -8,6 +8,11 @@
 #include "../../Common/ComTry.h"
 
 #include "../Common/CWrappers.h"
+#include "../Common/StreamObjects.h"
+#include "../Common/StreamUtils.h"
+#ifndef Z7_ST
+#include "../Common/MtTaskPool.h"
+#endif
 
 #include "DeflateEncoder.h"
 
@@ -148,7 +153,9 @@ CCoder::CCoder(bool deflate64Mode):
   m_DistanceMemory(NULL),
   m_Created(false),
   m_Deflate64Mode(deflate64Mode),
-  m_Tables(NULL)
+  m_Tables(NULL),
+  _numThreads(1),
+  _chunkEncoder(NULL)
 {
   m_MatchMaxLen = deflate64Mode ? kMatchMaxLen64 : kMatchMaxLen32;
   m_NumLenCombinations = deflate64Mode ? kNumLenSymbols64 : kNumLenSymbols32;
@@ -220,6 +227,7 @@ HRESULT CCoder::Create()
 HRESULT CCoder::BaseSetEncoderProperties2(const PROPID *propIDs, const PROPVARIANT *coderProps, UInt32 numProps)
 {
   CEncProps props;
+  UInt32 numThreads = 1;
   for (UInt32 i = 0; i < numProps; i++)
   {
     const PROPVARIANT &prop = coderProps[i];
@@ -236,11 +244,15 @@ HRESULT CCoder::BaseSetEncoderProperties2(const PROPID *propIDs, const PROPVARIA
       case NCoderPropID::kMatchFinderCycles: props.mc = v; break;
       case NCoderPropID::kAlgorithm: props.algo = (int)v; break;
       case NCoderPropID::kLevel: props.Level = (int)v; break;
-      case NCoderPropID::kNumThreads: break;
+      case NCoderPropID::kNumThreads: numThreads = v; break;
       default: return E_INVALIDARG;
     }
   }
   SetProps(&props);
+  _props = props;
+  _numThreads = numThreads;
+  // the coders of the chunks are created again with the new properties
+  DeleteChunkEncoder();
   return S_OK;
 }
   
@@ -254,6 +266,7 @@ void CCoder::Free()
 
 CCoder::~CCoder()
 {
+  DeleteChunkEncoder();
   Free();
   MatchFinder_Free(&_lzInWindow, &g_AlignedAlloc);
 }
@@ -319,6 +332,8 @@ void CCoder::MovePos(UInt32 num)
 }
 
 static const UInt32 kIfinityPrice = 0xFFFFFFF;
+
+static const unsigned kNumPassesFirstBlock = 4;  // Tensor7: see CodeStream()
 
 NO_INLINE UInt32 CCoder::Backward(UInt32 &backRes, UInt32 cur)
 {
@@ -966,11 +981,20 @@ void CCoder::CodeBlock(unsigned tableIndex, bool finalBlock)
 }
 
 
-HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *outStream,
-    const UInt64 * /* inSize */ , const UInt64 * /* outSize */ , ICompressProgressInfo *progress)
+HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *outStream,
+    UInt32 prefixSize, bool finalChunk, ICompressProgressInfo *progress)
 {
   m_CheckStatic = (m_NumPasses != 1 || m_NumDivPasses != 1);
   m_IsMultiPass = (m_CheckStatic || (m_NumPasses != 1 || m_NumDivPasses != 1));
+  /* Tensor7: the optimal parser prices a block with the Huffman codes of the previous
+     block. A chunk after the first one would start with the default codes: its first
+     block is parsed again with its own codes (kNumPassesFirstBlock passes; silesia -mx5,
+     1 MiB chunks: the loss against a single stream goes from 0.17% to 0.09%, same time).
+     The passes need the cache of the matches (m_IsMultiPass). */
+  const unsigned numPasses = m_NumPasses;
+  const bool warmUp = (prefixSize != 0 && !_fastMode && m_NumPasses < kNumPassesFirstBlock);
+  if (warmUp)
+    m_IsMultiPass = true;
 
   /* we can set stream mode before MatchFinder_Create
     if default MatchFinder mode was not STREAM_MODE) */
@@ -987,6 +1011,14 @@ HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *ou
   UInt64 nowPos = 0;
 
   MatchFinder_Init(&_lzInWindow);
+  // Tensor7: the history before the chunk goes into the match finder, but is not coded.
+  if (prefixSize != 0)
+  {
+    if (_btMode)
+      Bt3Zip_MatchFinder_Skip(&_lzInWindow, prefixSize);
+    else
+      Hc3Zip_MatchFinder_Skip(&_lzInWindow, prefixSize);
+  }
   m_OutStream.SetStream(outStream);
   m_OutStream.Init();
 
@@ -1001,8 +1033,10 @@ HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *ou
   {
     t.BlockSizeRes = kBlockUncompressedSizeThreshold;
     m_SecondPass = false;
+    if (warmUp)
+      m_NumPasses = (nowPos == 0 ? kNumPassesFirstBlock : numPasses);
     GetBlockPrice(1, m_NumDivPasses);
-    CodeBlock(1, Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) == 0);
+    CodeBlock(1, finalChunk && Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) == 0);
     nowPos += m_Tables[1].BlockSizeRes;
     if (progress != NULL)
     {
@@ -1011,6 +1045,13 @@ HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *ou
     }
   }
   while (Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) != 0);
+
+  m_NumPasses = numPasses;
+
+  // Tensor7: an empty stored block ends the chunk on a byte boundary (as zlib's
+  // Z_SYNC_FLUSH): the chunks are concatenated as bytes.
+  if (!finalChunk)
+    WriteStoreBlock(0, 0, false);
   
   if (_seqInStream.Res != S_OK)
     return _seqInStream.Res;
@@ -1018,6 +1059,248 @@ HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *ou
   if (_lzInWindow.result != SZ_OK)
     return SResToHRESULT(_lzInWindow.result);
   return m_OutStream.Flush();
+}
+
+// ---------- Tensor7: chunked and parallel coding (design 0009) ----------
+//
+// The input is cut in chunks of kChunkSize bytes, coded independently by a pool of
+// coders. Each coder gets the last kHistorySize bytes of the previous chunk as history:
+// the matches can reach back as in a single coder. All the chunks but the final one end
+// with an empty stored block, so the output is one Deflate stream, readable by any
+// decoder. The size of the chunks does not depend on the number of threads: the output
+// is the same for every -mmt. An input up to kChunkSize is coded as by 7-Zip.
+
+static const size_t kChunkSize = (size_t)1 << 20;
+static const unsigned kNumThreadsMax = 64;
+
+#ifndef Z7_ST
+#define Z7_DEFLATE_TASK_BASE  : public CMtTask
+#define Z7_DEFLATE_TASK_OVERRIDE  Z7_override
+#else
+#define Z7_DEFLATE_TASK_BASE
+#define Z7_DEFLATE_TASK_OVERRIDE
+#endif
+
+class CChunkSlot Z7_DEFLATE_TASK_BASE
+{
+public:
+  CByteBuffer In;          // history (end of the previous chunk), then the data
+  size_t PrefixSize;
+  size_t DataSize;
+  bool Final;
+  HRESULT Res;
+  CMyComPtr2_Create<ISequentialOutStream, CDynBufSeqOutStream> Out;
+  CRecordVector<CCoder *> *Coders;
+
+  CChunkSlot(): PrefixSize(0), DataSize(0), Final(false), Res(S_OK), Coders(NULL) {}
+  void Run(unsigned workerIndex) Z7_DEFLATE_TASK_OVERRIDE;
+};
+
+void CChunkSlot::Run(unsigned workerIndex)
+{
+  // no exception may leave Run()
+  try
+  {
+    CMyComPtr2_Create<ISequentialInStream, CBufInStream> inStream;
+    inStream->Init(In, PrefixSize + DataSize);
+    Out->Init();
+    Res = (*Coders)[workerIndex]->CodeStream(inStream, Out, (UInt32)PrefixSize, Final, NULL);
+  }
+  catch (const COutBufferException &e) { Res = e.ErrorCode; }
+  catch (...) { Res = E_OUTOFMEMORY; }
+}
+
+class CChunkEncoder
+{
+  Z7_CLASS_NO_COPY(CChunkEncoder)
+public:
+  CObjectVector<CChunkSlot> Slots;
+  CRecordVector<CCoder *> Coders;   // one per thread
+  #ifndef Z7_ST
+  CMtTaskPool Pool;
+  #endif
+
+  CChunkEncoder() {}
+  ~CChunkEncoder()
+  {
+    #ifndef Z7_ST
+    Pool.Stop();
+    #endif
+    FOR_VECTOR (i, Coders)
+      delete Coders[i];
+  }
+  HRESULT Code(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
+      ICompressProgressInfo *progress);
+private:
+  HRESULT Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
+      ICompressProgressInfo *progress, unsigned numThreads);
+};
+
+void CCoder::DeleteChunkEncoder()
+{
+  delete _chunkEncoder;
+  _chunkEncoder = NULL;
+}
+
+HRESULT CChunkEncoder::Code(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
+    ICompressProgressInfo *progress)
+{
+  unsigned numThreads = main._numThreads;
+  if (numThreads < 1)
+    numThreads = 1;
+  if (numThreads > kNumThreadsMax)
+    numThreads = kNumThreadsMax;
+  #ifdef Z7_ST
+  numThreads = 1;
+  #endif
+  HRESULT res;
+  // the threads are stopped in any case (BaseCode() catches the exceptions)
+  try { res = Code2(main, inStream, outStream, progress, numThreads); }
+  catch (...)
+  {
+    #ifndef Z7_ST
+    Pool.Stop();
+    #endif
+    throw;
+  }
+  #ifndef Z7_ST
+  Pool.Stop();
+  #endif
+  return res;
+}
+
+HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
+    ICompressProgressInfo *progress, unsigned numThreads)
+{
+  const size_t history = main.m_Deflate64Mode ? kHistorySize64 : kHistorySize32;
+  // The chunks in work and a few more, read in advance or waiting to be written in order
+  // (silesia, 20 threads: as fast as 2 slots per thread, 96 MiB instead of 110 MiB;
+  // with (numThreads + 2) slots 6% slower)
+  const unsigned numSlots = (numThreads == 1) ? 1 : numThreads + numThreads / 2 + 1;
+  while (Slots.Size() < numSlots)
+    Slots.AddNew();
+  for (unsigned i = 0; i < numSlots; i++)
+  {
+    Slots[i].In.AllocAtLeast(history + kChunkSize);
+    Slots[i].Coders = &Coders;
+  }
+
+  // The first chunk. If the input ends there, it is coded here, as by 7-Zip.
+  {
+    CChunkSlot &s = Slots[0];
+    size_t len = kChunkSize;
+    RINOK(ReadStream(inStream, s.In, &len))
+    if (len < kChunkSize)
+    {
+      CMyComPtr2_Create<ISequentialInStream, CBufInStream> bufStream;
+      bufStream->Init(s.In, len);
+      return main.CodeStream(bufStream, outStream, 0, true, progress);
+    }
+    s.PrefixSize = 0;
+    s.DataSize = len;
+    s.Final = false;
+  }
+
+  while (Coders.Size() < numThreads)
+  {
+    CCoder *c = new CCoder(main.m_Deflate64Mode);
+    Coders.Add(c);
+    c->SetProps(&main._props);
+  }
+  #ifndef Z7_ST
+  if (numThreads > 1)
+  {
+    RINOK(Pool.Start(numThreads))
+  }
+  #endif
+
+  UInt64 inProcessed = 0, outProcessed = 0;
+  unsigned next = 0, numInWork = 0;
+  unsigned last = 0;       // the slot read last
+  bool inEnd = false;
+  bool finalWritten = false;
+  bool first = true;
+
+  for (;;)
+  {
+    while (!inEnd && numInWork < numSlots)
+    {
+      const unsigned k = (next + numInWork) % numSlots;
+      CChunkSlot &s = Slots[k];
+      if (first)
+        first = false;   // already read
+      else
+      {
+        // the history: the end of the previous chunk (full, so longer than history)
+        const CChunkSlot &prev = Slots[last];
+        memmove(s.In, prev.In + prev.PrefixSize + prev.DataSize - history, history);
+        size_t len = kChunkSize;
+        RINOK(ReadStream(inStream, s.In + history, &len))
+        if (len == 0)
+        {
+          inEnd = true;
+          break;
+        }
+        s.PrefixSize = history;
+        s.DataSize = len;
+        s.Final = (len < kChunkSize);
+        if (s.Final)
+          inEnd = true;
+      }
+      last = k;
+      numInWork++;
+      #ifndef Z7_ST
+      if (numThreads > 1)
+      {
+        RINOK(Pool.Submit(&s))
+      }
+      else
+      #endif
+        s.Run(0);
+    }
+
+    if (numInWork == 0)
+      break;
+    CChunkSlot &s = Slots[next];
+    #ifndef Z7_ST
+    if (numThreads > 1)
+    {
+      const WRes wres = s.Done.Lock();
+      if (wres != 0)
+        return HRESULT_FROM_WIN32(wres);
+      if (s.ExceptionWasCaught)
+        return E_FAIL;
+    }
+    #endif
+    RINOK(s.Res)
+    RINOK(WriteStream(outStream, s.Out->GetBuffer(), s.Out->GetSize()))
+    finalWritten = s.Final;
+    inProcessed += s.DataSize;
+    outProcessed += s.Out->GetSize();
+    if (progress)
+    {
+      RINOK(progress->SetRatioInfo(&inProcessed, &outProcessed))
+    }
+    next = (next + 1) % numSlots;
+    numInWork--;
+  }
+
+  if (!finalWritten)
+  {
+    // The input ended with a full chunk: an empty final block with the fixed codes
+    // (BFINAL = 1, BTYPE = 01, end of block), as zlib.
+    static const Byte kFinalEmptyBlock[2] = { 3, 0 };
+    RINOK(WriteStream(outStream, kFinalEmptyBlock, sizeof(kFinalEmptyBlock)))
+  }
+  return S_OK;
+}
+
+HRESULT CCoder::CodeReal(ISequentialInStream *inStream, ISequentialOutStream *outStream,
+    const UInt64 * /* inSize */ , const UInt64 * /* outSize */ , ICompressProgressInfo *progress)
+{
+  if (!_chunkEncoder)
+    _chunkEncoder = new CChunkEncoder;
+  return _chunkEncoder->Code(*this, inStream, outStream, progress);
 }
 
 HRESULT CCoder::BaseCode(ISequentialInStream *inStream, ISequentialOutStream *outStream,
