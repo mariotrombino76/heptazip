@@ -20,13 +20,13 @@ using namespace NRegistry;
 #define k_Clsid_A "{23170F69-40C1-278A-1000-000100020000}"
 
 static LPCTSTR const k_Clsid = TEXT(k_Clsid_A);
-static LPCTSTR const k_ShellExtName = TEXT("7-Zip Shell Extension");
+static LPCTSTR const k_ShellExtName = TEXT("Heptazip Shell Extension");
 
 static LPCTSTR const k_Approved = TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved");
 static LPCTSTR const k_Inproc = TEXT("InprocServer32");
 
-static LPCSTR const k_KeyPostfix_ContextMenu = "\\shellex\\ContextMenuHandlers\\7-Zip";
-static LPCSTR const k_KeyPostfix_DragDrop    = "\\shellex\\DragDropHandlers\\7-Zip";
+static LPCSTR const k_KeyPostfix_ContextMenu = "\\shellex\\ContextMenuHandlers\\Heptazip";
+static LPCSTR const k_KeyPostfix_DragDrop    = "\\shellex\\DragDropHandlers\\Heptazip";
 
 static LPCSTR const k_KeyName_File      = "*";
 static LPCSTR const k_KeyName_Folder    = "Folder";

@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../Common/ZipRegistry.h"
 
 #include "../GUI/HashGUI.h"
@@ -295,7 +297,7 @@ HRESULT CPanel::CopyTo(CCopyToOptions &options,
       title = LangString(titleID);
   }
 
-  const UString progressWindowTitle ("7-Zip"); // LangString(IDS_APP_TITLE);
+  const UString progressWindowTitle (HZ_NAME); // LangString(IDS_APP_TITLE);
   
   extracter.MainWindow = GetParent();
   extracter.MainTitle = progressWindowTitle;
@@ -396,7 +398,7 @@ HRESULT CPanel::CopyFrom(bool moveMode, const UString &folderPrefix, const UStri
   updater.UpdateCallbackSpec->ProgressDialog = &updater.ProgressDialog;
 
   const UString title = LangString(IDS_COPYING);
-  const UString progressWindowTitle ("7-Zip"); // LangString(IDS_APP_TITLE);
+  const UString progressWindowTitle (HZ_NAME); // LangString(IDS_APP_TITLE);
 
   updater.ProgressDialog.MainWindow = GetParent();
   updater.ProgressDialog.MainTitle = progressWindowTitle;

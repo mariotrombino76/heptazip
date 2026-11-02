@@ -188,6 +188,20 @@ questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 Un solo documento JSON su stdout, con gli stessi campi di `-slt` (nomi in camelCase, date
 ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
 
+## Windows: GUI (7zFM, 7zG) con Visual Studio
+
+```bat
+tools\windows\build-msvc.bat out-msvc
+rem -> 7z.dll, 7z.exe, 7zFM.exe, 7zG.exe, 7-zip.dll in out-msvc\
+```
+
+I file si usano senza installazione (stessa cartella). La CI li pubblica come artefatto
+`heptazip-windows-x64-msvc`. Heptazip convive con 7-Zip installato: impostazioni in
+`HKCU\Software\Heptazip`, codec cercati solo nella propria cartella (non in quella di
+7-Zip), associazioni dei file con il prefisso `Heptazip.`, estensione di Explorer con un
+CLSID proprio (`{90642948-CE43-44BE-810E-2CA2A1F77CEE}`). I file di traduzione di 7-Zip
+(`Lang\*.txt`) restano usabili.
+
 ## Windows: 7zz.exe con MinGW-w64
 
 La versione da riga di comando per Windows si compila da Linux con i makefile di 7-Zip

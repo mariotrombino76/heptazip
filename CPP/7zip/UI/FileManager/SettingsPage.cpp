@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include <CommCtrl.h>
 
 // #include "../../../Common/IntToString.h"
@@ -364,7 +366,7 @@ LONG CSettingsPage::OnApply()
         s.Add_LF();
         s += "Are you sure you want set that unsafe value for memory usage?";
         
-        int res = MessageBoxW(*this, s, L"7-Zip", MB_YESNOCANCEL | MB_ICONQUESTION);
+        int res = MessageBoxW(*this, s, HZ_NAME_W, MB_YESNOCANCEL | MB_ICONQUESTION);
         if (res != IDYES)
           needSave = false;
       }

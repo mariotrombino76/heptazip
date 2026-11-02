@@ -3,6 +3,7 @@
 #ifndef ZIP7_INC_COMPRESS_DIALOG_H
 #define ZIP7_INC_COMPRESS_DIALOG_H
 
+
 #include "../../../Common/Wildcard.h"
 
 #include "../../../Windows/Control/ComboBox.h"
@@ -364,7 +365,7 @@ public:
 
   void MessageBoxError(LPCWSTR message)
   {
-    MessageBoxW(*this, message, L"7-Zip", MB_ICONERROR);
+    MessageBoxW(*this, message, L"Heptazip" /* HZ_NAME_W: no version header in this header (MY_VERSION_CPU) */, MB_ICONERROR);
   }
 
   void ShowOptionsString();

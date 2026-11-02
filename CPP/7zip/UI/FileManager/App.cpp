@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "resource.h"
 #include "OverwriteDialogRes.h"
 
@@ -964,7 +966,7 @@ void CApp::RefreshTitle(bool always)
 {
   UString path = GetFocusedPanel()._currentFolderPrefix;
   if (path.IsEmpty())
-    path = "7-Zip"; // LangString(IDS_APP_TITLE);
+    path = HZ_NAME; // LangString(IDS_APP_TITLE);
   if (!always && path == PrevTitle)
     return;
   PrevTitle = path;
