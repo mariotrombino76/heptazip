@@ -204,6 +204,33 @@ public:
     return b;
   }
 
+  /* Tensor7: for the fast Deflate decoder, that reads the bytes of the buffer of
+     (TInByte) directly with its own 64-bit bit buffer (DeflateDecoder.cpp). */
+  struct CState
+  {
+    unsigned BitPos;
+    UInt32 Value;
+    UInt32 NormalValue;
+  };
+  TInByte &GetInByte() { return this->_stream; }
+  void SaveState(CState &s) const { s.BitPos = this->_bitPos; s.Value = this->_value; s.NormalValue = _normalValue; }
+  void RestoreState(const CState &s) { this->_bitPos = s.BitPos; this->_value = s.Value; _normalValue = s.NormalValue; }
+  // the next bits (LSB first): (numBits) >= 25
+  UInt32 GetNormalBits(unsigned &numBits)
+  {
+    Normalize();
+    numBits = kNumBigValueBits - this->_bitPos;
+    return _normalValue;
+  }
+  /* the stream of TInByte is just after the byte (b), and the last (numBits) bits of (b)
+     (numBits < 8) are the next bits */
+  void SetLastBits(Byte b, unsigned numBits)
+  {
+    this->_bitPos = kNumBigValueBits - numBits;
+    _normalValue = numBits ? ((UInt32)b >> (8 - numBits)) : 0;
+    this->_value = ReverseBits8(b);
+  }
+
   // call it only if the object is aligned for byte.
   Z7_FORCE_INLINE
   bool ReadAlignedByte_FromBuf(Byte &b)

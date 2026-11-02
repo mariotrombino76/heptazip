@@ -11,6 +11,8 @@ e per ogni livello crea .gz e .zip con -mmt1, -mmt3 e -mmt8 e verifica che:
   il CRC giusto (gzip.decompress e zipfile.testzip lo controllano).
 
 Deflate64 si verifica con 7zz stesso (zlib non lo legge).
+
+Poi il decoder (design 0011): .gz di zlib con ogni strategia, decompressi da 7zz.
 """
 
 import argparse
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import zlib
 
 M = 1 << 20
 
@@ -56,6 +59,49 @@ def run(cmd):
         raise RuntimeError("%s: exit %d\n%s" % (" ".join(cmd), r.returncode, r.stdout.decode(errors="replace")))
 
 
+def decode_zlib(sz, work, datas):
+    """Decoder (design 0011): .gz made by zlib with every strategy, small windows and
+    flushes (empty stored blocks), decoded by 7zz; also cut at 2/3 (error, and the same
+    bytes as the data before it)."""
+    errors = 0
+    arc = os.path.join(work, "z.gz")
+    for name, data in datas.items():
+        for level, strategy, wbits, flush in ((1, zlib.Z_DEFAULT_STRATEGY, 15, 0),
+                                               (6, zlib.Z_DEFAULT_STRATEGY, 15, 0),
+                                               (9, zlib.Z_DEFAULT_STRATEGY, 9, 0),
+                                               (6, zlib.Z_FILTERED, 15, 0),
+                                               (6, zlib.Z_HUFFMAN_ONLY, 15, 0),
+                                               (6, zlib.Z_RLE, 15, 0),
+                                               (6, zlib.Z_FIXED, 15, 0),
+                                               (6, zlib.Z_DEFAULT_STRATEGY, 15, 100003)):
+            c = zlib.compressobj(level, zlib.DEFLATED, 16 + wbits, 8, strategy)
+            parts = []
+            step = flush or max(1, len(data))
+            for i in range(0, len(data), step):
+                parts.append(c.compress(data[i:i + step]))
+                if flush:
+                    parts.append(c.flush(zlib.Z_SYNC_FLUSH))
+            parts.append(c.flush())
+            packed = b"".join(parts)
+            for cut in (False, True):
+                if cut and len(packed) < 100:
+                    continue
+                with open(arc, "wb") as f:
+                    f.write(packed[:len(packed) * 2 // 3] if cut else packed)
+                r = subprocess.run([sz, "e", "-so", arc], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                # cut: error; as 7-Zip 26.05 the decoder can write some bytes decoded
+                # after the end of the input before it detects it (up to a few matches)
+                ok = (r.returncode != 0 and data.startswith(r.stdout[:max(0, len(r.stdout) - 1024)])) \
+                     if cut else (r.returncode == 0 and r.stdout == data)
+                if not ok:
+                    errors += 1
+                    print("ERRORE decodifica: %s zlib -%d strategia %d wbits %d flush %d%s" %
+                          (name, level, strategy, wbits, flush, " tagliato" if cut else ""))
+    os.remove(arc)
+    print("decodifica zlib: errori", errors)
+    return errors
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--7zz", dest="sz", required=True)
@@ -63,7 +109,8 @@ def main():
     work = tempfile.mkdtemp(prefix="7z-deflate-mt.", dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
     errors = 0
     try:
-        for name, data in make_data().items():
+        datas = make_data()
+        for name, data in datas.items():
             src = os.path.join(work, name)
             with open(src, "wb") as f:
                 f.write(data)
@@ -105,6 +152,7 @@ def main():
                     print("%-10s %-5s %-9s %s %s" % (name, fmt, method or "Deflate", level,
                                                      "identici" if same else "DIVERSI " + str(digests)))
             os.remove(src)
+        errors += decode_zlib(args.sz, work, datas)
     finally:
         shutil.rmtree(work)
     print("errori:", errors)

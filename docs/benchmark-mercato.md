@@ -219,6 +219,41 @@ corpus   libdeflate  -12                        65.99%      24.7    1528.0      
 - Il parallelismo a blocchi (design 0009) e un motore efficiente come libdeflate si
   sommano: è il margine più grande rimasto su gzip/zip.
 
+## Decoder Deflate veloce (2026-11-02)
+
+Con il decoder del design 0011 (decompressione a un thread, colonna `dec MB/s`):
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -tgzip -mx1                32.98%     537.3     780.5        7.1      0.27       80        7
+silesia  7zz-modern  -tgzip -mx3                32.14%     346.2     785.6       10.8      0.27       80        7
+silesia  7zz-modern  -tgzip -mx5                30.99%     107.0     800.0       37.4      0.26       94        7
+silesia  7zz-26.05   -tgzip -mx1                33.15%      73.9     279.6        2.9      0.76        7        6
+silesia  7zz-26.05   -tgzip -mx5                30.96%      12.4     298.5       17.9      0.73        7        6
+silesia  pigz        -6 -p 20                   32.20%     333.4     325.7       12.2      0.76       16        2
+silesia  pigz        -9 -p 20                   31.92%     151.1     328.3       25.8      0.77       16        2
+silesia  gzip        -6                         32.19%      37.9     235.7        5.8      0.88        2        2
+silesia  libdeflate  -6                         31.85%     135.9     866.3        1.6      0.23      268      268
+silesia  libdeflate  -9                         31.48%      70.0     860.1        3.1      0.24      268      267
+corpus   7zz-modern  -tgzip -mx1                66.52%     478.7    2096.3        3.9      0.05      100        7
+corpus   7zz-modern  -tgzip -mx3                66.36%     443.4    2172.9        4.7      0.04      100        7
+corpus   7zz-modern  -tgzip -mx5                66.09%     222.5    2227.7        8.8      0.04      110        7
+corpus   7zz-26.05   -tgzip -mx1                66.61%      82.4     729.4        1.5      0.15        7        6
+corpus   7zz-26.05   -tgzip -mx5                66.07%      30.0     734.9        3.9      0.15        7        6
+corpus   pigz        -6 -p 20                   66.37%     436.8     564.8        4.6      0.23       17        2
+corpus   pigz        -9 -p 20                   66.32%     298.9     574.7        6.7      0.23       17        2
+corpus   gzip        -6                         66.37%      50.7     282.0        2.2      0.39        2        2
+corpus   libdeflate  -6                         66.26%     129.7    1537.7        0.9      0.07      182      181
+corpus   libdeflate  -9                         66.20%     106.7    1588.8        1.1      0.06      182      181
+```
+
+- **Decompressione gzip**: da 280-300 a 780-800 MB/s su silesia (2,7 volte; libdeflate
+  860, pigz 326) e da 730 a 2100-2230 MB/s sul corpus (3 volte, più di libdeflate: 1540-1590).
+- Insieme alla compressione parallela (design 0009, 0010), gzip e zip di Tensor7 sono
+  davanti a pigz su entrambi gli assi a ogni livello confrontabile, e a libdeflate nel
+  tempo reale di compressione; libdeflate resta più efficiente per core in compressione.
+
 ## Blocchi LZMA2: compromesso misurato
 
 `tools/bench/block-sweep.py`, Silesia (202 MiB), 1 ripetizione, build con il decoder

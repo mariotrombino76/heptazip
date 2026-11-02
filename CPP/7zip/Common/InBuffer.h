@@ -95,6 +95,11 @@ public:
     return *_buf++;
   }
   
+  // Tensor7: direct access to the buffered bytes, for the fast Deflate decoder: it reads
+  // from (Fast_GetPtr()) up to (lim), and gives back the position of the first unused byte.
+  const Byte *Fast_GetPtr(const Byte *&lim) const { lim = _bufLim; return _buf; }
+  void Fast_SetPtr(const Byte *p) { _buf = _bufBase + (p - _bufBase); }
+
   size_t ReadBytesPart(Byte *buf, size_t size);
   size_t ReadBytes(Byte *buf, size_t size);
   const Byte *Lookahead(size_t &rem)

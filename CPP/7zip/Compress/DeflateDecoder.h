@@ -24,6 +24,14 @@ const int kLenIdNeedInit = -2;
 const unsigned kNumTableBits_Main = 10;
 const unsigned kNumTableBits_Dist = 6;
 
+/* Tensor7: tables of the fast decoder (DecodeFast(), docs/design/0011). A code is
+   looked up by its first bits (LSB first): kFastLitBits / kFastDistBits bits in the
+   main table; the longer codes (up to 15 bits) in a subtable of (15 - main) bits. */
+const unsigned kFastLitBits = 11;
+const unsigned kFastDistBits = 8;
+const unsigned kFastLitTableSize = (1u << kFastLitBits) + kFixedMainTableSize * (1u << (kNumHuffmanBits - kFastLitBits));
+const unsigned kFastDistTableSize = (1u << kFastDistBits) + kFixedDistTableSize * (1u << (kNumHuffmanBits - kFastDistBits));
+
 class CCoder:
   public ICompressCoder,
   public ICompressSetFinishMode,
@@ -68,6 +76,9 @@ private:
 
   UInt32 m_StoredBlockSize;
 
+  UInt32 _fastLit[kFastLitTableSize];
+  UInt32 _fastDist[kFastDistTableSize];
+
   unsigned _numDistLevels;
   bool m_FinalBlock;
   bool m_StoredMode;
@@ -94,6 +105,8 @@ private:
 
   bool DecodeLevels(Byte *levels, unsigned numSymbols);
   bool ReadTables();
+  void BuildFastTables(const Byte *litLenLevels, const Byte *distLevels);
+  int DecodeFast(UInt32 &curSize);
   
   HRESULT Flush() { return m_OutWindowStream.Flush(); }
   class CCoderReleaser
