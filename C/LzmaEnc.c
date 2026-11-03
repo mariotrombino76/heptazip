@@ -74,11 +74,7 @@ void LzmaEncProps_Normalize(CLzmaEncProps *p)
   p->level = level;
   
   if (p->dictSize == 0)
-    p->dictSize = (unsigned)level <= 4 ?
-        (UInt32)1 << (level * 2 + 16) :
-        (unsigned)level <= sizeof(size_t) / 2 + 4 ?
-          (UInt32)1 << (level + 20) :
-          (UInt32)1 << (sizeof(size_t) / 2 + 24);
+    p->dictSize = LzmaEncProps_GetDictSize_ForLevel((unsigned)level);  // Heptazip: shared table
 
   if (p->dictSize > p->reduceSize)
   {

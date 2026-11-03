@@ -19,7 +19,7 @@ di un singolo folder, e dipende dal metodo:
 
 | Metodo | Thread dentro un folder |
 |---|---|
-| LZMA2 | blocchi indipendenti (`Lzma2Enc` + `MtCoder`), solo se il folder è più grande di un blocco (dizionario × 4, da 1 a 256 MiB); in più 2 thread per il match finder (`bt*` dal livello 5) |
+| LZMA2 | blocchi indipendenti (`Lzma2Enc` + `MtCoder`), solo se il folder è più grande di un blocco (pari al dizionario del livello dal #64, da 1 a 256 MiB; al livello 5 i blocchi da 32 MiB usano un dizionario di 16 MiB, #75); in più 2 thread per il match finder (`bt*` dal livello 5) |
 | LZMA | al massimo 2 (match finder multi-thread) |
 | zstd (libzstd) | `nbWorkers` job da `jobSize` (alcuni MiB); un folder piccolo dà un solo job |
 | BZip2 | blocchi da 100–900 KB in parallelo |

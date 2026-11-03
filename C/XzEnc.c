@@ -643,12 +643,18 @@ static void XzProps_Normalize(CXzProps *p)
           tp.numTotalThreads = p->numTotalThreads;
         
         Lzma2EncProps_Normalize(&tp);
-        
+
         p->blockSize = tp.blockSize; // fixed or solid
         p->numBlockThreads_Reduced = tp.numBlockThreads_Reduced;
         p->numBlockThreads_Max = tp.numBlockThreads_Max;
         if (lzma2->blockSize == LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO)
           lzma2->blockSize = tp.blockSize; // fixed or solid, LZMA2_ENC_PROPS_BLOCK_SIZE_SOLID
+        /* Heptazip: the dictionary chosen for the automatic blocks (half the block at
+           level 5, Lzma2Enc_GetAutoBlockDictSize) goes to the per-block encoders, which
+           are normalized later as solid (one block thread each) and would otherwise take
+           the dictionary of the level. */
+        if (lzma2->lzmaProps.dictSize == 0)
+          lzma2->lzmaProps.dictSize = tp.lzmaProps.dictSize;
         if (lzma2->lzmaProps.reduceSize > tp.blockSize && tp.blockSize != LZMA2_ENC_PROPS_BLOCK_SIZE_SOLID)
           lzma2->lzmaProps.reduceSize = tp.blockSize;
         lzma2->numBlockThreads_Reduced = 1;

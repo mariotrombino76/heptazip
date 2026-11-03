@@ -1572,13 +1572,13 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
       }
       
       case IDC_COMPRESS_SOLID:
-      {
-        SetMemoryUsage();
-        return true;
-      }
-
       case IDC_COMPRESS_THREADS:
       {
+        /* Heptazip (#75): the automatic dictionary of LZMA2 depends on the number of
+           block threads (and, for xz, on the block size): rebuild the Dictionary line
+           keeping the selected value, as the Dictionary handler does for the threads. */
+        SaveOptionsInMem();
+        SetDictionary2();
         SetMemoryUsage();
         return true;
       }
@@ -2098,11 +2098,24 @@ void CCompressDialog::SetDictionary2()
     case kLZMA2:
     {
       {
-        _auto_Dict = level <= 4 ?
-            (UInt32)1 << (level * 2 + 16) :
-            level <= sizeof(size_t) / 2 + 4 ?
-              (UInt32)1 << (level + 20) :
-              (UInt32)1 << (sizeof(size_t) / 2 + 24);
+        _auto_Dict = LzmaEncProps_GetDictSize_ForLevel(level);  // Heptazip: shared table (C/LzmaEnc.h)
+        /* Heptazip (#75): LZMA2 with automatic blocks and at least two block threads
+           (two match-finder threads each from level 5) uses a smaller dictionary than
+           the level: Lzma2Enc_GetAutoBlockDictSize(), 16 MiB at level 5. The threads
+           and the xz block size handlers call SetDictionary2() again. */
+        if (methodID == kLZMA2
+            && level == LZMA2_ENC_AUTO_BLOCK_HALF_DICT_LEVEL
+            && GetNumThreads2() >= 4)
+        {
+          bool autoBlocks = true;
+          if (IsXzFormat())
+          {
+            const UInt32 blockSizeLog = GetBlockSizeSpec();
+            autoBlocks = (blockSizeLog == (UInt32)(Int32)-1 || blockSizeLog == kSolidLog_NoSolid);
+          }
+          if (autoBlocks)
+            _auto_Dict = Lzma2Enc_GetAutoBlockDictSize(level, _auto_Dict);
+        }
       }
 
       // we use threshold 3.75 GiB to switch to kLzmaMaxDictSize.
@@ -2534,7 +2547,10 @@ bool CCompressDialog::GetOrderMode()
 
 static UInt64 Get_Lzma2_ChunkSize(UInt64 dict)
 {
-  // we use same default chunk sizes as defined in 7z encoder and lzma2 encoder
+  /* Heptazip: 4 x dictionary is no longer the LZMA2 block (Lzma2Enc_GetAutoBlockSize,
+     C/Lzma2Enc.h); the 7z handler still sizes its solid block as 64 x this value
+     (7zHandlerOut.cpp), and SetSolidBlockSize() mirrors it. Upstream comment:
+     we use same default chunk sizes as defined in 7z encoder and lzma2 encoder */
   UInt64 cs = (UInt64)dict << 2;
   const UInt32 kMinSize = (UInt32)1 << 20;
   const UInt32 kMaxSize = (UInt32)1 << 28;
@@ -2580,6 +2596,14 @@ void CCompressDialog::SetSolidBlockSize2()
   {
     dict = 1 << 25; // default dict for unknown methods
     // return;
+  }
+  /* Heptazip: the 7z handler sizes the solid block from the dictionary of the level
+     (Get_Lzma_DicSize), even when the LZMA2 block encoders use a smaller one (#75). */
+  else if (GetDictSpec() == (UInt64)(Int64)-1)
+  {
+    const int methodId0 = GetMethodID();
+    if (methodId0 == kLZMA || methodId0 == kLZMA2)
+      dict = LzmaEncProps_GetDictSize_ForLevel(level);
   }
 
 
@@ -3135,7 +3159,11 @@ UInt64 CCompressDialog::GetMemoryUsage_Threads_Dict_DecompMem(UInt32 numThreads,
 
       if (methodId != kLZMA && numBlockThreads != 1)
       {
-        chunkSize = Get_Lzma2_ChunkSize(dict);
+        /* Heptazip: the real LZMA2 block (C/Lzma2Enc.h): the dictionary of the level
+           when the dictionary is automatic (the block encoders may then use a smaller
+           one, _auto_Dict), the given dictionary otherwise. */
+        chunkSize = Lzma2Enc_GetAutoBlockSize(GetDictSpec() == (UInt64)(Int64)-1 ?
+            LzmaEncProps_GetDictSize_ForLevel(level) : dict64);
 
         if (IsXzFormat())
         {

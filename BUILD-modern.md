@@ -322,8 +322,9 @@ Regole per ogni modifica:
 2. Se la modifica non deve cambiare l'output (refactoring, build, flag),
    `compare-archives.sh` contro la build **precedente del fork** deve dare `IDENTICI`.
    Contro 7-Zip upstream i profili LZMA2 dal livello 5 su input grandi differiscono per
-   scelta (dimensione parola 64, `C/LzmaEnc.c`, e blocchi LZMA2 pari al dizionario,
-   `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi si aprono con upstream.
+   scelta (dimensione parola 64, `C/LzmaEnc.c`; blocchi LZMA2 pari al dizionario del
+   livello e, al livello 5, dizionario di 16 MiB con blocchi da 32 MiB, `C/Lzma2Enc.h`):
+   il formato è lo stesso e gli archivi si aprono con upstream.
 3. Se la modifica riguarda le prestazioni, allegare l'output di `bench.py`
    (minimo 3 ripetizioni) con il confronto rispetto a upstream.
 
