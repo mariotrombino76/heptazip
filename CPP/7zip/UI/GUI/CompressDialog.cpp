@@ -2399,7 +2399,7 @@ void CCompressDialog::SetOrder2()
     case kLZMA:
     case kLZMA2:
     {
-      _auto_Order = (level < 7 ? 32 : 64);
+      _auto_Order = (level < 5 ? 32 : 64); // Heptazip: as LzmaEncProps_Normalize()
       int curSel = AddOrder_Auto();
       for (unsigned i = 2 * 2; i < 8 * 2; i++)
       {

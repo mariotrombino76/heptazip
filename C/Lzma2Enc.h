@@ -13,17 +13,20 @@ EXTERN_C_BEGIN
 
 /* Heptazip: size of the independent LZMA2 blocks for LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO
    (with more than one block thread): LZMA2_ENC_AUTO_BLOCK_DICT_MULT x dictionary,
-   from 1 to 256 MiB, not smaller than the dictionary, aligned to 1 MiB.
+   from 1 to 256 MiB, aligned to 1 MiB.
    Upstream used 4 x dictionary. Each block starts with an empty dictionary: smaller
    blocks give more parallelism (compression and decompression of big data) for a
-   little ratio. Silesia, -mx5 (32 MiB dictionary on 64-bit): 64 MiB blocks instead
-   of 128 MiB, +0.06% size, decompression with 20 threads 1.77 times faster,
-   compression 1.18 times (docs/benchmark-mercato.md). The block is never smaller
-   than the dictionary: with -mx9 (256 MiB) it stays 256 MiB, so long-distance
-   matches, the reason for a big dictionary, are kept.
+   little ratio. Since 2026-11-03 the block is the dictionary itself (before: 2 x,
+   from 2026-11-01), together with fb = 64 at level 5 (LzmaEncProps_Normalize): on
+   Silesia, -mx5 (32 MiB dictionary on 64-bit), 32 MiB blocks instead of 64 MiB and
+   fb 64 give 23.19% instead of 23.42%, decompression with 20 threads 1.6 times and
+   compression 1.4 times faster (docs/benchmark-mercato.md); with a 64 MiB
+   dictionary the block of one dictionary costs +0.015%. With -mx9 (256 MiB) the
+   block stays 256 MiB, so long-distance matches, the reason for a big dictionary,
+   are kept.
    The only definition of the rule: Lzma2EncProps_Normalize() (also for xz) and
    CMethodProps::Get_Xz_BlockSize() (7z handler, memory estimates) use it. */
-#define LZMA2_ENC_AUTO_BLOCK_DICT_MULT  2
+#define LZMA2_ENC_AUTO_BLOCK_DICT_MULT  1
 
 static Z7_FORCE_INLINE UInt64 Lzma2Enc_GetAutoBlockSize(UInt64 dictSize)
 {

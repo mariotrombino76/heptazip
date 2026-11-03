@@ -570,3 +570,52 @@ rapporto migliore; decompressione 2,7 volte. BZip2 invariato.
    parallelo) e 1081 di xz `-6`.
 5. **zstd oltre il livello 19**: `--ultra -22` (24,67%) non è esposto nel 7z.
 
+## LZMA2 `-mx5`: fb 64 e blocchi pari al dizionario (2026-11-03, #64)
+
+Il punto 1 della lettura precedente. Lo scaling della decompressione di Silesia a `-mx5`
+(4 blocchi da 64 MiB): 1 thread 148 MB/s, 2 → 202, 4 → 340, 8 → 345, 20 → 330: sopra i 4
+blocchi non c'è più nulla da parallelizzare, e il sovraccarico fisso (avvio, lettura,
+memoria, CRC, ~0,15 s) è simile a quello di xz. xz `-6` ottiene un rapporto migliore
+(23,35%) con dizionario da 8 MiB e blocchi da 24 MiB perché usa nice_len 64, dove `-mx5`
+usa fb 32. Sweep (`-m0=lzma2`, 20 thread, Silesia):
+
+| profilo | rapporto | comp MB/s | dec MB/s | RSS comp MB |
+|---|---|---|---|---|
+| d=32m fb=32 c=64m (prima) | 23,42% | 10,2 | 331 | 1353 |
+| d=32m fb=64 c=64m | 23,03% | 9,1 | 338 | – |
+| d=32m fb=64 c=48m | 23,07% | 10,1 | 438 | – |
+| **d=32m fb=64 c=32m** | **23,19%** | **14,0** | **524** | 2329 |
+| d=16m fb=64 c=32m | 23,22% | 13,8 | 536 | – |
+| d=8m fb=64 c=24m (come xz -6) | 23,33% | 18,3 | 606 | – |
+| d=64m fb=64 c=128m (2×) | 23,00% | 7,4 | 207 | 1418 |
+| d=64m fb=64 c=64m (1×) | 23,02% | 10,2 | 351 | 2120 |
+
+fb 64 vale 0,39 punti di rapporto per l'8% di velocità di compressione; spesi in blocchi
+pari al dizionario, a `-mx5` restano 0,22 punti di guadagno con compressione e
+decompressione molto più veloci. Con dizionario da 64 MiB il blocco di un dizionario costa
++0,015%. **Decisione: `fb = 64` dal livello 5 (`LzmaEncProps_Normalize`, anche per LZMA e
+xz) e blocco automatico pari al dizionario (`Lzma2Enc_GetAutoBlockSize`, era 2×).** A
+`-mx9` (dizionario 256 MiB) il blocco resta 256 MiB. Il dialogo Aggiungi mostra 64 come
+dimensione parola automatica dal livello 5.
+
+Suite di mercato dopo la modifica (stessa procedura del 2026-11-03):
+
+```
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+silesia  7zz-modern  -m0=lzma2 -mx1             27.88%     196.5     933.2       18.1      2.99       88       42
+silesia  7zz-modern  -m0=lzma2 -mx5             23.19%      15.5     559.8       95.4      1.94     2329      256
+silesia  7zz-modern  -m0=lzma2 -mx9             22.97%       5.0     148.3       62.5      1.42     2089      255
+corpus   7zz-modern  -m0=lzma2 -mx1             64.23%     115.1    1924.7       18.1      0.36      100       49
+corpus   7zz-modern  -m0=lzma2 -mx5             63.03%      32.5     752.7       14.2      0.26     1299      183
+corpus   7zz-modern  -m0=lzma2 -mx9             63.02%      16.5     439.9       12.1      0.25     1117      184
+```
+
+`-mx5` su Silesia: rapporto 23,42% → **23,19%**, compressione 11,8 → **15,5 MB/s**,
+decompressione 358 → **560 MB/s**; contro xz `-6` (23,35%, 13,3 e 595 MB/s, 103 s di CPU)
+ora vince su rapporto e compressione ed è al 94% in decompressione. Corpus: 63,06% →
+63,03%, 22,0 → 32,5 MB/s, 649 → 753 MB/s (xz `-6`: 720). Costi: la CPU di compressione su
+Silesia sale da 61 a 95 s (fb 64 e più thread su E-core e SMT di questa macchina; xz `-6`
+103 s) e la memoria in compressione dei file medi sale per i blocchi in parallelo (Silesia
+2,3 GB invece di 1,35; sui file grandi non cambia: il costo per thread è lo stesso).
+Gli archivi restano leggibili da ogni 7-Zip.
+
