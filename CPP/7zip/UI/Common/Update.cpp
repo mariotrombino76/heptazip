@@ -1028,6 +1028,16 @@ static HRESULT EnumerateInArchiveItems(
 }
 
 #if defined(_WIN32) && !defined(UNDER_CE)
+/* Heptazip: the mail services refuse big attachments (Gmail 25 MB, Outlook.com 20 MB,
+   counted after the base64 encoding, +33%). In e-mail mode a new archive is written in
+   volumes of k_EmailPartSize (the volume stream of -v: progress and abort as usual);
+   a single volume gets the plain name back, several volumes go one per message. */
+
+static const UInt64 k_EmailPartSize = (UInt64)14 << 20;
+
+#endif
+
+#if defined(_WIN32) && !defined(UNDER_CE)
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <mapi.h>
@@ -1093,13 +1103,6 @@ typedef Z7_WIN_MAPISENDMAILW FAR *Z7_WIN_LPMAPISENDMAILW;
 
 #endif // MAPI_FORCE_UNICODE
 }
-
-/* Heptazip: the mail services refuse big attachments (Gmail 25 MB, Outlook.com 20 MB,
-   counted after the base64 encoding, +33%). In e-mail mode a new archive is written in
-   volumes of k_EmailPartSize (the volume stream of -v: progress and abort as usual);
-   a single volume gets the plain name back, several volumes go one per message. */
-
-static const UInt64 k_EmailPartSize = (UInt64)14 << 20;
 
 struct CEmailMessage
 {
@@ -1236,9 +1239,11 @@ HRESULT UpdateArchive(
     {
       if (renameMode)
         throw "can't find archive";
+      #if defined(_WIN32) && !defined(UNDER_CE)
       // Heptazip: a new archive to send by e-mail is written in volumes
       if (options.EMailMode && options.VolumesSizes.IsEmpty() && !options.SfxMode)
         options.VolumesSizes.Add(k_EmailPartSize);
+      #endif
       if (options.MethodMode.Type.FormatIndex < 0)
       {
         if (!options.SetArcPath(codecs, cmdArcPath2))
