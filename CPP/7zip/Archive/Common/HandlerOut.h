@@ -47,10 +47,14 @@ protected:
         if (memAvail > limit2)
           memAvail = limit2;
       }
-      // 80% - is auto usage limit in handlers
-      // _memUsage_Compress = memAvail * 4 / 5;
-      // _memUsage_Compress = Calc_From_Val_Percents(memAvail, 80);
-      _memUsage_Compress = Calc_From_Val_Percents_Less100(memAvail, 80);
+      /* Heptazip: the automatic thread count must leave room for the rest of the
+         system. 7-Zip used 80% of the RAM; xz uses 25% for its automatic threads.
+         The limit only reduces the number of encoders that run at once (LZMA2 blocks,
+         7z folders, xz/zip/zstd threads) when -mmt is not given; -mmemuse sets it
+         explicitly. Measured in docs/benchmark-mercato.md (issue #73): at -mx5 each
+         LZMA2 block encoder costs ~365 MB (bt4 tables of a 32 MiB dictionary 320 MB
+         + the 32 MiB block). */
+      _memUsage_Compress = Calc_From_Val_Percents_Less100(memAvail, 50);
       _memUsage_Decompress = memAvail / 32 * 17;
     }
   }

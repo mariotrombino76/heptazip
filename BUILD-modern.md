@@ -132,7 +132,8 @@ Risultati con 20 thread: Deflate 3,3×, PPMd 2,3×, Silesia non solid 2,1×, cor
 non solid 1,9×, zstd `-ms=16m` 1,75×; un archivio solid di default con eseguibili e
 testi (due gruppi di filtri, compressi insieme) 1,37×; con un solo folder nessuna
 differenza (design 0003, §10). Usa al
-massimo `-mmt` thread e il limite di memoria di compressione (`-mmemuse`); i folder oltre
+massimo `-mmt` thread e il limite di memoria di compressione (`-mmemuse`, di default la
+metà della RAM per i thread automatici); i folder oltre
 64 MiB, BCJ2, Copy e quelli che l'encoder comprime già con tutti i thread vanno in linea.
 Opzione dell'handler 7z, come `-mpfd`.
 
