@@ -16,6 +16,7 @@
 #include "resource.h"
 
 #include "LangUtils.h"
+#include "DarkMode.h"
 #include "Panel.h"
 #include "PropertyName.h"
 #include "RootFolder.h"
@@ -324,7 +325,8 @@ void CPanel::AddColumn(const CPropColumn &prop)
   
   LV_COLUMNW column;
   column.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM | LVCF_ORDER;
-  column.cx = (int)prop.Width;
+  // Heptazip: the widths are saved at 96 DPI (PerMonitorV2)
+  column.cx = ::MulDiv((int)prop.Width, (int)NDarkMode::GetWindowDpi(*this), 96);
   column.fmt = GetColumnAlign(prop.ID, prop.Type);
   column.iOrder = (int)index; // must be <= _listView.ItemCount
   column.iSubItem = (int)index; // must be <= _listView.ItemCount
@@ -1334,7 +1336,7 @@ void CPanel::SaveListViewInfo()
     if (!_listView.GetColumn(i, &winColumnInfo))
       throw 1;
     prop.Order = winColumnInfo.iOrder;
-    prop.Width = (UInt32)(Int32)winColumnInfo.cx;
+    prop.Width = (UInt32)::MulDiv(winColumnInfo.cx, 96, (int)NDarkMode::GetWindowDpi(*this));
   }
 
   CListViewInfo viewInfo;

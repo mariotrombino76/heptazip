@@ -354,7 +354,7 @@ public:
   void EnableMultiCombo(unsigned id);
   void FormatChanged(bool isChanged);
   void ApplyProfile(int index);
-  void Profile_SetCustom();
+  void Profile_SetCustom(bool clearProfileParams = true);
   void Profile_Detect();
   void Params_UpdateMethodEnable();
 

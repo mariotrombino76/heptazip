@@ -1437,7 +1437,7 @@ void CCompressDialog::Params_UpdateMethodEnable()
   }
 }
 
-void CCompressDialog::Profile_SetCustom()
+void CCompressDialog::Profile_SetCustom(bool clearProfileParams)
 {
   if (_profileIsChanging)
     return;
@@ -1445,6 +1445,8 @@ void CCompressDialog::Profile_SetCustom()
   if (cur <= 0)
     return;
   m_Profile.SetCurSel(0);
+  if (!clearProfileParams)
+    return;
   // the method of the profile must not remain without the profile
   UString params;
   m_Params.GetText(params);
@@ -1457,6 +1459,7 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
 {
   if (code == EN_CHANGE && itemID == IDE_COMPRESS_PARAMETERS)
   {
+    Profile_SetCustom(false);  // the parameters are the user's now
     Params_UpdateMethodEnable();
     return true;
   }
@@ -1525,6 +1528,7 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
       
       case IDC_COMPRESS_METHOD:
       {
+        Profile_SetCustom();
         MethodChanged();
         SetSolidBlockSize();
         SetNumThreads();

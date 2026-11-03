@@ -28,8 +28,9 @@ LIGHT_INK = "#E6E4DF"   # il tratto sul tema scuro
 
 W = 1.7            # spessore del tratto (unità su 24)
 PAPER = "#FFFFFF"
-# misure nell'ICO: barra piccola 24 px e grande 32 px, a 100, 125, 150, 200%
-SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 64)
+# misure nell'ICO: barra piccola 24 px e grande 32 px alle scale di Windows
+# 100, 125, 150, 175, 200, 225, 250, 300%
+SIZES = (24, 30, 32, 36, 40, 42, 48, 54, 56, 60, 64, 72, 80, 96)
 
 
 def stroke(points, closed=False, w=W):

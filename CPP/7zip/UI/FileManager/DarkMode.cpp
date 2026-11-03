@@ -282,12 +282,12 @@ bool SetSetting(UInt32 setting)
   return true;
 }
 
-bool OnSettingChange(LPARAM lParam)
+bool OnSettingChange(WPARAM wParam, LPARAM lParam)
 {
-  if (lParam == 0)
-    return false;
-  const wchar_t *s = (const wchar_t *)lParam;
-  if (::lstrcmpW(s, L"ImmersiveColorSet") != 0)
+  bool relevant = (wParam == SPI_SETHIGHCONTRAST);
+  if (!relevant && lParam != 0)
+    relevant = (::lstrcmpW((const wchar_t *)lParam, L"ImmersiveColorSet") == 0);
+  if (!relevant)
     return false;
   const bool dark = ComputeDark();
   if (dark == g_Dark)
@@ -366,9 +366,9 @@ static void ApplyToWindow(HWND wnd)
   {
     Subclass(wnd, k_Kind_ListView);
     SetTheme(wnd, L"DarkMode_Explorer");
-    ListView_SetBkColor(wnd, g_Dark ? k_List : ::GetSysColor(COLOR_WINDOW));
-    ListView_SetTextBkColor(wnd, g_Dark ? k_List : ::GetSysColor(COLOR_WINDOW));
-    ListView_SetTextColor(wnd, g_Dark ? k_Text : ::GetSysColor(COLOR_WINDOWTEXT));
+    ListView_SetBkColor(wnd, g_Dark ? k_List : CLR_DEFAULT);
+    ListView_SetTextBkColor(wnd, g_Dark ? k_List : CLR_DEFAULT);
+    ListView_SetTextColor(wnd, g_Dark ? k_Text : CLR_DEFAULT);
     const HWND header = ListView_GetHeader(wnd);
     if (header)
       SetTheme(header, L"DarkMode_ItemsView");
@@ -998,10 +998,19 @@ static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, 
     res = 1;
     return true;
   }
+  if (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE)
+  {
+    // repaint only when the hot / pressed state changes (not at every mouse message)
+    const LRESULT before = ::SendMessageW(wnd, BM_GETSTATE, 0, 0);
+    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    if (::SendMessageW(wnd, BM_GETSTATE, 0, 0) != before)
+      ::InvalidateRect(wnd, NULL, FALSE);
+    return true;
+  }
   if (msg == BM_SETSTATE || msg == BM_SETSTYLE || msg == WM_ENABLE || msg == WM_SETTEXT
       || msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_UPDATEUISTATE
-      || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_MOUSEMOVE
-      || msg == WM_MOUSELEAVE || msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CAPTURECHANGED)
+      || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP
+      || msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CAPTURECHANGED)
   {
     // the button can draw itself here: we draw it again
     res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
@@ -1295,10 +1304,18 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
       }
       if (msg == WM_ERASEBKGND)
         return 1;
+      if (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE)
+      {
+        const LRESULT before = ::SendMessageW(wnd, BM_GETSTATE, 0, 0);
+        const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+        if (::SendMessageW(wnd, BM_GETSTATE, 0, 0) != before)
+          InvalidateLater(wnd);
+        return res;
+      }
       if (msg == BM_SETCHECK || msg == BM_SETSTATE || msg == WM_ENABLE || msg == WM_SETTEXT
           || msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_UPDATEUISTATE
-          || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_MOUSEMOVE
-          || msg == WM_MOUSELEAVE || msg == WM_KEYDOWN || msg == WM_KEYUP)
+          || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP
+          || msg == WM_KEYDOWN || msg == WM_KEYUP)
       {
         // the button can draw itself here (light): we draw it again
         const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
@@ -1348,7 +1365,7 @@ void Init() {}
 UInt32 GetSetting() { return 0; }
 bool SetSetting(UInt32) { return false; }
 bool IsDark() { return false; }
-bool OnSettingChange(LPARAM) { return false; }
+bool OnSettingChange(WPARAM, LPARAM) { return false; }
 void ApplyTree(HWND) {}
 void ApplyMainWindow(HWND) {}
 }

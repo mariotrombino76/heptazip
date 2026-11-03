@@ -1157,7 +1157,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_SETTINGCHANGE:
       // Heptazip: the "Apps" theme of Windows (dark / light) was changed
-      if (NDarkMode::OnSettingChange(lParam))
+      if (NDarkMode::OnSettingChange(wParam, lParam))
         g_App.ApplyTheme();
       break;
     
