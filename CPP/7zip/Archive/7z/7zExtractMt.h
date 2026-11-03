@@ -10,6 +10,7 @@
 #include "../../../Common/MyCom.h"
 #include "../../../Common/MyString.h"
 #include "../../../Common/MyVector.h"
+#include "../../../Windows/Synchronization.h"
 
 #ifndef Z7_ST
 #include "../../Common/MtTaskPool.h"
@@ -111,6 +112,55 @@ public:
 
 
 // ---------------------------------------------------------------------------
+// The archive stream shared by the threads of the parallel extraction.
+//
+// Every read seeks and reads under the lock, so a reader never sees the
+// position left by another one. The workers read the packed data of their
+// folders; the extraction thread reads through CSharedInStreamView when it
+// decodes a folder inline while workers are running.
+// ---------------------------------------------------------------------------
+
+class CSharedInStream
+{
+  Z7_CLASS_NO_COPY(CSharedInStream)
+  IInStream *_stream;
+  NWindows::NSynchronization::CCriticalSection _lock;
+  UInt64 _pos;      // position of (_stream), when (_posKnown)
+  bool _posKnown;
+public:
+  CSharedInStream(): _stream(NULL), _pos(0), _posKnown(false) {}
+  void Init(IInStream *stream) { _stream = stream; _posKnown = false; }
+
+  /* One Read() of the stream at (pos): (processed) can be less than (size)
+     before the end of the stream, as for any ISequentialInStream. */
+  HRESULT ReadAt(UInt64 pos, void *data, UInt32 size, UInt32 &processed);
+
+  /* Reads (size) bytes at (pos) with one lock, as ReadStream(): (size)
+     returns the number of bytes read, less than requested only at the end
+     of the stream or on error. */
+  HRESULT ReadFullAt(UInt64 pos, void *data, size_t &size);
+
+  HRESULT GetEnd(UInt64 &end);
+};
+
+
+/* IInStream over CSharedInStream with its own position. */
+Z7_CLASS_IMP_IInStream(
+  CSharedInStreamView
+)
+  CSharedInStream *_shared;
+  UInt64 _pos;
+public:
+  CSharedInStreamView(): _shared(NULL), _pos(0) {}
+  void Init(CSharedInStream *shared, UInt64 pos)
+  {
+    _shared = shared;
+    _pos = pos;
+  }
+};
+
+
+// ---------------------------------------------------------------------------
 // Input stream over packed data that was read ahead into memory.
 //
 // The data is exposed at its original position (base) in the archive stream,
@@ -120,7 +170,24 @@ public:
 // stream), Read() at the end of the data returns (endRes): the decoder sees
 // the same data and the same result at the same position as in sequential
 // extraction.
+//
+// The data can be loaded on demand: when Read() needs bytes past the loaded
+// (size), and (refill) was given, the stream asks (refill) for more. So a
+// partial extraction reads from the archive only the prefix of the packed
+// data that the decoder consumes, as the sequential extraction does.
 // ---------------------------------------------------------------------------
+
+/* Loads more packed data for CBufInStreamAt (called in the thread that reads
+   the stream). */
+struct CBufRefill
+{
+  virtual ~CBufRefill() {}
+  /* Loads at least up to (needEnd) bytes from the start of the data, if they
+     are available. Returns the loaded (size) and the result that Read()
+     returns at the end of the loaded data (endRes): if no byte was added,
+     the data is complete (end of stream or error) and (endRes) is final. */
+  virtual void Refill(size_t needEnd, size_t &size, HRESULT &endRes) = 0;
+};
 
 Z7_CLASS_IMP_IInStream(
   CBufInStreamAt
@@ -130,15 +197,17 @@ Z7_CLASS_IMP_IInStream(
   UInt64 _base;
   UInt64 _pos;     // absolute position in the archive stream
   HRESULT _endRes;
+  CBufRefill *_refill;
 public:
-  CBufInStreamAt(): _data(NULL), _size(0), _base(0), _pos(0), _endRes(S_OK) {}
-  void Init(const Byte *data, size_t size, UInt64 base, HRESULT endRes)
+  CBufInStreamAt(): _data(NULL), _size(0), _base(0), _pos(0), _endRes(S_OK), _refill(NULL) {}
+  void Init(const Byte *data, size_t size, UInt64 base, HRESULT endRes, CBufRefill *refill = NULL)
   {
     _data = data;
     _size = size;
     _base = base;
     _pos = base;
     _endRes = endRes;
+    _refill = (endRes == S_OK) ? refill : NULL;
   }
 };
 
