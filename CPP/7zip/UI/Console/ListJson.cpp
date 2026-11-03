@@ -360,6 +360,8 @@ bool GetIntegerValue(const PROPVARIANT &prop, bool &isSigned, UInt64 &u, Int64 &
   }
 }
 
+void WriteProp(CJsonWriter &w, const AString &key, PROPID propID, const PROPVARIANT &prop);
+
 /* Writes "key": value. Integers are JSON numbers when -slt prints them as plain
    decimal numbers; otherwise (CRC in hex, attributes, ...) the -slt text is kept. */
 void WriteProp(CJsonWriter &w, PROPID propID, const wchar_t *name, const PROPVARIANT &prop)
@@ -368,6 +370,15 @@ void WriteProp(CJsonWriter &w, PROPID propID, const wchar_t *name, const PROPVAR
     return;
   AString key;
   MakeKey(propID, name, key);
+  WriteProp(w, key, propID, prop);
+}
+
+/* As above, with the key already made (the keys of the item properties are
+   made once per archive, not for every item). */
+void WriteProp(CJsonWriter &w, const AString &key, PROPID propID, const PROPVARIANT &prop)
+{
+  if (prop.vt == VT_EMPTY)
+    return;
 
   if (prop.vt == VT_BOOL)
   {
@@ -712,7 +723,7 @@ HRESULT ListArchives_Json(
     UInt32 numProps;
     RINOK(archive->GetNumberOfProperties(&numProps))
     CRecordVector<PROPID> propIDs;
-    UStringVector propNames;
+    AStringVector propKeys;   // the JSON keys, made once for all the items
     for (UInt32 j = 0; j < numProps; j++)
     {
       CMyComBSTR name;
@@ -722,10 +733,9 @@ HRESULT ListArchives_Json(
       if (propID == kpidPath || propID == kpidIsDir)
         continue; // written as "path" and "isDir"
       propIDs.Add(propID);
-      UString n;
-      if (name)
-        n = (const wchar_t *)name;
-      propNames.Add(n);
+      AString key;
+      MakeKey(propID, name ? (const wchar_t *)name : NULL, key);
+      propKeys.Add(key);
     }
 
     w.Key("items");
@@ -799,7 +809,7 @@ HRESULT ListArchives_Json(
       {
         CPropVariant prop;
         RINOK(archive->GetProperty(i, propIDs[k], &prop))
-        WriteProp(w, propIDs[k], propNames[k].IsEmpty() ? NULL : propNames[k].Ptr(), prop);
+        WriteProp(w, propKeys[k], propIDs[k], prop);
       }
       w.EndObject();
       w.Flush();

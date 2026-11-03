@@ -13,9 +13,7 @@
 #ifdef Z7_DEFLATE_LIBDEFLATE
 #include "../../../third_party/libdeflate/libdeflate.h"
 #endif
-#ifndef Z7_ST
-#include "../Common/MtTaskPool.h"
-#endif
+#include "../Common/SlotPipeline.h"
 
 #include "DeflateEncoder.h"
 
@@ -1195,17 +1193,8 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 // is the same for every -mmt. An input up to kChunkSize is coded as by 7-Zip.
 
 static const size_t kChunkSize = (size_t)1 << 20;
-static const unsigned kNumThreadsMax = 64;
 
-#ifndef Z7_ST
-#define Z7_DEFLATE_TASK_BASE  : public CMtTask
-#define Z7_DEFLATE_TASK_OVERRIDE  Z7_override
-#else
-#define Z7_DEFLATE_TASK_BASE
-#define Z7_DEFLATE_TASK_OVERRIDE
-#endif
-
-class CChunkSlot Z7_DEFLATE_TASK_BASE
+class CChunkSlot Z7_SLOT_TASK_BASE
 {
 public:
   CByteBuffer In;          // history (end of the previous chunk), then the data
@@ -1226,7 +1215,7 @@ public:
       , LibCoders(NULL), LibOutSize(0)
     #endif
     {}
-  void Run(unsigned workerIndex) Z7_DEFLATE_TASK_OVERRIDE;
+  void Run(unsigned workerIndex) Z7_SLOT_TASK_OVERRIDE;
   const Byte *GetOut(size_t &size) const
   {
     #ifdef Z7_DEFLATE_LIBDEFLATE
@@ -1269,21 +1258,16 @@ class CChunkEncoder
 {
   Z7_CLASS_NO_COPY(CChunkEncoder)
 public:
-  CObjectVector<CChunkSlot> Slots;
+  CSlotPipeline<CChunkSlot> Pipeline;
   CRecordVector<CCoder *> Coders;   // one per thread
   #ifdef Z7_DEFLATE_LIBDEFLATE
   CRecordVector<libdeflate_compressor *> LibCoders;   // one per thread
-  #endif
-  #ifndef Z7_ST
-  CMtTaskPool Pool;
   #endif
 
   CChunkEncoder() {}
   ~CChunkEncoder()
   {
-    #ifndef Z7_ST
-    Pool.Stop();
-    #endif
+    Pipeline.Stop();
     FOR_VECTOR (i, Coders)
       delete Coders[i];
     #ifdef Z7_DEFLATE_LIBDEFLATE
@@ -1295,7 +1279,7 @@ public:
       ICompressProgressInfo *progress);
 private:
   HRESULT Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
-      ICompressProgressInfo *progress, unsigned numThreads);
+      ICompressProgressInfo *progress);
 };
 
 void CCoder::DeleteChunkEncoder()
@@ -1307,40 +1291,26 @@ void CCoder::DeleteChunkEncoder()
 HRESULT CChunkEncoder::Code(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
     ICompressProgressInfo *progress)
 {
-  unsigned numThreads = main._numThreads;
-  if (numThreads < 1)
-    numThreads = 1;
-  if (numThreads > kNumThreadsMax)
-    numThreads = kNumThreadsMax;
-  #ifdef Z7_ST
-  numThreads = 1;
-  #endif
+  Pipeline.Init(main._numThreads);
   HRESULT res;
   // the threads are stopped in any case (BaseCode() catches the exceptions)
-  try { res = Code2(main, inStream, outStream, progress, numThreads); }
+  try { res = Code2(main, inStream, outStream, progress); }
   catch (...)
   {
-    #ifndef Z7_ST
-    Pool.Stop();
-    #endif
+    Pipeline.Stop();
     throw;
   }
-  #ifndef Z7_ST
-  Pool.Stop();
-  #endif
+  Pipeline.Stop();
   return res;
 }
 
 HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
-    ICompressProgressInfo *progress, unsigned numThreads)
+    ICompressProgressInfo *progress)
 {
   const size_t history = main.m_Deflate64Mode ? kHistorySize64 : kHistorySize32;
-  // The chunks in work and a few more, read in advance or waiting to be written in order
-  // (silesia, 20 threads: as fast as 2 slots per thread, 96 MiB instead of 110 MiB;
-  // with (numThreads + 2) slots 6% slower)
-  const unsigned numSlots = (numThreads == 1) ? 1 : numThreads + numThreads / 2 + 1;
-  while (Slots.Size() < numSlots)
-    Slots.AddNew();
+  const unsigned numThreads = Pipeline.NumThreads;
+  const unsigned numSlots = Pipeline.NumSlots();
+  CObjectVector<CChunkSlot> &Slots = Pipeline.Slots;
   #ifdef Z7_DEFLATE_LIBDEFLATE
   const bool useLib = (main._libLevel != 0);
   if (useLib)
@@ -1408,12 +1378,7 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
     Coders.Add(c);
     c->SetProps(&main._props);
   }
-  #ifndef Z7_ST
-  if (numThreads > 1)
-  {
-    RINOK(Pool.Start(numThreads))
-  }
-  #endif
+  RINOK(Pipeline.Start())
 
   UInt64 inProcessed = 0, outProcessed = 0;
   unsigned next = 0, numInWork = 0;
@@ -1450,30 +1415,13 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
       }
       last = k;
       numInWork++;
-      #ifndef Z7_ST
-      if (numThreads > 1)
-      {
-        RINOK(Pool.Submit(&s))
-      }
-      else
-      #endif
-        s.Run(0);
+      RINOK(Pipeline.Submit(s))
     }
 
     if (numInWork == 0)
       break;
     CChunkSlot &s = Slots[next];
-    #ifndef Z7_ST
-    if (numThreads > 1)
-    {
-      const WRes wres = s.Done.Lock();
-      if (wres != 0)
-        return HRESULT_FROM_WIN32(wres);
-      if (s.ExceptionWasCaught)
-        return E_FAIL;
-    }
-    #endif
-    RINOK(s.Res)
+    RINOK(Pipeline.Wait(s))
     size_t outSize;
     const Byte *outData = s.GetOut(outSize);
     RINOK(WriteStream(outStream, outData, outSize))

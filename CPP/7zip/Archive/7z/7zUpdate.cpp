@@ -522,6 +522,7 @@ static const UInt64 kGgufScanMax = (UInt64)64 << 20;
 struct CGgufReader
 {
   ISequentialInStream *Stream;
+  IInStream *InStream;   // (Stream) if it's seekable: big values are skipped with Seek()
   CByteBuffer Data;
   size_t Pos, Lim;
   UInt64 Total;   // bytes of the file consumed
@@ -545,9 +546,19 @@ struct CGgufReader
     Total += n;
     if (Total > kGgufScanMax)
       return false;
+    const size_t avail = Lim - Pos;
+    if (n <= avail)
+    {
+      Pos += (size_t)n;
+      return true;
+    }
+    n -= avail;
+    Pos = Lim = 0;
+    if (InStream)
+      return InStream->Seek((Int64)n, STREAM_SEEK_CUR, NULL) == S_OK;
     while (n != 0)
     {
-      if (Pos == Lim && !Need(1))
+      if (!Need(1))
         return false;
       const size_t k = (size_t)MyMin(n, (UInt64)(Lim - Pos));
       Pos += k;
@@ -604,6 +615,9 @@ static bool Scan_Gguf(ISequentialInStream *stream, const Byte *buf, size_t size,
     return false;
   CGgufReader r;
   r.Stream = stream;
+  CMyComPtr<IInStream> inStream;
+  stream->QueryInterface(IID_IInStream, (void **)&inStream);
+  r.InStream = inStream;
   r.Data.Alloc((size_t)1 << 16);
   memcpy(r.Data, buf, MyMin(size, r.Data.Size()));
   r.Pos = 0;
@@ -1398,7 +1412,7 @@ HRESULT CAnalysis::GetFilterGroup(UInt32 index, const CUpdateItem &ui, CFilterMo
           {
             parseRes = ParseFile(Buffer, size, &filterModeTemp);
             // Heptazip: GGUF with general.file_type beyond the buffer
-            UInt32 fileType;
+            UInt32 fileType = 0;
             if (!parseRes && ParseModel
                 && Scan_Gguf(stream, Buffer, size, fileType) && Is_FloatGgufType(fileType))
             {
