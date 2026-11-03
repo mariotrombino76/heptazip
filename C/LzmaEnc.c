@@ -95,7 +95,10 @@ void LzmaEncProps_Normalize(CLzmaEncProps *p)
   if (p->pb < 0) p->pb = 2;
 
   if (p->algo < 0) p->algo = (unsigned)level < 5 ? 0 : 1;
-  if (p->fb < 0) p->fb = (unsigned)level < 7 ? 32 : 64;
+  /* Heptazip: 64 also at levels 5 and 6 (upstream: 32 below level 7). Silesia, -mx5:
+     23.42% -> 23.03% for 8% of compression speed; the ratio is then spent in smaller
+     LZMA2 blocks (Lzma2Enc_GetAutoBlockSize): see docs/benchmark-mercato.md. */
+  if (p->fb < 0) p->fb = (unsigned)level < 5 ? 32 : 64;
   if (p->btMode < 0) p->btMode = (p->algo == 0 ? 0 : 1);
   if (p->numHashBytes < 0) p->numHashBytes = (p->btMode ? 4 : 5);
   if (p->mc == 0) p->mc = (16 + ((unsigned)p->fb >> 1)) >> (p->btMode ? 0 : 1);
