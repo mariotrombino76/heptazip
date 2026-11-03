@@ -378,8 +378,9 @@ static HRESULT InitJobOutput(const CExtractContext &ctx, const CExtractJob &job,
   return S_OK;
 }
 
-/* Decodes the folder of the step directly to CFolderOutStream. */
-static HRESULT DecodeJobInline(const CExtractContext &ctx, CDecoder &decoder, const CExtractJob &job)
+/* Decodes the folder of the step directly to CFolderOutStream.
+   (inStream) is the archive stream, or a view of it shared with other threads. */
+static HRESULT DecodeJobInline(const CExtractContext &ctx, IInStream *inStream, CDecoder &decoder, const CExtractJob &job)
 {
   #ifdef Z7_EXTERNAL_CODECS
   const CExternalCodecs *_externalCodecs = ctx.ExternalCodecs; // for EXTERNAL_CODECS_LOC_VARS
@@ -403,7 +404,7 @@ static HRESULT DecodeJobInline(const CExtractContext &ctx, CDecoder &decoder, co
 
     const HRESULT result = decoder.Decode(
         EXTERNAL_CODECS_LOC_VARS
-        ctx.InStream,
+        inStream,
         ctx.Db->ArcInfo.DataStartPosition,
         *ctx.Db, job.FolderIndex,
         &job.UnpackSize,
@@ -444,13 +445,17 @@ static HRESULT DecodeJobInline(const CExtractContext &ctx, CDecoder &decoder, co
    and processes the decoding result with ProcessFolderDecodeResult().
    So the sequence of IArchiveExtractCallback calls is the same as in
    sequential extraction. Large folders, folders with unknown methods, and
-   steps without folder are processed inline in the extraction thread.
+   steps without folder are processed inline in the extraction thread; the
+   steps after an inline folder are admitted to the workers before it is
+   processed, so the workers decode ahead while the inline folder is decoded.
+   A run of consecutive steps without folder (empty files, dirs) is one
+   entry of the window, processed item by item.
 --------------------------------------------------------------------------- */
 
 class CParallelExtract;
 
 /* A folder decoded ahead by a worker thread. */
-class CFolderDecodeTask Z7_final: public CMtTask
+class CFolderDecodeTask Z7_final: public CMtTask, public CBufRefill
 {
   Z7_CLASS_NO_COPY(CFolderDecodeTask)
 public:
@@ -459,12 +464,23 @@ public:
   UInt32 FirstItem;       // index of the first requested item of the step
   bool IsParallel;        // the step can be decoded ahead by a worker
   bool IsAdmitted;        // submitted to the pool
+  bool WaitInline;        // no buffers for it: it blocks the admission until it's processed inline
+  bool IsReserved;        // inline folder with (Cost) reserved in CMemoryBudget
   bool IsEncrypted;
   UInt64 Cost;            // reserved in CMemoryBudget
+  UInt64 DecoderMem;      // estimated memory of the decoder (0 if unknown)
   UInt64 PackStartPos;    // position of the first packed stream in archive stream
 
   Byte *PackBuf;
   Byte *OutBuf;
+
+  /* Packed data loaded into PackBuf (by the worker). (PackFirst) bytes are
+     read before decoding: all of them for a full extraction, an estimate of
+     the needed prefix for a partial one; the rest is read on demand. */
+  size_t PackFirst;
+  size_t PackLoaded;
+  HRESULT PackReadRes;
+  bool PackEnd;           // no more data: end of stream or read error
 
   // results: written by the worker before (Finished), read after it
   HRESULT DecodeRes;
@@ -480,12 +496,14 @@ public:
 
   CFolderDecodeTask():
       Owner(NULL), FirstItem(0), IsParallel(false), IsAdmitted(false),
-      IsEncrypted(false), Cost(0), PackStartPos(0),
+      WaitInline(false), IsReserved(false),
+      IsEncrypted(false), Cost(0), DecoderMem(0), PackStartPos(0),
       PackBuf(NULL), OutBuf(NULL),
+      PackFirst(0), PackLoaded(0), PackReadRes(S_OK), PackEnd(false),
       DecodeRes(S_OK), DataAfterEnd_Error(false), DecodeException(false), DecodeExceptionRes(E_FAIL), OutSize(0),
       InProcessed(0), OutProcessed(0), Finished(false)
       {}
-  ~CFolderDecodeTask() { FreeBuffers(); }
+  ~CFolderDecodeTask() Z7_override { FreeBuffers(); }
 
   void FreeBuffers()
   {
@@ -495,12 +513,14 @@ public:
 
   bool AllocBuffers()
   {
+    // the pages of PackBuf past the loaded data are never touched
     PackBuf = (Byte *)MyAlloc((size_t)Job.PackSize);
     OutBuf = (Byte *)MyAlloc((size_t)Job.UnpackSize);
     return (PackBuf || Job.PackSize == 0) && (OutBuf || Job.UnpackSize == 0);
   }
 
   void Run(unsigned workerIndex) Z7_override;
+  void Refill(size_t needEnd, size_t &size, HRESULT &endRes) Z7_override;
 };
 
 
@@ -532,7 +552,7 @@ public:
   CMtTaskPool Pool;
   std::vector< std::unique_ptr<CDecoder> > Decoders; // one per worker thread
 
-  NWindows::NSynchronization::CCriticalSection InStreamLock;
+  CSharedInStream Shared; // the archive stream, read by the workers and by the inline decoder
   NWindows::NSynchronization::CAutoResetEvent Wakeup; // a task has finished or progressed
   std::atomic<bool> Abort;
   std::atomic<CFolderDecodeTask *> HeadTask;
@@ -545,6 +565,7 @@ public:
   CParallelExtract(const CExtractContext &ctx, bool useMixerMT):
       Ctx(ctx), UseMixerMT(useMixerMT), Abort(false), HeadTask(NULL)
   {
+    Shared.Init(ctx.InStream);
     #ifndef Z7_NO_CRYPTO
     PasswordSpec = new CCachedPassword;
     Password = PasswordSpec;
@@ -559,7 +580,8 @@ public:
   }
 
   void PlanStep(UInt32 numItems, UInt32 i, const CMemoryBudget &budget, CFolderDecodeTask &task);
-  HRESULT ReadPackedData(CFolderDecodeTask &task, size_t &size, HRESULT &readRes);
+  void ReadPackedData(CFolderDecodeTask &task, size_t target);
+  HRESULT ProcessNoFolderRun(const CFolderDecodeTask &task, UInt32 numItems, UInt32 &i, CLocalProgress *lps);
   HRESULT Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalProgress *lps, bool &wasUsed);
 };
 
@@ -580,21 +602,36 @@ Z7_COM7F_IMF(CFolderDecodeProgress::SetRatioInfo(const UInt64 *inSize, const UIn
 
 
 /* Reads the packed streams of the folder (they are contiguous in the archive)
-   with one sequential read under lock: also good for HDD.
-   (readRes) is the result of reading: if it's an error, the decoder will get
-   it at the end of the data, as it would get it from the archive stream. */
-HRESULT CParallelExtract::ReadPackedData(CFolderDecodeTask &task, size_t &size, HRESULT &readRes)
+   up to (target) bytes from their start, with one sequential read under lock:
+   also good for HDD. If the read fails, the decoder gets the error at the end
+   of the loaded data, as it would get it from the archive stream. */
+void CParallelExtract::ReadPackedData(CFolderDecodeTask &task, size_t target)
 {
-  NWindows::NSynchronization::CCriticalSectionLock lock(InStreamLock);
-  size = (size_t)task.Job.PackSize;
-  readRes = InStream_SeekSet(Ctx.InStream, task.PackStartPos);
-  if (readRes != S_OK)
-  {
-    size = 0;
-    return S_OK;
-  }
-  readRes = ReadStream(Ctx.InStream, task.PackBuf, &size);
-  return S_OK;
+  if (target > (size_t)task.Job.PackSize)
+    target = (size_t)task.Job.PackSize;
+  if (task.PackEnd || task.PackLoaded >= target)
+    return;
+  size_t size = target - task.PackLoaded;
+  task.PackReadRes = Shared.ReadFullAt(task.PackStartPos + task.PackLoaded,
+      task.PackBuf + task.PackLoaded, size);
+  task.PackLoaded += size;
+  if (task.PackReadRes != S_OK || task.PackLoaded < target)
+    task.PackEnd = true;
+}
+
+
+/* More packed data for the decoder of the worker (CBufRefill): the estimate
+   of the needed prefix was too small. The loaded size grows geometrically,
+   so a bad estimate costs few reads of the archive. */
+void CFolderDecodeTask::Refill(size_t needEnd, size_t &size, HRESULT &endRes)
+{
+  const size_t kMinRefill = (size_t)1 << 20;
+  size_t target = PackLoaded + ((PackLoaded > kMinRefill) ? PackLoaded : kMinRefill);
+  if (target < PackLoaded || target < needEnd)
+    target = (needEnd >= PackLoaded) ? needEnd : (size_t)Job.PackSize;
+  Owner->ReadPackedData(*this, target);
+  size = PackLoaded;
+  endRes = PackReadRes;
 }
 
 
@@ -605,13 +642,11 @@ void CFolderDecodeTask::Run(unsigned workerIndex)
 
   try
   {
-    size_t packSize = 0;
-    HRESULT readRes = S_OK;
-    owner.ReadPackedData(*this, packSize, readRes);
+    owner.ReadPackedData(*this, PackFirst);
 
     CBufInStreamAt *inStreamSpec = new CBufInStreamAt;
     CMyComPtr<IInStream> inStream = inStreamSpec;
-    inStreamSpec->Init(PackBuf, packSize, PackStartPos, readRes);
+    inStreamSpec->Init(PackBuf, PackLoaded, PackStartPos, PackReadRes, this);
 
     CFolderBufOutStream *outStreamSpec = new CFolderBufOutStream;
     CMyComPtr<ISequentialOutStream> outStream = outStreamSpec;
@@ -663,7 +698,9 @@ void CFolderDecodeTask::Run(unsigned workerIndex)
 
 
 /* Plans the step that starts at requested item (i): the job and whether it
-   can be decoded ahead by a worker (known methods, not a "large" job). */
+   can be decoded ahead by a worker (known methods, not a "large" job).
+   A step without folder is extended to the run of consecutive steps without
+   folder that follow it: one entry of the window for all of them. */
 void CParallelExtract::PlanStep(UInt32 numItems, UInt32 i, const CMemoryBudget &budget, CFolderDecodeTask &task)
 {
   const CDbEx &db = *Ctx.Db;
@@ -673,11 +710,25 @@ void CParallelExtract::PlanStep(UInt32 numItems, UInt32 i, const CMemoryBudget &
   task.IsParallel = false;
   task.IsEncrypted = false;
   task.Cost = 0;
+  task.DecoderMem = 0;
   task.PackStartPos = 0;
+  task.PackFirst = 0;
 
   const CNum folderIndex = task.Job.FolderIndex;
-  if (folderIndex == kNumNoIndex
-      || task.Job.PackSize != (size_t)task.Job.PackSize
+  if (folderIndex == kNumNoIndex)
+  {
+    UInt32 k;
+    for (k = i + 1; k < numItems; k++)
+    {
+      const UInt32 fileIndex = Ctx.AllFilesMode ? k : Ctx.Indices[k];
+      if (db.FileIndexToFolderIndexMap[fileIndex] != kNumNoIndex)
+        break;
+    }
+    task.Job.NumItems = k - i;
+    return;
+  }
+
+  if (task.Job.PackSize != (size_t)task.Job.PackSize
       || task.Job.UnpackSize != (size_t)task.Job.UnpackSize)
     return;
 
@@ -693,12 +744,51 @@ void CParallelExtract::PlanStep(UInt32 numItems, UInt32 i, const CMemoryBudget &
       task.IsEncrypted = true;
 
   const UInt64 kTaskOverhead = (UInt64)1 << 20;
+  task.DecoderMem = decoderMem;
   task.Cost = task.Job.PackSize + task.Job.UnpackSize + decoderMem + kTaskOverhead;
   task.PackStartPos = db.GetFolderStreamPos(folderIndex, 0);
   // overflow check of the sum, then the "large job" and "big folder" rules
   task.IsParallel = (task.Cost >= decoderMem
       && !budget.IsLargeJob(task.Cost)
       && !CMemoryBudget::IsBigFolder(task.Job.UnpackSize));
+  if (!task.IsParallel)
+    return;
+
+  /* Packed data to read before decoding. A partial extraction (the step
+     ends before the end of the folder) needs only a prefix: it's estimated
+     from the ratio of the folder, with a margin for the uneven compression
+     of the files and for the input buffer of the decoder; the rest is read
+     on demand (Refill). */
+  const size_t packSize = (size_t)task.Job.PackSize;
+  const UInt64 folderUnpackSize = db.GetFolderUnpackSize(folderIndex);
+  if (task.Job.UnpackSize >= folderUnpackSize || folderUnpackSize == 0)
+    task.PackFirst = packSize;
+  else
+  {
+    const double est = (double)packSize * (double)task.Job.UnpackSize / (double)folderUnpackSize;
+    const double first = est + est / 4 + (double)((size_t)1 << 20);
+    task.PackFirst = (first < (double)packSize) ? (size_t)first : packSize;
+  }
+}
+
+
+/* Processes a run of steps without folder (empty files, dirs, anti-items)
+   item by item, as the sequential loop does. */
+HRESULT CParallelExtract::ProcessNoFolderRun(const CFolderDecodeTask &task, UInt32 numItems, UInt32 &i, CLocalProgress *lps)
+{
+  const UInt32 end = i + task.Job.NumItems;
+  for (bool first = true; i < end; first = false)
+  {
+    if (!first)
+      RINOK(lps->SetCur()) // between steps, as the sequential loop (the sizes are 0)
+    CExtractJob job;
+    GetExtractJob(*Ctx.Db, Ctx.Indices, numItems, Ctx.AllFilesMode, i, job);
+    bool needDecode;
+    const HRESULT res = InitJobOutput(Ctx, job, i, needDecode);
+    i += job.NumItems;
+    RINOK(res)
+  }
+  return S_OK;
 }
 
 
@@ -711,39 +801,64 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
   CMemoryBudget budget;
   budget.Init(Ctx.MemUsage);
 
+  // Bounds of the window: buffered folders (memory, latency) and planned steps.
+  const unsigned kMaxInFlightPerWorker = 4;
+  const size_t maxWindow = (size_t)Ctx.NumThreads * kMaxInFlightPerWorker * 4 + 16;
+  UInt32 planItem = 0;     // first requested item of the next step to plan
+
   // ---------- is it worth it? count parallel steps, up to the number of threads ----------
+  // The planned steps fill the window, so they are not planned twice.
   unsigned numParallel = 0;
   {
     CFolderDecodeTask temp;
     for (UInt32 i = 0; i < numItems && numParallel < Ctx.NumThreads;)
     {
-      PlanStep(numItems, i, budget, temp);
-      i += temp.Job.NumItems;
-      if (temp.IsParallel)
+      CFolderDecodeTask *task = &temp;
+      const bool keep = (i == planItem && Window.size() < maxWindow);
+      if (keep)
+      {
+        Window.push_back(std::unique_ptr<CFolderDecodeTask>(new CFolderDecodeTask));
+        task = Window.back().get();
+      }
+      PlanStep(numItems, i, budget, *task);
+      i += task->Job.NumItems;
+      if (keep)
+        planItem = i;
+      if (task->IsParallel)
         numParallel++;
     }
   }
   if (numParallel < 2)
+  {
+    Window.clear();
     return S_OK;
+  }
 
   // ---------- start ----------
   if (Wakeup.Create() != 0)
+  {
+    Window.clear();
     return S_OK; // sequential path
+  }
 
   const unsigned numWorkers = numParallel; // <= Ctx.NumThreads
   for (unsigned k = 0; k < numWorkers; k++)
     Decoders.push_back(std::unique_ptr<CDecoder>(new CDecoder(UseMixerMT)));
   if (Pool.Start(numWorkers) != S_OK)
+  {
+    Window.clear();
     return S_OK; // no threads: sequential path
+  }
   wasUsed = true;
 
-  // Bounds of the window: buffered folders (memory, latency) and planned steps.
-  const unsigned kMaxInFlightPerWorker = 4;
   const unsigned maxInFlight = numWorkers * kMaxInFlightPerWorker;
-  const size_t maxWindow = (size_t)maxInFlight * 4 + 16;
   unsigned numInFlight = 0;
   size_t admitPos = 0;     // Window[admitPos] is the first step not considered for admission
-  UInt32 planItem = 0;     // first requested item of the next step to plan
+
+  // the inline decoder reads the archive through the shared lock: the workers read it too
+  CSharedInStreamView *inlineStreamSpec = new CSharedInStreamView;
+  CMyComPtr<IInStream> inlineStream = inlineStreamSpec;
+  inlineStreamSpec->Init(&Shared, 0);
 
   #ifndef Z7_NO_CRYPTO
   CMyComPtr<ICryptoGetTextPassword> getTextPassword;
@@ -760,7 +875,7 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
     if (i >= numItems)
       break;
 
-    // ---------- plan and admit ahead (in order; never past a step processed inline) ----------
+    // ---------- plan and admit ahead (in order) ----------
     while (numInFlight < maxInFlight)
     {
       if (admitPos == Window.size())
@@ -775,9 +890,19 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
       CFolderDecodeTask &task = *Window[admitPos];
       if (!task.IsParallel)
       {
+        if (task.WaitInline)
+          break; // no memory for its buffers: no admission past it until it's processed
         if (task.Job.FolderIndex != kNumNoIndex)
-          break; // inline folder: no admission past it until it's processed
-        admitPos++; // step without folder: nothing to decode
+        {
+          // inline folder: its decoder will run in this thread while the workers
+          // decode the steps admitted past it, so its memory is reserved now
+          if (!budget.CanReserve(task.DecoderMem))
+            break;
+          task.Cost = task.DecoderMem;
+          budget.Reserve(task.Cost);
+          task.IsReserved = true;
+        }
+        admitPos++;
         continue;
       }
       if (!budget.CanReserve(task.Cost))
@@ -787,6 +912,7 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
         // not enough memory now: the step will be processed inline
         task.FreeBuffers();
         task.IsParallel = false;
+        task.WaitInline = true;
         break;
       }
       #ifndef Z7_NO_CRYPTO
@@ -816,80 +942,88 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
     curUnpacked = job.UnpackSize;
     curPacked = job.PackSize;
 
-    bool needDecode;
-    {
-      const HRESULT initRes = InitJobOutput(Ctx, job, i, needDecode);
-      i += job.NumItems;
-      RINOK(initRes) // ~CParallelExtract() stops the workers
-    }
-
-    if (task.IsAdmitted)
-    {
-      // wait for the task, reporting the progress of this (head) task
-      HeadTask = &task;
-      while (!task.Finished)
-      {
-        Wakeup.Lock();
-        if (!task.Finished && needDecode)
-        {
-          const UInt64 inSize = task.InProcessed;
-          const UInt64 outSize = task.OutProcessed;
-          const HRESULT res = Ctx.Progress->SetRatioInfo(&inSize, &outSize); // == lps
-          if (res != S_OK)
-            return res; // ~CParallelExtract() stops the workers
-        }
-      }
-      HeadTask = NULL;
-      task.Done.Lock(); // the pool has finished with the task
-      numInFlight--;
-      budget.Release(task.Cost);
-    }
-
     HRESULT stepRes = S_OK;
 
-    if (!needDecode)
-    {
-    }
-    else if (!task.IsAdmitted)
-      stepRes = DecodeJobInline(Ctx, inlineDecoder, job);
+    if (job.FolderIndex == kNumNoIndex)
+      stepRes = ProcessNoFolderRun(task, numItems, i, lps);
     else
     {
-      // ---------- replay the decoded data in the original order ----------
-      HRESULT result = task.DecodeRes;
+      bool needDecode;
       {
-        const Byte *data = task.OutBuf;
-        size_t rem = task.OutSize;
-        while (rem != 0)
-        {
-          const UInt32 kStep = (UInt32)1 << 20;
-          const UInt32 cur = (rem < kStep) ? (UInt32)rem : kStep;
-          UInt32 processed = 0;
-          const HRESULT res = Ctx.OutStream->Write(data, cur, &processed);
-          if (res != S_OK)
-          {
-            // in sequential extraction the decoder returns the error of the output stream
-            result = res;
-            break;
-          }
-          if (processed == 0)
-          {
-            // as the output stream of the sequential decoder: no progress is an error
-            result = E_FAIL;
-            break;
-          }
-          data += processed;
-          rem -= processed;
-        }
+        const HRESULT initRes = InitJobOutput(Ctx, job, i, needDecode);
+        i += job.NumItems;
+        RINOK(initRes) // ~CParallelExtract() stops the workers
       }
 
-      if (task.DecodeException && result == task.DecodeRes)
+      if (task.IsAdmitted)
       {
-        // same as the catch(...) block of DecodeJobInline() followed by COM_TRY_END
-        RINOK(Ctx.FolderOutStream->FlushCorrupted(NExtract::NOperationResult::kDataError))
-        return task.DecodeExceptionRes;
+        // wait for the task, reporting the progress of this (head) task
+        HeadTask = &task;
+        while (!task.Finished)
+        {
+          Wakeup.Lock();
+          if (!task.Finished && needDecode)
+          {
+            const UInt64 inSize = task.InProcessed;
+            const UInt64 outSize = task.OutProcessed;
+            const HRESULT res = Ctx.Progress->SetRatioInfo(&inSize, &outSize); // == lps
+            if (res != S_OK)
+              return res; // ~CParallelExtract() stops the workers
+          }
+        }
+        HeadTask = NULL;
+        task.Done.Lock(); // the pool has finished with the task
+        numInFlight--;
+        budget.Release(task.Cost);
       }
-      stepRes = ProcessFolderDecodeResult(Ctx.FolderOutStream, Ctx.CallbackMessage,
-          job.FolderIndex, result, task.DataAfterEnd_Error && result == task.DecodeRes);
+
+      if (!needDecode)
+      {
+      }
+      else if (!task.IsAdmitted)
+        stepRes = DecodeJobInline(Ctx, inlineStream, inlineDecoder, job);
+      else
+      {
+        // ---------- replay the decoded data in the original order ----------
+        HRESULT result = task.DecodeRes;
+        {
+          const Byte *data = task.OutBuf;
+          size_t rem = task.OutSize;
+          while (rem != 0)
+          {
+            const UInt32 kStep = (UInt32)1 << 20;
+            const UInt32 cur = (rem < kStep) ? (UInt32)rem : kStep;
+            UInt32 processed = 0;
+            const HRESULT res = Ctx.OutStream->Write(data, cur, &processed);
+            if (res != S_OK)
+            {
+              // in sequential extraction the decoder returns the error of the output stream
+              result = res;
+              break;
+            }
+            if (processed == 0)
+            {
+              // as the output stream of the sequential decoder: no progress is an error
+              result = E_FAIL;
+              break;
+            }
+            data += processed;
+            rem -= processed;
+          }
+        }
+
+        if (task.DecodeException && result == task.DecodeRes)
+        {
+          // same as the catch(...) block of DecodeJobInline() followed by COM_TRY_END
+          RINOK(Ctx.FolderOutStream->FlushCorrupted(NExtract::NOperationResult::kDataError))
+          return task.DecodeExceptionRes;
+        }
+        stepRes = ProcessFolderDecodeResult(Ctx.FolderOutStream, Ctx.CallbackMessage,
+            job.FolderIndex, result, task.DataAfterEnd_Error && result == task.DecodeRes);
+      }
+
+      if (task.IsReserved)
+        budget.Release(task.Cost);
     }
 
     // the step leaves the window: its task and buffers are freed
@@ -1033,7 +1167,7 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     if (!needDecode)
       continue;
 
-    RINOK(DecodeJobInline(ctx, decoder, job))
+    RINOK(DecodeJobInline(ctx, ctx.InStream, decoder, job))
   }
 
   return S_OK;

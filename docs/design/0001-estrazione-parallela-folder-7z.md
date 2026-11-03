@@ -279,7 +279,8 @@ Regole:
   il suo turno la pipeline si svuota (si consegnano i job precedenti) e il folder si
   elabora con il **percorso sequenziale di oggi**, in streaming verso il disco e con tutti
   i thread a disposizione del decoder (LZMA2 multi-thread). Il valore `B/4` è un primo
-  valore da tarare con le misure (§6.4).
+  valore da tarare con le misure (§6.4). *(Dal 2026-11-03 i job successivi a un folder
+  in linea vengono ammessi prima che sia elaborato: vedi l'aggiornamento in fondo.)*
 - **Ammissione:** i job vengono ammessi **nell'ordine del piano** finché
   `memoria in volo + C(job) ≤ B`. Non si salta avanti, così l'occupazione resta
   prevedibile e il blocco in testa alla coda limitato.
@@ -520,3 +521,57 @@ PCLMULQDQ (`C/7zCrcClmul.h`, da ~5 a ~11 GB/s su buffer grandi) l'estrazione mig
 bottiglia: l'evoluzione "CRC calcolato nei worker", che richiederebbe di modificare
 `CFolderOutStream` (upstream), non è più giustificata e non viene implementata.
 
+### Aggiornamento: lettura parziale e pipeline senza stalli (2026-11-03, #54)
+
+Quattro ottimizzazioni emerse dalla revisione del codice (#52), tutte nel percorso
+parallelo; il percorso sequenziale e la traccia delle callback non cambiano.
+
+1. **Estrazione parziale: solo il prefisso necessario.** Il worker leggeva in memoria
+   l'intero folder compresso anche se il passo finiva prima della fine del folder
+   (`x big.7z un_file`), mentre il sequenziale legge solo quello che il decoder consuma.
+   Ora `CBufInStreamAt` carica i dati **a richiesta** tramite `CBufRefill`: prima della
+   decodifica il worker legge una stima del prefisso (`PackFirst`: rapporto di
+   compressione del folder applicato ai byte da estrarre, +25% e +1 MiB per la
+   compressione non uniforme dei file e per il buffer di ingresso del decoder); se il
+   decoder chiede oltre, si legge ancora sotto lock con crescita geometrica (al più
+   log₂ letture in più per una stima sbagliata). Per l'estrazione completa la lettura
+   resta una sola, come prima. Il costo nel budget resta `PackSize` intero (prudente:
+   il buffer è allocato per intero, ma le pagine oltre i dati caricati non vengono
+   toccate).
+   Misura (primo file di 8 folder solidi da 32 MiB, archivio da 79,8 MiB): prima
+   **79,8 MiB** letti, ora **11,1 MiB** (sequenziale 4,0 MiB: il margine di 1 MiB per
+   folder è il prezzo di non dover ripetere la lettura).
+2. **Ammissione oltre i folder in linea.** Un folder elaborato in linea (oltre 64 MiB,
+   job "grande", metodo sconosciuto) fermava l'ammissione dei passi successivi fino alla
+   sua elaborazione: i worker restavano fermi mentre un decoder a thread singolo (LZMA,
+   PPMd, LZMA2 a blocco unico) usava un solo core. Ora i passi successivi vengono
+   ammessi (entro `maxInFlight` e budget) e il decoder in linea legge l'archivio
+   attraverso `CSharedInStreamView`, una vista con posizione propria su
+   `CSharedInStream`, lo stesso lock con cui leggono i worker (ogni lettura fa Seek+Read
+   sotto lock; il seek è saltato se la posizione non è cambiata). La memoria del
+   decoder in linea (`DecoderMem`, se il metodo è noto) viene prenotata nel budget al
+   momento dell'ammissione e rilasciata dopo la decodifica.
+   Limite: il thread di estrazione è bloccato nel decoder in linea e non ammette altro
+   nel frattempo, quindi la sovrapposizione è al più `maxInFlight` passi (4 per worker)
+   per ogni folder in linea. Misura (3 folder LZMA da 100 MiB alternati a 20 folder da
+   4 MiB): 3,48 → 3,35 s con 4 thread, 3,39 → 3,16 s con 8, 3,17 → 3,12 s con 20
+   (sequenziale 5,1 s). Un passo che non ha ottenuto i buffer (`WaitInline`) continua
+   a bloccare l'ammissione fino alla sua elaborazione, perché la memoria è esaurita.
+3. **Sequenze di passi senza folder.** Ogni file vuoto, cartella o anti-item era un
+   passo della finestra (limitata a `maxWindow` voci): una sequenza lunga di cartelle
+   riempiva la finestra e i worker restavano senza lavoro. Ora `PlanStep` estende un
+   passo senza folder a tutta la sequenza di passi senza folder che lo segue: una voce
+   della finestra, elaborata elemento per elemento con la stessa sequenza di chiamate
+   del ciclo sequenziale (`ProcessNoFolderRun`). Negli archivi scritti da 7-Zip gli
+   elementi vuoti sono in coda, quindi il caso è raro: conta per archivi di altri
+   programmi e per aggiornamenti.
+4. **Pre-pianificazione riusata.** Il conteggio iniziale dei passi paralleli (per
+   decidere se avviare i worker) pianificava i primi passi, poi il ciclo principale li
+   ripianificava. Ora i passi del conteggio entrano direttamente nella finestra
+   (`maxWindow` calcolato sui thread disponibili); se il percorso parallelo non parte,
+   la finestra viene svuotata.
+
+Verifica: test unitari di `CBufInStreamAt` con ricarica e di `CSharedInStream`
+(`tests/unit_7zextract_mt.cpp`), le quattro suite di equivalenza (`extract_equivalence_mt`,
+`extract_equivalence_pfd_{default,lowmem,2threads}`: la variante `lowmem` alterna folder
+in linea e paralleli, quindi esercita lo stream condiviso), ASan e TSan.
