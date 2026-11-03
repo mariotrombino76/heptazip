@@ -164,8 +164,9 @@ riporta l'avanzamento.
 ### 4.3 Memoria
 
 Il totale stimato dei job in corso (buffer di input e output + memoria dell'encoder) resta
-entro il limite di memoria della compressione (`-mmemuse`; di default l'80% della RAM,
-`CMultiMethodProps` in `HandlerOut.h`). Un job che da solo supera il limite non si fa in parallelo.
+entro il limite di memoria della compressione (`-mmemuse`; di default la metà della RAM
+per i thread automatici, era l'80% come in 7-Zip: issue #73, `CMultiMethodProps` in
+`HandlerOut.h`). Un job che da solo supera il limite non si fa in parallelo.
 
 ## 5. Design proposto
 

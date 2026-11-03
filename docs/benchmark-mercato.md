@@ -619,3 +619,48 @@ Silesia sale da 61 a 95 s (fb 64 e più thread su E-core e SMT di questa macchin
 2,3 GB invece di 1,35; sui file grandi non cambia: il costo per thread è lo stesso).
 Gli archivi restano leggibili da ogni 7-Zip.
 
+
+## Memoria di compressione LZMA2 `-mx5` (2026-11-03, #73)
+
+Il punto 4 della lettura del 2026-11-03, peggiorato dalla #64: Silesia a `-mx5` passa da
+1354 a 2329 MB. Misure (`/usr/bin/time`, RSS massimo, Silesia, binario di develop):
+
+| thread | encoder di blocco in volo | RSS | tempo |
+|---|---|---|---|
+| `-mmt2` | 1 | 381 MB | 41,1 s |
+| `-mmt4` | 2 | 746 MB | 22,4 s |
+| `-mmt8` | 4 | 1478 MB | 18,1 s |
+| `-mmt20` | 7 (= blocchi: 212 MB / 32 MiB) | 2330 MB | 13,9 s |
+| 7-Zip 26.05 `-mmt20` | 2 (blocchi da 128 MiB = 4 × dizionario) | 907 MB | 24,4 s |
+
+La memoria è lineare negli encoder in volo: **~365 MB ciascuno**, di cui 320 sono le tabelle
+bt4 del dizionario da 32 MiB (albero binario 8 byte per posizione = 256 MB, hash 2^24 voci =
+64 MB) e 32 il blocco in ingresso (il buffer d'uscita, 34 MB allocati, ne tocca ~7). Il
+dizionario è lo stesso di 7-Zip (`LZMA2:25` in `l -slt` per entrambi): per encoder il fork
+costa meno di upstream (365 contro ~450 MB con blocchi da 128 MiB), ma ne fa girare 7 invece
+di 2, ed è questo che compra 15,5 MB/s contro 9,2 e 560 contro 159 MB/s in decompressione.
+xz -6 (1081 MB) fa 9 blocchi da 24 MiB con dizionario da 8 MiB: ~120 MB per encoder.
+
+Il limite di memoria di 7-Zip (`-mmemuse`) funziona già sui blocchi LZMA2: `-mmemuse=1g` →
+2 encoder, 746 MB, 22,2 s; `-mmemuse=1500m` → 3 encoder, 1118 MB, 18,4 s (stima del handler
+~20% sopra il reale). Con `-mmt` esplicito il limite non interviene, come in upstream.
+Il valore predefinito era l'80% della RAM; xz usa il 25% per i thread automatici.
+**Decisione: metà della RAM per i thread automatici** (`HandlerOut.h`), un compromesso fra
+i due che su macchine da 8 GB in su non cambia nulla e su una da 4 GB tiene `-mx5` a 5
+encoder (~1,9 GB) invece di 7.
+
+Alternative misurate a 20 thread (stessa sessione, valori relativi: la macchina era più
+lenta del benchmark di mercato):
+
+| | Silesia rapporto | comp MB/s | CPU s | RSS comp | dec MB/s | corpus rapporto | comp | RSS comp |
+|---|---|---|---|---|---|---|---|---|
+| d=32m c=32m (ora) | 23,19% | 14,4 | 95,8 | 2329 | 349 | 63,93% | 28,6 | 1394 |
+| d=16m c=16m | 23,37% | 19,5 | 108,1 | 1866 | 421 | 63,94% | 32,6 | 1408 |
+| **d=16m c=32m** | **23,22%** | 14,4 | 99,1 | **1367** | 355 | **63,93%** | 27,6 | **944** |
+| d=8m c=24m (come xz -6) | 23,33% | 20,1 | 104,5 | 1025 | 396 | 63,98% | 29,2 | 722 |
+
+Dentro un blocco da 32 MiB la storia disponibile è in media 16 MiB: il dizionario da 16 MiB
+perde solo i match a distanza 16-32 MiB nella seconda metà del blocco, 0,03 punti su Silesia
+e nulla sul corpus, con la stessa velocità e il 32-41% di memoria in meno. È la candidata per
+ridurre la memoria di `-mx5` senza toccare il parallelismo: non applicata in questa modifica
+perché cambia il dizionario del livello predefinito (decisione di prodotto, vedi issue #73).
