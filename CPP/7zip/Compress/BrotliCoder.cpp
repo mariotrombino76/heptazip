@@ -15,9 +15,7 @@
 
 #include "../Common/StreamUtils.h"
 
-#ifndef Z7_ST
-#include "../Common/MtTaskPool.h"
-#endif
+#include "../Common/SlotPipeline.h"
 
 #include "BrotliCoder.h"
 
@@ -27,7 +25,6 @@ namespace NBrotli {
 static const UInt32 kMagicSkippable = 0x184D2A50;
 static const UInt32 kMagicBr = 0x5242;   // "BR"
 static const unsigned kHeaderSize = 16;
-static const unsigned kNumThreadsMax = 64;
 /* a frame of another encoder can be larger than ours (11 MiB): limits against
    corrupted headers */
 // a frame is at most 32 MiB of data (ours and 7-Zip-zstd's): a header that declares
@@ -68,17 +65,9 @@ static unsigned GetWindowLog(size_t frameSize)
   return w;
 }
 
-#ifndef Z7_ST
-#define Z7_BROTLI_TASK_BASE  : public CMtTask
-#define Z7_BROTLI_TASK_OVERRIDE  Z7_override
-#else
-#define Z7_BROTLI_TASK_BASE
-#define Z7_BROTLI_TASK_OVERRIDE
-#endif
-
 /* one frame: the encoder compresses (In) to (Out = header + brotli stream), the
    decoder decompresses (In = brotli stream) to (Out) */
-class CSlot Z7_BROTLI_TASK_BASE
+class CSlot Z7_SLOT_TASK_BASE
 {
 public:
   CByteBuffer In;
@@ -93,7 +82,7 @@ public:
   UInt32 Hint;        // decoder: 64 KiB blocks of the output, from the header
 
   CSlot(): InSize(0), OutSize(0), Res(S_OK), Encode(true), Level(0), WindowLog(24), FrameSize(0), Hint(0) {}
-  void Run(unsigned workerIndex) Z7_BROTLI_TASK_OVERRIDE;
+  void Run(unsigned workerIndex) Z7_SLOT_TASK_OVERRIDE;
 private:
   void Compress();
   void Decompress();
@@ -190,66 +179,7 @@ void CSlot::Decompress()
 
 // ---------- the frames in order, with a pool of threads ----------
 
-class CPipeline
-{
-  Z7_CLASS_NO_COPY(CPipeline)
-public:
-  CObjectVector<CSlot> Slots;
-  #ifndef Z7_ST
-  CMtTaskPool Pool;
-  #endif
-  unsigned NumThreads;
-
-  CPipeline(unsigned numThreads): NumThreads(numThreads)
-  {
-    if (NumThreads < 1) NumThreads = 1;
-    if (NumThreads > kNumThreadsMax) NumThreads = kNumThreadsMax;
-    #ifdef Z7_ST
-    NumThreads = 1;
-    #endif
-    // the frames in work and a few more, read in advance or waiting to be written
-    const unsigned numSlots = (NumThreads == 1) ? 1 : NumThreads + NumThreads / 2 + 1;
-    for (unsigned i = 0; i < numSlots; i++)
-      Slots.AddNew();
-  }
-  ~CPipeline()
-  {
-    #ifndef Z7_ST
-    Pool.Stop();
-    #endif
-  }
-  HRESULT Start()
-  {
-    #ifndef Z7_ST
-    if (NumThreads > 1)
-      return Pool.Start(NumThreads);
-    #endif
-    return S_OK;
-  }
-  HRESULT Submit(CSlot &s)
-  {
-    #ifndef Z7_ST
-    if (NumThreads > 1)
-      return Pool.Submit(&s);
-    #endif
-    s.Run(0);
-    return S_OK;
-  }
-  HRESULT Wait(CSlot &s)
-  {
-    #ifndef Z7_ST
-    if (NumThreads > 1)
-    {
-      const WRes wres = s.Done.Lock();
-      if (wres != 0)
-        return HRESULT_FROM_WIN32(wres);
-      if (s.ExceptionWasCaught)
-        return E_FAIL;
-    }
-    #endif
-    return s.Res;
-  }
-};
+typedef CSlotPipeline<CSlot> CPipeline;
 
 
 // ---------- encoder ----------
@@ -324,7 +254,8 @@ Z7_COM7F_IMF(CEncoder::Code(ISequentialInStream *inStream, ISequentialOutStream 
           numThreads = (maxThreads == 0) ? 1 : (UInt32)maxThreads;
       }
     }
-    CPipeline p(numThreads);
+    CPipeline p;
+    p.Init(numThreads);
     const unsigned numSlots = p.Slots.Size();
     for (unsigned i = 0; i < numSlots; i++)
     {
@@ -475,7 +406,8 @@ Z7_COM7F_IMF(CDecoder::Code(ISequentialInStream *inStream, ISequentialOutStream 
   try
   {
     UInt64 outTotal = 0;
-    CPipeline p(_numThreads);
+    CPipeline p;
+    p.Init(_numThreads);
     const unsigned numSlots = p.Slots.Size();
     for (unsigned i = 0; i < numSlots; i++)
       p.Slots[i].Encode = false;
