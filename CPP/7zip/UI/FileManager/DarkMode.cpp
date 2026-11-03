@@ -313,20 +313,24 @@ enum
   k_Kind_PushButton       // push button of a dialog: rounded, default in the accent color
 };
 
-static const wchar_t * const k_PropProc = L"Heptazip.DarkProc";
-static const wchar_t * const k_PropKind = L"Heptazip.DarkKind";
+/* The windows are subclassed with the ComCtl32 subclassing (SetWindowSubclass):
+   it chains correctly with other subclasses of the same window and is removed
+   by the system when the window is destroyed. The kind is the reference data. */
+static const UINT_PTR k_SubclassId = 1;
 
-static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam);
+static LRESULT CALLBACK DarkSubclassProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam,
+    UINT_PTR id, DWORD_PTR refData);
+
+static bool IsSubclassed(HWND wnd)
+{
+  return ::GetWindowSubclass(wnd, DarkSubclassProc, k_SubclassId, NULL) != FALSE;
+}
 
 static void Subclass(HWND wnd, int kind)
 {
-  if (::GetPropW(wnd, k_PropProc))
+  if (IsSubclassed(wnd))
     return;
-  const LONG_PTR old = ::SetWindowLongPtrW(wnd, GWLP_WNDPROC, (LONG_PTR)DarkWindowProc);
-  if (!old)
-    return;
-  ::SetPropW(wnd, k_PropProc, (HANDLE)old);
-  ::SetPropW(wnd, k_PropKind, (HANDLE)(INT_PTR)kind);
+  ::SetWindowSubclass(wnd, DarkSubclassProc, k_SubclassId, (DWORD_PTR)kind);
 }
 
 static void SetTheme(HWND wnd, LPCWSTR darkClass)
@@ -400,7 +404,7 @@ static void ApplyToWindow(HWND wnd)
     if (ParentIsDialog(wnd) && !(style & (WS_VSCROLL | WS_HSCROLL | ES_MULTILINE))
         && ((style & WS_BORDER) || (::GetWindowLongW(wnd, GWL_EXSTYLE) & WS_EX_CLIENTEDGE)))
     {
-      if (!::GetPropW(wnd, k_PropProc))
+      if (!IsSubclassed(wnd))
       {
         Subclass(wnd, k_Kind_Field);
         ::SetWindowPos(wnd, NULL, 0, 0, 0, 0,
@@ -976,7 +980,7 @@ static void PaintPushButton(HWND wnd, HDC dc)
   ::SelectObject(dc, oldFont);
 }
 
-static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, WNDPROC old, LRESULT &res)
+static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT &res)
 {
   if (msg == WM_PAINT)
   {
@@ -1002,7 +1006,7 @@ static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, 
   {
     // repaint only when the hot / pressed state changes (not at every mouse message)
     const LRESULT before = ::SendMessageW(wnd, BM_GETSTATE, 0, 0);
-    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    res = ::DefSubclassProc(wnd, msg, wParam, lParam);
     if (::SendMessageW(wnd, BM_GETSTATE, 0, 0) != before)
       ::InvalidateRect(wnd, NULL, FALSE);
     return true;
@@ -1013,14 +1017,14 @@ static bool PushButtonMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, 
       || msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CAPTURECHANGED)
   {
     // the button can draw itself here: we draw it again
-    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    res = ::DefSubclassProc(wnd, msg, wParam, lParam);
     ::InvalidateRect(wnd, NULL, FALSE);
     return true;
   }
   return false;
 }
 
-static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, WNDPROC old, LRESULT &res)
+static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT &res)
 {
   if (kind == k_Kind_Field)
   {
@@ -1042,7 +1046,7 @@ static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lPa
     }
     if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE || msg == EM_SETREADONLY)
     {
-      res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+      res = ::DefSubclassProc(wnd, msg, wParam, lParam);
       PaintFieldFrame(wnd);
       return true;
     }
@@ -1075,7 +1079,7 @@ static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lPa
       || msg == CB_SETCURSEL || msg == CB_SELECTSTRING || msg == CB_SHOWDROPDOWN || msg == CB_RESETCONTENT)
   {
     // the combo box can draw itself here: we draw it again
-    res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    res = ::DefSubclassProc(wnd, msg, wParam, lParam);
     ::InvalidateRect(wnd, NULL, FALSE);
     return true;
   }
@@ -1190,39 +1194,35 @@ static void InvalidateLater(HWND wnd)
   ::InvalidateRect(wnd, NULL, FALSE);
 }
 
-static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK DarkSubclassProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam,
+    UINT_PTR /* id */, DWORD_PTR refData)
 {
-  const WNDPROC old = (WNDPROC)::GetPropW(wnd, k_PropProc);
-  const int kind = (int)(INT_PTR)::GetPropW(wnd, k_PropKind);
-  if (!old)
-    return ::DefWindowProcW(wnd, msg, wParam, lParam);
+  const int kind = (int)refData;
 
   if (msg == WM_NCDESTROY)
   {
-    ::SetWindowLongPtrW(wnd, GWLP_WNDPROC, (LONG_PTR)old);
-    ::RemovePropW(wnd, k_PropProc);
-    ::RemovePropW(wnd, k_PropKind);
-    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    ::RemoveWindowSubclass(wnd, DarkSubclassProc, k_SubclassId);
+    return ::DefSubclassProc(wnd, msg, wParam, lParam);
   }
 
   if (kind == k_Kind_PushButton)
   {
     LRESULT res = 0;
-    if (PushButtonMessage(wnd, msg, wParam, lParam, old, res))
+    if (PushButtonMessage(wnd, msg, wParam, lParam, res))
       return res;
-    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    return ::DefSubclassProc(wnd, msg, wParam, lParam);
   }
 
   if (kind == k_Kind_Field || kind == k_Kind_FieldCombo)
   {
     LRESULT res = 0;
-    if (FieldMessage(kind, wnd, msg, wParam, lParam, old, res))
+    if (FieldMessage(kind, wnd, msg, wParam, lParam, res))
       return res;
-    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    return ::DefSubclassProc(wnd, msg, wParam, lParam);
   }
 
   if (!g_Dark)
-    return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+    return ::DefSubclassProc(wnd, msg, wParam, lParam);
 
   switch (kind)
   {
@@ -1271,7 +1271,7 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
         }
         if (msg == WM_NCPAINT || msg == WM_NCACTIVATE)
         {
-          const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+          const LRESULT res = ::DefSubclassProc(wnd, msg, wParam, lParam);
           DrawMenuBarBottomLine(wnd);
           return res;
         }
@@ -1307,7 +1307,7 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
       if (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE)
       {
         const LRESULT before = ::SendMessageW(wnd, BM_GETSTATE, 0, 0);
-        const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+        const LRESULT res = ::DefSubclassProc(wnd, msg, wParam, lParam);
         if (::SendMessageW(wnd, BM_GETSTATE, 0, 0) != before)
           InvalidateLater(wnd);
         return res;
@@ -1318,7 +1318,7 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
           || msg == WM_KEYDOWN || msg == WM_KEYUP)
       {
         // the button can draw itself here (light): we draw it again
-        const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+        const LRESULT res = ::DefSubclassProc(wnd, msg, wParam, lParam);
         InvalidateLater(wnd);
         return res;
       }
@@ -1341,7 +1341,7 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
         return 1;
       if (kind == k_Kind_StatusBar && (msg == SB_SETTEXTW || msg == SB_SETTEXTA || msg == SB_SETPARTS))
       {
-        const LRESULT res = ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+        const LRESULT res = ::DefSubclassProc(wnd, msg, wParam, lParam);
         InvalidateLater(wnd);
         return res;
       }
@@ -1350,7 +1350,7 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
     default:
       break;
   }
-  return ::CallWindowProcW(old, wnd, msg, wParam, lParam);
+  return ::DefSubclassProc(wnd, msg, wParam, lParam);
 }
 
 }
