@@ -320,8 +320,24 @@ Regole per ogni modifica:
 1. `roundtrip.sh` deve passare sempre.
 2. Se la modifica non deve cambiare l'output (refactoring, build, flag),
    `compare-archives.sh` contro la build **precedente del fork** deve dare `IDENTICI`.
-   Contro 7-Zip upstream i profili LZMA2 su input grandi differiscono per scelta (blocchi
-   LZMA2 da 2 volte il dizionario, `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi
-   si aprono con upstream.
+   Contro 7-Zip upstream i profili LZMA2 dal livello 5 su input grandi differiscono per
+   scelta (dimensione parola 64, `C/LzmaEnc.c`, e blocchi LZMA2 pari al dizionario,
+   `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi si aprono con upstream.
 3. Se la modifica riguarda le prestazioni, allegare l'output di `bench.py`
    (minimo 3 ripetizioni) con il confronto rispetto a upstream.
+
+## Rilascio
+
+La versione è `HZ_VERSION` in `C/7zVersion.h`: base 7-Zip più `-m<n>` (es. `26.05-m1`).
+Per rilasciare:
+
+1. Scrivere `docs/release-notes/<versione>.md` (italiano e inglese) e unirlo in `develop`.
+2. Pull request da `develop` a `modern` (la linea stabile) e merge a CI verde.
+3. Tag sul merge: `git tag 26.05-m1 modern && git push heptazip 26.05-m1`.
+4. Il workflow **Release** (`.github/workflows/release.yml`) compila `7zz` Linux x64 statico
+   con le routine assembly (uasm v2.57r compilato nel runner), il pacchetto Windows x64
+   (MSVC: `7zFM`, `7zG`, `7z.exe`, `7z.dll`, `7-zip.dll`; MinGW: `7zz.exe`), esegue i test di
+   andata e ritorno su ogni binario, calcola `SHA256SUMS` e crea una **bozza** di release
+   con le note del punto 1.
+5. Scaricare i pacchetti dalla bozza, provarli, poi pubblicarla
+   (`gh release edit <versione> --draft=false`) e aggiornare la pagina Installazione del wiki.
