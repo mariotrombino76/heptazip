@@ -1028,6 +1028,16 @@ static HRESULT EnumerateInArchiveItems(
 }
 
 #if defined(_WIN32) && !defined(UNDER_CE)
+/* Heptazip: the mail services refuse big attachments (Gmail 25 MB, Outlook.com 20 MB,
+   counted after the base64 encoding, +33%). In e-mail mode a new archive is written in
+   volumes of k_EmailPartSize (the volume stream of -v: progress and abort as usual);
+   a single volume gets the plain name back, several volumes go one per message. */
+
+static const UInt64 k_EmailPartSize = (UInt64)14 << 20;
+
+#endif
+
+#if defined(_WIN32) && !defined(UNDER_CE)
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <mapi.h>
@@ -1093,6 +1103,14 @@ typedef Z7_WIN_MAPISENDMAILW FAR *Z7_WIN_LPMAPISENDMAILW;
 
 #endif // MAPI_FORCE_UNICODE
 }
+
+struct CEmailMessage
+{
+  FString Path;
+  UString Subject;   // empty: the defaults of the mail program
+  UString Note;
+};
+
 #endif // _WIN32
 
 
@@ -1161,7 +1179,7 @@ HRESULT UpdateArchive(
   censor.ExtendExclude();
 
   
-  if (options.VolumesSizes.Size() > 0 && (options.EMailMode /* || options.SfxMode */))
+  if (options.VolumesSizes.Size() > 0 && options.SfxMode && options.EMailMode)
     return E_NOTIMPL;
 
   if (options.SfxMode)
@@ -1221,6 +1239,11 @@ HRESULT UpdateArchive(
     {
       if (renameMode)
         throw "can't find archive";
+      #if defined(_WIN32) && !defined(UNDER_CE)
+      // Heptazip: a new archive to send by e-mail is written in volumes
+      if (options.EMailMode && options.VolumesSizes.IsEmpty() && !options.SfxMode)
+        options.VolumesSizes.Add(k_EmailPartSize);
+      #endif
       if (options.MethodMode.Type.FormatIndex < 0)
       {
         if (!options.SetArcPath(codecs, cmdArcPath2))
@@ -1550,6 +1573,7 @@ HRESULT UpdateArchive(
   }
 
   CMultiOutStream_Bunch multiStreams;
+  CRecordVector<unsigned> numVolumesOfCommand;  // Heptazip: for the e-mail
 
   /*
   #ifndef Z7_NO_CRYPTO
@@ -1600,6 +1624,7 @@ HRESULT UpdateArchive(
         errorInfo, callback, st))
 
     RINOK(callback->FinishArchive(st))
+    numVolumesOfCommand.Add(st.NumVolumes);
   }
 
 
@@ -1710,142 +1735,170 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
       return errorInfo.Get_HRESULT_Error();
     }
 
-    FStringVector fullPaths;
+    // Heptazip: one message per archive, or per volume (see k_EmailPartSize)
+    CObjectVector<CEmailMessage> messages;
     unsigned i;
-    
     for (i = 0; i < options.Commands.Size(); i++)
     {
-      CArchivePath &ap = options.Commands[i].ArchivePath;
-      const FString finalPath = us2fs(ap.GetFinalPath());
-      FString arcPath2;
-      if (!MyGetFullPathName(finalPath, arcPath2))
-        return errorInfo.SetFromLastError("GetFullPathName error", finalPath);
-      fullPaths.Add(arcPath2);
+      const CArchivePath &ap = options.Commands[i].ArchivePath;
+      FString plainPath;
+      if (!MyGetFullPathName(us2fs(ap.GetFinalPath()), plainPath))
+        return errorInfo.SetFromLastError("GetFullPathName error", us2fs(ap.GetFinalPath()));
+      const unsigned numVols = (i < numVolumesOfCommand.Size()) ? numVolumesOfCommand[i] : 0;
+      if (options.VolumesSizes.IsEmpty() || numVols == 0)
+      {
+        messages.AddNew().Path = plainPath;
+        continue;
+      }
+      FString volPrefix;
+      if (!MyGetFullPathName(us2fs(ap.GetFinalVolPath()), volPrefix))
+        return errorInfo.SetFromLastError("GetFullPathName error", us2fs(ap.GetFinalVolPath()));
+      volPrefix.Add_Dot();
+      if (numVols == 1)
+      {
+        // a small archive: the plain name, as without volumes
+        FString from = volPrefix;
+        from += "001";
+        if (!MyMoveFile(from, plainPath))
+          return errorInfo.SetFromLastError("cannot rename file", from);
+        messages.AddNew().Path = plainPath;
+        continue;
+      }
+      // volumes of an earlier, bigger send with the same name would be taken for parts
+      for (unsigned v = numVols + 1;; v++)
+      {
+        FString stale = volPrefix;
+        FString num;
+        num.Add_UInt32(v);
+        while (num.Len() < 3)
+          num.InsertAtFront(FTEXT('0'));
+        stale += num;
+        if (!NFind::DoesFileExist_Raw(stale))
+          break;
+        DeleteFileAlways(stale);
+      }
+      const UString arcName = ExtractFileNameFromPath(fs2us(plainPath));
+      for (unsigned v = 1; v <= numVols; v++)
+      {
+        CEmailMessage &msg = messages.AddNew();
+        // the names of CMultiOutStream: 001, 002, ...
+        FString num;
+        num.Add_UInt32(v);
+        while (num.Len() < 3)
+          num.InsertAtFront(FTEXT('0'));
+        msg.Path = volPrefix;
+        msg.Path += num;
+        msg.Subject = arcName;
+        msg.Subject += " (";
+        msg.Subject.Add_UInt32(v);
+        msg.Subject.Add_Char('/');
+        msg.Subject.Add_UInt32(numVols);
+        msg.Subject.Add_Char(')');
+        msg.Note = "Part ";
+        msg.Note.Add_UInt32(v);
+        msg.Note += " of ";
+        msg.Note.Add_UInt32(numVols);
+        msg.Note += ". Save all the parts in one folder and open the .001 file"
+            " with Heptazip or 7-Zip.";
+      }
     }
 
-    /*
-    LPMAPISENDDOCUMENTS fnSend = (LPMAPISENDDOCUMENTS)mapiLib.GetProc("MAPISendDocuments");
-    if (fnSend == 0)
-    {
-      errorInfo.SetFromLastError)("Heptazip cannot find MAPISendDocuments function");
-      return errorInfo.Get_HRESULT_Error();
-    }
-    */
     const
     Z7_WIN_LPMAPISENDMAILW sendMailW = Z7_GET_PROC_ADDRESS(
     Z7_WIN_LPMAPISENDMAILW, mapiLib.Get_HMODULE(),
             "MAPISendMailW");
-   if (sendMailW)
-   {
-
-    CCurrentDirRestorer curDirRestorer;
-
-    UStringVector paths;
-    UStringVector names;
-    
-    for (i = 0; i < fullPaths.Size(); i++)
+    LPMAPISENDMAIL sendMail = NULL;
+    if (!sendMailW)
     {
-      const UString arcPath2 = fs2us(fullPaths[i]);
-      const UString fileName = ExtractFileNameFromPath(arcPath2);
-      paths.Add(arcPath2);
-      names.Add(fileName);
-      // Warning!!! MAPISendDocuments function changes Current directory
-      // fnSend(0, ";", (LPSTR)(LPCSTR)path, (LPSTR)(LPCSTR)name, 0);
-    }
-
-    CRecordVector<Z7_WIN_MapiFileDescW> files;
-    files.ClearAndSetSize(paths.Size());
-    
-    for (i = 0; i < paths.Size(); i++)
-    {
-      Z7_WIN_MapiFileDescW &f = files[i];
-      memset(&f, 0, sizeof(f));
-      f.nPosition = 0xFFFFFFFF;
-      f.lpszPathName = paths[i].Ptr_non_const();
-      f.lpszFileName = names[i].Ptr_non_const();
-    }
-
-    {
-      Z7_WIN_MapiMessageW m;
-      memset(&m, 0, sizeof(m));
-      m.nFileCount = files.Size();
-      m.lpFiles = files.NonConstData();
-      
-      const UString addr (options.EMailAddress);
-      Z7_WIN_MapiRecipDescW rec;
-      if (!addr.IsEmpty())
+      sendMail = Z7_GET_PROC_ADDRESS(
+          LPMAPISENDMAIL, mapiLib.Get_HMODULE(),
+          "MAPISendMail");
+      if (!sendMail)
       {
-        memset(&rec, 0, sizeof(rec));
-        rec.ulRecipClass = MAPI_TO;
-        rec.lpszAddress = addr.Ptr_non_const();
-        m.nRecipCount = 1;
-        m.lpRecips = &rec;
+        errorInfo.SetFromLastError("Heptazip cannot find MAPISendMail function");
+        return errorInfo.Get_HRESULT_Error();
       }
-      
-      sendMailW((LHANDLE)0, 0, &m, MAPI_DIALOG, 0);
-    }
-   }
-   else
-   {
-    const
-    LPMAPISENDMAIL sendMail = Z7_GET_PROC_ADDRESS(
-    LPMAPISENDMAIL, mapiLib.Get_HMODULE(),
-     "MAPISendMail");
-    if (!sendMail)
-    {
-      errorInfo.SetFromLastError("Heptazip cannot find MAPISendMail function");
-      return errorInfo.Get_HRESULT_Error();
     }
 
+    // Warning!!! MAPISendDocuments function changes Current directory
     CCurrentDirRestorer curDirRestorer;
+    const UString addr (options.EMailAddress);
 
-    AStringVector paths;
-    AStringVector names;
-    
-    for (i = 0; i < fullPaths.Size(); i++)
+    FOR_VECTOR (m, messages)
     {
-      const UString arcPath2 = fs2us(fullPaths[i]);
-      const UString fileName = ExtractFileNameFromPath(arcPath2);
-      paths.Add(GetAnsiString(arcPath2));
-      names.Add(GetAnsiString(fileName));
-      // const AString path (GetAnsiString(arcPath2));
-      // const AString name (GetAnsiString(fileName));
-      // Warning!!! MAPISendDocuments function changes Current directory
-      // fnSend(0, ";", (LPSTR)(LPCSTR)path, (LPSTR)(LPCSTR)name, 0);
-    }
-
-    CRecordVector<MapiFileDesc> files;
-    files.ClearAndSetSize(paths.Size());
-    
-    for (i = 0; i < paths.Size(); i++)
-    {
-      MapiFileDesc &f = files[i];
-      memset(&f, 0, sizeof(f));
-      f.nPosition = 0xFFFFFFFF;
-      f.lpszPathName = paths[i].Ptr_non_const();
-      f.lpszFileName = names[i].Ptr_non_const();
-    }
-
-    {
-      MapiMessage m;
-      memset(&m, 0, sizeof(m));
-      m.nFileCount = files.Size();
-      m.lpFiles = files.NonConstData();
-      
-      const AString addr (GetAnsiString(options.EMailAddress));
-      MapiRecipDesc rec;
-      if (!addr.IsEmpty())
+      const CEmailMessage &msg = messages[m];
+      const UString pathU = fs2us(msg.Path);
+      const UString nameU = ExtractFileNameFromPath(pathU);
+      ULONG res;
+      if (sendMailW)
       {
-        memset(&rec, 0, sizeof(rec));
-        rec.ulRecipClass = MAPI_TO;
-        rec.lpszAddress = addr.Ptr_non_const();
-        m.nRecipCount = 1;
-        m.lpRecips = &rec;
+        UString path2 (pathU), name2 (nameU), subject (msg.Subject), note (msg.Note);
+        Z7_WIN_MapiFileDescW f;
+        memset(&f, 0, sizeof(f));
+        f.nPosition = 0xFFFFFFFF;
+        f.lpszPathName = path2.Ptr_non_const();
+        f.lpszFileName = name2.Ptr_non_const();
+        Z7_WIN_MapiMessageW mm;
+        memset(&mm, 0, sizeof(mm));
+        mm.nFileCount = 1;
+        mm.lpFiles = &f;
+        if (!subject.IsEmpty())
+        {
+          mm.lpszSubject = subject.Ptr_non_const();
+          mm.lpszNoteText = note.Ptr_non_const();
+        }
+        Z7_WIN_MapiRecipDescW rec;
+        if (!addr.IsEmpty())
+        {
+          memset(&rec, 0, sizeof(rec));
+          rec.ulRecipClass = MAPI_TO;
+          rec.lpszAddress = addr.Ptr_non_const();
+          mm.nRecipCount = 1;
+          mm.lpRecips = &rec;
+        }
+        res = sendMailW((LHANDLE)0, 0, &mm, MAPI_DIALOG, 0);
       }
-      
-      sendMail((LHANDLE)0, 0, &m, MAPI_DIALOG, 0);
+      else
+      {
+        AString path2 (GetAnsiString(pathU)), name2 (GetAnsiString(nameU));
+        AString subject (GetAnsiString(msg.Subject)), note (GetAnsiString(msg.Note));
+        const AString addrA (GetAnsiString(addr));
+        MapiFileDesc f;
+        memset(&f, 0, sizeof(f));
+        f.nPosition = 0xFFFFFFFF;
+        f.lpszPathName = path2.Ptr_non_const();
+        f.lpszFileName = name2.Ptr_non_const();
+        MapiMessage mm;
+        memset(&mm, 0, sizeof(mm));
+        mm.nFileCount = 1;
+        mm.lpFiles = &f;
+        if (!subject.IsEmpty())
+        {
+          mm.lpszSubject = subject.Ptr_non_const();
+          mm.lpszNoteText = note.Ptr_non_const();
+        }
+        MapiRecipDesc rec;
+        if (!addrA.IsEmpty())
+        {
+          memset(&rec, 0, sizeof(rec));
+          rec.ulRecipClass = MAPI_TO;
+          rec.lpszAddress = addrA.Ptr_non_const();
+          mm.nRecipCount = 1;
+          mm.lpRecips = &rec;
+        }
+        res = sendMail((LHANDLE)0, 0, &mm, MAPI_DIALOG, 0);
+      }
+      if (res == SUCCESS_SUCCESS)
+        continue;
+      // the user closed the message: the other parts are not sent
+      if (res == MAPI_E_USER_ABORT)
+        break;
+      errorInfo.Message = "cannot send the e-mail (MAPI error ";
+      errorInfo.Message.Add_UInt32((UInt32)res);
+      errorInfo.Message.Add_Char(')');
+      errorInfo.FileNames.Add(msg.Path);
+      return E_FAIL;
     }
-   }
   }
   
   #endif
