@@ -250,7 +250,9 @@ public:
   void ApplyTheme();  // Heptazip: after a change of the dark/light theme
   // Heptazip: the window moved to a screen with another scale (PerMonitorV2)
   UInt32 Dpi;
-  void OnDpiChanged(UInt32 dpi);
+  // columnsAtNewDpi: the columns were created at the new scale (window created on
+  // that screen): only the fonts and the toolbar change
+  void OnDpiChanged(UInt32 dpi, bool columnsAtNewDpi = false);
   void ReadToolbar()
   {
     const UInt32 mask = ReadToolbarsMask();
