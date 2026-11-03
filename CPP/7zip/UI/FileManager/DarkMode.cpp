@@ -370,9 +370,10 @@ static void ApplyToWindow(HWND wnd)
   {
     Subclass(wnd, k_Kind_ListView);
     SetTheme(wnd, L"DarkMode_Explorer");
-    ListView_SetBkColor(wnd, g_Dark ? k_List : CLR_DEFAULT);
-    ListView_SetTextBkColor(wnd, g_Dark ? k_List : CLR_DEFAULT);
-    ListView_SetTextColor(wnd, g_Dark ? k_Text : CLR_DEFAULT);
+    // the system colors, not CLR_DEFAULT: LVM_SETBKCOLOR takes it as a COLORREF (black)
+    ListView_SetBkColor(wnd, g_Dark ? k_List : ::GetSysColor(COLOR_WINDOW));
+    ListView_SetTextBkColor(wnd, g_Dark ? k_List : ::GetSysColor(COLOR_WINDOW));
+    ListView_SetTextColor(wnd, g_Dark ? k_Text : ::GetSysColor(COLOR_WINDOWTEXT));
     const HWND header = ListView_GetHeader(wnd);
     if (header)
       SetTheme(header, L"DarkMode_ItemsView");
