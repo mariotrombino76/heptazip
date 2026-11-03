@@ -11,6 +11,9 @@
 
 #include "../../../C/FloatPlane.h"
 
+#include "../../Common/NewHandler.h"
+
+#include "../Common/CWrappers.h"
 #include "../Common/StreamUtils.h"
 
 #include "FloatCoder.h"
@@ -108,17 +111,6 @@ void CSlotRing::Stop()
 
 
 // ---------- Decoder ----------
-
-static HRESULT SResToHRESULT_Float(int res)
-{
-  switch (res)
-  {
-    case SZ_OK: return S_OK;
-    case SZ_ERROR_MEM: return E_OUTOFMEMORY;
-    case SZ_ERROR_PARAM: return E_INVALIDARG;
-    default: return S_FALSE;
-  }
-}
 
 Z7_COM7F_IMF(CDecoder::SetDecoderProperties2(const Byte *props, UInt32 size))
 {
@@ -279,7 +271,7 @@ HRESULT CDecoder::Code2(ISequentialInStream *inStream, ISequentialOutStream *out
       tCaller = tWaitEnd;
     }
     if (hres == S_OK)
-      hres = SResToHRESULT_Float(s.Res);
+      hres = SResToHRESULT((SRes)s.Res);
     if (hres == S_OK)
       hres = WriteStream(outStream, s.Out, s.OutLen);
     if (hres == S_OK)
@@ -307,7 +299,8 @@ Z7_COM7F_IMF(CDecoder::Code(ISequentialInStream *inStream, ISequentialOutStream 
   // must become E_OUTOFMEMORY, not std::terminate(). Stop() also runs after a throw.
   HRESULT res;
   try { res = Code2(inStream, outStream, outSize, progress); }
-  catch (...) { res = E_OUTOFMEMORY; }
+  catch (const CNewException &) { res = E_OUTOFMEMORY; }
+  catch (...) { res = E_FAIL; }
   _ring.Stop();
   return res;
 }
@@ -444,7 +437,8 @@ Z7_COM7F_IMF(CEncoder::Code(ISequentialInStream *inStream, ISequentialOutStream 
   // As CDecoder::Code(): no exception may leave a throw() method.
   HRESULT res;
   try { res = Code2(inStream, outStream, progress); }
-  catch (...) { res = E_OUTOFMEMORY; }
+  catch (const CNewException &) { res = E_OUTOFMEMORY; }
+  catch (...) { res = E_FAIL; }
   _ring.Stop();
   return res;
 }

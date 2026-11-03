@@ -30,7 +30,9 @@ static const unsigned kHeaderSize = 16;
 static const unsigned kNumThreadsMax = 64;
 /* a frame of another encoder can be larger than ours (11 MiB): limits against
    corrupted headers */
-static const UInt32 kFramePackMax = (UInt32)1 << 30;
+// a frame is at most 32 MiB of data (ours and 7-Zip-zstd's): a header that declares
+// more is corrupted, and must not make the decoder allocate it
+static const UInt32 kFramePackMax = (UInt32)1 << 26;
 static const size_t kFrameUnpackMax = (size_t)1 << 30;
 
 /* size of the input of a frame: as 7-Zip-zstd (brotli-mt: 1 MiB * level) up to level 9;
@@ -133,7 +135,7 @@ void CSlot::Compress()
   SetUi16(h + 12, (UInt16)kMagicBr)
   // as brotli-mt: the 64 KiB blocks of the frame (rounded up for a shorter frame)
   const UInt32 hint = (FrameSize > InSize) ?
-      (UInt32)(InSize >> 16) + 1 : (UInt32)(FrameSize >> 16);
+      (UInt32)((InSize + 0xFFFF) >> 16) : (UInt32)(FrameSize >> 16);
   SetUi16(h + 14, (UInt16)hint)
   OutSize = kHeaderSize + size;
   Res = S_OK;
@@ -174,9 +176,7 @@ void CSlot::Decompress()
     {
       if (Out.Size() >= kFrameUnpackMax)
         break;
-      CByteBuffer b(Out.Size() * 2);
-      memcpy(b, Out, total);
-      Out.CopyFrom(b, b.Size());
+      Out.ChangeSize_KeepData(Out.Size() * 2, total);
       continue;
     }
     // NEEDS_MORE_INPUT: the frame is cut; ERROR: corrupted data
@@ -470,7 +470,7 @@ static HRESULT DecodeRaw(const Byte *pre, size_t numPre, ISequentialInStream *in
 }
 
 Z7_COM7F_IMF(CDecoder::Code(ISequentialInStream *inStream, ISequentialOutStream *outStream,
-    const UInt64 * /* inSize */, const UInt64 *outSize, ICompressProgressInfo *progress))
+    const UInt64 *inSize, const UInt64 *outSize, ICompressProgressInfo *progress))
 {
   try
   {
@@ -519,7 +519,8 @@ Z7_COM7F_IMF(CDecoder::Code(ISequentialInStream *inStream, ISequentialOutStream 
         }
         first = false;
         const UInt32 packSize = GetUi32(h + 8);
-        if (packSize > kFramePackMax)
+        if (packSize > kFramePackMax
+            || (inSize && *inSize - inProcessed < (UInt64)kHeaderSize + packSize))
         {
           readRes = S_FALSE;
           inEnd = true;

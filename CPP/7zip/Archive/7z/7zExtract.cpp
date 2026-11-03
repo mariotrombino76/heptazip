@@ -470,6 +470,7 @@ public:
   HRESULT DecodeRes;
   bool DataAfterEnd_Error;
   bool DecodeException;
+  HRESULT DecodeExceptionRes;   // what COM_TRY_END would return for that exception
   size_t OutSize;
 
   // progress: written by the worker, read by the extraction thread
@@ -481,7 +482,7 @@ public:
       Owner(NULL), FirstItem(0), IsParallel(false), IsAdmitted(false),
       IsEncrypted(false), Cost(0), PackStartPos(0),
       PackBuf(NULL), OutBuf(NULL),
-      DecodeRes(S_OK), DataAfterEnd_Error(false), DecodeException(false), OutSize(0),
+      DecodeRes(S_OK), DataAfterEnd_Error(false), DecodeException(false), DecodeExceptionRes(E_FAIL), OutSize(0),
       InProcessed(0), OutProcessed(0), Finished(false)
       {}
   ~CFolderDecodeTask() { FreeBuffers(); }
@@ -648,17 +649,13 @@ void CFolderDecodeTask::Run(unsigned workerIndex)
           , true, 1, ctx.MemUsage // the parallelism is between folders
           );
     }
-    catch(...)
-    {
-      // CHandler::Extract() converts any exception to E_OUTOFMEMORY (COM_TRY_END)
-      DecodeException = true;
-    }
+    // the same mapping as COM_TRY_END in CHandler::Extract()
+    catch(const CNewException &) { DecodeException = true; DecodeExceptionRes = E_OUTOFMEMORY; }
+    catch(...) { DecodeException = true; DecodeExceptionRes = E_FAIL; }
     OutSize = outStreamSpec->GetPos();
   }
-  catch(...)
-  {
-    DecodeException = true;
-  }
+  catch(const CNewException &) { DecodeException = true; DecodeExceptionRes = E_OUTOFMEMORY; }
+  catch(...) { DecodeException = true; DecodeExceptionRes = E_FAIL; }
 
   Finished = true;
   owner.Wakeup.Set();
@@ -794,7 +791,7 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
       }
       #ifndef Z7_NO_CRYPTO
       if (task.IsEncrypted && !PasswordSpec->WasFetched())
-        PasswordSpec->Fetch(getTextPassword); // the UI is asked from this thread only
+        RINOK(PasswordSpec->Fetch(getTextPassword)) // the UI is asked from this thread only
       #endif
       budget.Reserve(task.Cost);
       RINOK(Pool.Submit(&task))
@@ -875,7 +872,11 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
             break;
           }
           if (processed == 0)
+          {
+            // as the output stream of the sequential decoder: no progress is an error
+            result = E_FAIL;
             break;
+          }
           data += processed;
           rem -= processed;
         }
@@ -883,9 +884,9 @@ HRESULT CParallelExtract::Run(UInt32 numItems, CDecoder &inlineDecoder, CLocalPr
 
       if (task.DecodeException && result == task.DecodeRes)
       {
-        // same as the catch(...) block of DecodeJobInline()
+        // same as the catch(...) block of DecodeJobInline() followed by COM_TRY_END
         RINOK(Ctx.FolderOutStream->FlushCorrupted(NExtract::NOperationResult::kDataError))
-        return E_OUTOFMEMORY;
+        return task.DecodeExceptionRes;
       }
       stepRes = ProcessFolderDecodeResult(Ctx.FolderOutStream, Ctx.CallbackMessage,
           job.FolderIndex, result, task.DataAfterEnd_Error && result == task.DecodeRes);

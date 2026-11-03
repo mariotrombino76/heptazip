@@ -67,7 +67,17 @@ void EstimateEncoder(int levelProp, UInt64 windowSizeProp, CEncoderEstimate &e)
   // streaming context: also the window and the input/output buffers
   e.CCtxMemory = ZSTD_estimateCStreamSize_usingCParams(cp);
   // job size of ZSTDMT without long distance matching (ZSTDMT_computeTargetJobLog)
-  e.JobSize = (UInt64)1 << (cp.windowLog + 2 > 20 ? cp.windowLog + 2 : 20);
+  {
+    unsigned jobLog = cp.windowLog + 2 > 20 ? cp.windowLog + 2 : 20;
+    #if defined(MY_CPU_64BIT)
+    const unsigned kJobLogMax = 30;   // ZSTDMT_JOBLOG_MAX
+    #else
+    const unsigned kJobLogMax = 29;
+    #endif
+    if (jobLog > kJobLogMax)
+      jobLog = kJobLogMax;
+    e.JobSize = (UInt64)1 << jobLog;
+  }
 }
 
 
