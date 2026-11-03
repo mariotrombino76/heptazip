@@ -1026,6 +1026,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
       g_WindowWasCreated = true;
       NDarkMode::ApplyMainWindow(hWnd);
+      // Heptazip: opened on a screen with a scale other than the main one
+      g_App.OnDpiChanged(NDarkMode::GetWindowDpi(hWnd));
       
       // g_SplitterPos = 0;
 
@@ -1144,6 +1146,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       return 0;
     */
       
+    case 0x02E0: // WM_DPICHANGED (PerMonitorV2): new scale, then the suggested rectangle
+    {
+      g_App.OnDpiChanged(HIWORD(wParam));
+      const RECT *r = (const RECT *)lParam;
+      ::SetWindowPos(hWnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
+          SWP_NOZORDER | SWP_NOACTIVATE);
+      return 0;
+    }
+
     case WM_SETTINGCHANGE:
       // Heptazip: the "Apps" theme of Windows (dark / light) was changed
       if (NDarkMode::OnSettingChange(lParam))

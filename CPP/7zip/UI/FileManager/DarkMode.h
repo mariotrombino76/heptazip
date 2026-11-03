@@ -48,6 +48,12 @@ void ApplyTree(HWND root);
 // the main window: also draws the menu bar
 void ApplyMainWindow(HWND mainWnd);
 
+// scale (per monitor with PerMonitorV2): DPI of a window (GetDpiForWindow, Windows 10
+// 1607+) or of the system; the font of the controls for a DPI (cached)
+UInt32 GetSystemDpi();
+UInt32 GetWindowDpi(HWND wnd);
+HFONT GetUiFont(UInt32 dpi);
+
 }
 
 #endif
