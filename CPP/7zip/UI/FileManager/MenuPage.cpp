@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../Common/ZipRegistry.h"
 
 #include "../../../Windows/DLL.h"
@@ -242,7 +244,7 @@ bool CMenuPage::OnInit()
     if (menuItem.Flag == kCRC)
       s = "CRC SHA";
     else if (menuItem.Flag == kCRC_Cascaded)
-      s = "7-Zip > CRC SHA";
+      s = HZ_NAME " > CRC SHA";
     if (menuItem.Flag == kOpenAs
         || menuItem.Flag == kCRC
         || menuItem.Flag == kCRC_Cascaded)
@@ -290,7 +292,7 @@ bool CMenuPage::OnInit()
 
 static void ShowMenuErrorMessage(const wchar_t *m, HWND hwnd)
 {
-  MessageBoxW(hwnd, m, L"7-Zip", MB_ICONERROR);
+  MessageBoxW(hwnd, m, HZ_NAME_W, MB_ICONERROR);
 }
 
 #endif

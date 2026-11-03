@@ -1,0 +1,149 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
+# Build e test di Heptazip a ogni push e pull request (issue #1).
+# Il runner non ha un assembler MASM (asmc/uasm): build in C puro.
+
+name: CI
+
+on:
+  push:
+    branches: [develop, modern]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gcc-release:
+    name: GCC Release + ctest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: ctest --test-dir build -j2 --output-on-failure
+
+  clang-release:
+    name: Clang Release + ctest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: ctest --test-dir build -j2 --output-on-failure
+
+  asan-ubsan:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configura
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSEVENZIP_ASM=OFF
+          -DSEVENZIP_SANITIZE=address,undefined
+      - name: Compila
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        run: >
+          ctest --test-dir build -j2 --output-on-failure
+          -R "unit_|fuzz_regress|fuzz_codec_regress|deflate_mt|update_growing|list_json"
+
+  makefiles:
+    name: Makefile GCC (Linux) e MinGW (Windows)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64-posix
+      - name: 7zz con i makefile (Linux)
+        working-directory: CPP/7zip/Bundles/Alone2
+        run: make -f makefile.gcc -j"$(nproc)" O=_linux
+      - name: Andata e ritorno (Linux, makefile)
+        run: python3 tests/roundtrip_smoke.py --7zz CPP/7zip/Bundles/Alone2/_linux/7zz
+      - name: 7zz.exe con MinGW
+        working-directory: CPP/7zip/Bundles/Alone2
+        run: >
+          make -f makefile.gcc -j"$(nproc)" O=_mingw IS_MINGW=1
+          CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix
+          RC=x86_64-w64-mingw32-windres
+      - uses: actions/upload-artifact@v7
+        with:
+          name: 7zz-windows-x64-mingw
+          path: CPP/7zip/Bundles/Alone2/_mingw/7zz.exe
+
+  windows-test:
+    name: Windows (7zz.exe MinGW)
+    needs: makefiles
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: 7zz-windows-x64-mingw
+          path: bin
+      - name: Versione
+        run: bin\7zz.exe
+      - name: Andata e ritorno
+        run: python tests/roundtrip_smoke.py --7zz bin/7zz.exe
+      - name: Deflate parallelo
+        run: python tests/deflate_mt.py --7zz bin/7zz.exe
+
+  windows-msvc:
+    name: Windows MSVC (7z.dll, 7z.exe, 7zFM, 7zG)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compila con MSVC (nmake)
+        shell: cmd
+        run: tools\windows\build-msvc.bat out-msvc
+      - name: Versione
+        run: out-msvc\7z.exe
+      - name: Andata e ritorno (7z.exe con 7z.dll)
+        run: python tests/roundtrip_smoke.py --7zz out-msvc/7z.exe
+      - name: Deflate parallelo
+        run: python tests/deflate_mt.py --7zz out-msvc/7z.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: heptazip-windows-x64-msvc
+          path: out-msvc/
+
+  interop-7zzstd:
+    name: Interoperabilità con 7-Zip-zstd (brotli, zstd)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ZSTD7_TAG: v26.02-v1.5.7-R2
+      ZSTD7_SHA256: be246e5a284d3b5e738bad5cbb24c2662996ddb9776e09575b5099ab53fa0ba3
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compila Heptazip
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF -DSEVENZIP_BUILD_TESTS=OFF
+          cmake --build build -j"$(nproc)" --target 7zz
+      - name: 7-Zip-zstd (release fissata, SHA-256 verificato)
+        run: |
+          curl -fsSL -o zstd7.zip "https://github.com/mcmilk/7-Zip-zstd/releases/download/${ZSTD7_TAG}/linux-gcc-x64.zip"
+          echo "${ZSTD7_SHA256}  zstd7.zip" | sha256sum -c -
+          mkdir zstd7 && cd zstd7 && unzip -q ../zstd7.zip && chmod +x 7zz && ./7zz | head -3
+      - name: Andata e ritorno nelle due direzioni
+        run: python3 tests/interop_7zzstd.py --ours build/7zz --theirs zstd7/7zz

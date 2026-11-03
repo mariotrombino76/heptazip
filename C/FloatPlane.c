@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause
-   Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7) */
+   Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip) */
 /* FloatPlane.c -- lossless coder for arrays of floating-point numbers (AI model weights)
-Tensor7 (design 0008)
+Heptazip (design 0008)
 The block format is described in FloatPlane.h. */
 
 #include "Precomp.h"
@@ -659,6 +659,8 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
   size_t ctxTotal = storedTotal;
   unsigned t;
   int haveCandidate = 0;
+  unsigned qType = 0, qPhase = 0;
+  int quantDetected = 0, quantPlanned = 0;
 
   /* 1. Type and phase from a sample: cost per byte of exponent + raw rest (k = 0). */
   {
@@ -693,10 +695,10 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
      per byte) and the scales of quantized structs show up in it. */
   if (bestCost >= ((UInt64)7 << 16))
   {
-    unsigned qType = 0, qPhase = 0;
     if (Detect_Quant(src, srcLen, &qType, &qPhase))
     {
       size_t qBest;
+      quantDetected = 1;
       /* the K-quants with the context model (mode 4); the Huffman code (mode 3) only for
          the other types and in small blocks, where the tables of the contexts can make
          mode 4 larger (from 256 KiB mode 4 wins: about 1.7 points on Q4_K / Q5_K) */
@@ -706,6 +708,7 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
       {
         Plan_Quant(src, srcLen, qType, qPhase, &qplan);
         quantTotal = qplan.total;
+        quantPlanned = 1;
       }
       qBest = ctxTotal < quantTotal ? ctxTotal : quantTotal;
       if (qBest < storedTotal)
@@ -767,6 +770,20 @@ size_t FloatPlane_EncodeBlock(const Byte *src, size_t srcLen, Byte *dest, const 
     const size_t size = FloatQuant_Write(src, srcLen, dest, storedTotal - 1, &cplan);
     if (size != 0)
       return size;
+    /* the write failed (the plan was an estimate) and has overwritten dest: the zstd
+       frame of step 4 is written again, and mode 3 is planned if it was skipped */
+    if (lzTotal < storedTotal)
+    {
+      const size_t lzSize = lz->Compress(lz->ctx, src, srcLen, dest + kLzHeaderSize,
+          storedTotal - kLzHeaderSize);
+      lzTotal = (lzSize != 0) ? kLzHeaderSize + lzSize : storedTotal;
+    }
+    if (quantDetected && !quantPlanned)
+    {
+      Plan_Quant(src, srcLen, qType, qPhase, &qplan);
+      quantTotal = qplan.total;
+      quantPlanned = 1;
+    }
   }
   if (quantTotal < storedTotal && quantTotal < splitTotal && quantTotal < lzTotal)
     return Write_Quant(src, srcLen, dest, &qplan);

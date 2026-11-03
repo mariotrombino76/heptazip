@@ -571,6 +571,8 @@ public:
   
   void LoadFullPath();
   void LoadFullPathAndShow();
+  void OnThemeChanged();
+  void OnDpiChanged(HFONT font, UInt32 oldDpi, UInt32 newDpi);
   void FoldersHistory();
   void OpenParentFolder();
   void CloseOneLevel();

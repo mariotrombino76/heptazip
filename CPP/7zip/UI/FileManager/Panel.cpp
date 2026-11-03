@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include <windowsx.h>
 
 #include "../../../Common/IntToString.h"
@@ -24,6 +26,7 @@
 #include "../Agent/IFolderArchive.h"
 
 #include "App.h"
+#include "DarkMode.h"
 #include "ExtractCallback.h"
 #include "FSFolder.h"
 #include "FormatUtils.h"
@@ -69,7 +72,7 @@ HWND CPanel::GetParent() const
   return h ? h : _mainWindow;
 }
 
-#define kClassName L"7-Zip::Panel"
+#define kClassName L"Heptazip::Panel"
 
 
 HRESULT CPanel::Create(HWND mainWindow, HWND parentWindow, UINT id,
@@ -592,8 +595,70 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
 
   // InitListCtrl();
   RefreshListCtrl();
+
+  // Heptazip: dark theme (a panel created later, with F9)
+  NDarkMode::ApplyTree(*this);
   
   return true;
+}
+
+// Heptazip: after a change of the dark/light theme the ComboBoxEx of the path
+// loses the icon of its item and keeps the old frame
+void CPanel::OnThemeChanged()
+{
+  #ifndef UNDER_CE
+  _headerComboBox.SetImageList(Shell_Get_SysImageList_smallIcons(true));
+  #endif
+  LoadFullPathAndShow();
+  const UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+  ::SetWindowPos(_headerComboBox, NULL, 0, 0, 0, 0, flags);
+  ::SetWindowPos(_comboBoxEdit, NULL, 0, 0, 0, 0, flags);
+  ::RedrawWindow(_headerComboBox, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
+}
+
+// Heptazip: the window moved to a screen with another scale (PerMonitorV2): the
+// controls get the font of the new scale, the columns and the bar of the path follow
+void CPanel::OnDpiChanged(HFONT font, UInt32 oldDpi, UInt32 newDpi)
+{
+  if (font)
+  {
+    _listView.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _statusBar.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _headerComboBox.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _headerToolBar.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+  }
+  if (oldDpi != 0)
+  {
+    const HWND header = ListView_GetHeader(_listView);
+    const int num = header ? Header_GetItemCount(header) : 0;
+    for (int i = 0; i < num; i++)
+    {
+      const int w = ListView_GetColumnWidth(_listView, i);
+      ListView_SetColumnWidth(_listView, i, ::MulDiv(w, (int)newDpi, (int)oldDpi));
+    }
+  }
+  // the status bar takes the height of the new font
+  _statusBar.SendMsg(WM_SIZE, 0, 0);
+  if (_headerReBar)
+  {
+    // the bands of the rebar: height of the up button and of the path
+    SIZE size;
+    _headerToolBar.GetMaxSize(&size);
+    REBARBANDINFO rb;
+    memset(&rb, 0, sizeof(rb));
+    rb.cbSize = my_compatib_REBARBANDINFO_size;
+    rb.fMask = RBBIM_CHILDSIZE;
+    rb.cxMinChild = (UINT)size.cx;
+    rb.cyMinChild = (UINT)size.cy;
+    rb.cyChild = (UINT)size.cy;
+    _headerReBar.SendMsg(RB_SETBANDINFO, 0, (LPARAM)&rb);
+    RECT rc;
+    ::GetWindowRect(_headerComboBox, &rc);
+    rb.cxMinChild = 30;
+    rb.cyMinChild = (UINT)(rc.bottom - rc.top);
+    rb.cyChild = rb.cyMinChild;
+    _headerReBar.SendMsg(RB_SETBANDINFO, 1, (LPARAM)&rb);
+  }
 }
 
 void CPanel::OnDestroy()
@@ -754,14 +819,14 @@ bool CPanel::OnCommand(unsigned code, unsigned itemID, LPARAM lParam, LRESULT &r
 void CPanel::MessageBox_Info(LPCWSTR message, LPCWSTR caption) const
   { ::MessageBoxW((HWND)*this, message, caption, MB_OK); }
 void CPanel::MessageBox_Warning(LPCWSTR message) const
-  { ::MessageBoxW((HWND)*this, message, L"7-Zip", MB_OK | MB_ICONWARNING); }
+  { ::MessageBoxW((HWND)*this, message, HZ_NAME_W, MB_OK | MB_ICONWARNING); }
 */
 
 void CPanel::MessageBox_Error_Caption(LPCWSTR message, LPCWSTR caption) const
   { ::MessageBoxW((HWND)*this, message, caption, MB_OK | MB_ICONSTOP); }
 
 void CPanel::MessageBox_Error(LPCWSTR message) const
-  { MessageBox_Error_Caption(message, L"7-Zip"); }
+  { MessageBox_Error_Caption(message, HZ_NAME_W); }
 
 static UString ErrorHResult_To_Message(HRESULT errorCode)
 {
@@ -776,7 +841,7 @@ void CPanel::MessageBox_Error_HRESULT_Caption(HRESULT errorCode, LPCWSTR caption
 }
 
 void CPanel::MessageBox_Error_HRESULT(HRESULT errorCode) const
-  { MessageBox_Error_HRESULT_Caption(errorCode, L"7-Zip"); }
+  { MessageBox_Error_HRESULT_Caption(errorCode, HZ_NAME_W); }
 
 void CPanel::MessageBox_Error_2Lines_Message_HRESULT(LPCWSTR message, HRESULT errorCode) const
 {
@@ -790,7 +855,7 @@ void CPanel::MessageBox_LastError(LPCWSTR caption) const
   { MessageBox_Error_HRESULT_Caption(GetLastError_noZero_HRESULT(), caption); }
 
 void CPanel::MessageBox_LastError() const
-  { MessageBox_LastError(L"7-Zip"); }
+  { MessageBox_LastError(HZ_NAME_W); }
 
 void CPanel::MessageBox_Error_LangID(UINT resourceID) const
   { MessageBox_Error(LangString(resourceID)); }
@@ -1146,7 +1211,7 @@ void CPanel::TestArchives()
     
     extracter.ProgressDialog.CompressingMode = false;
     extracter.ProgressDialog.MainWindow = GetParent();
-    extracter.ProgressDialog.MainTitle = "7-Zip"; // LangString(IDS_APP_TITLE);
+    extracter.ProgressDialog.MainTitle = HZ_NAME; // LangString(IDS_APP_TITLE);
     extracter.ProgressDialog.MainAddTitle = title + L' ';
     
     extracter.ExtractCallbackSpec->OverwriteMode = NExtract::NOverwriteMode::kAskBefore;

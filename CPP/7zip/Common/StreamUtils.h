@@ -30,7 +30,7 @@ HRESULT ReadStream_FALSE(ISequentialInStream *stream, void *data, size_t size) t
 HRESULT ReadStream_FAIL(ISequentialInStream *stream, void *data, size_t size) throw();
 HRESULT WriteStream(ISequentialOutStream *stream, const void *data, size_t size) throw();
 
-/* Tensor7: reads (size) bytes into (buf) when (size) comes from the archive and was
+/* Heptazip: reads (size) bytes into (buf) when (size) comes from the archive and was
    not checked against the real data. The buffer grows (1 MiB, then doubling) only while
    the data are actually there, so a corrupted or truncated file of a few bytes cannot
    make the handler allocate gigabytes first (found by fuzzing). The extra copies cost

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 """Suite di equivalenza dell'estrazione .7z (docs/design/0001, par. 6.1).
 
 Genera dati di test deterministici, crea una matrice di archivi .7z (solid,

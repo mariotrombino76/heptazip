@@ -44,7 +44,7 @@ namespace N7z {
 
 #define k_X86 k_BCJ
 
-/* Tensor7: group of the files with AI model weights (safetensors, GGUF in F16/BF16/F32),
+/* Heptazip: group of the files with AI model weights (safetensors, GGUF in F16/BF16/F32),
    compressed with the FLOAT method (design 0008) instead of LZMA/LZMA2. It is a marker of
    CFilterMode::Id only (not a method ID: it is never written to the archive), handled
    before MakeExeMethod(). */
@@ -429,7 +429,7 @@ static BoolInt Parse_WAV(const Byte *buf, size_t size, CFilterMode *filterMode)
 }
 
 
-/* ---------- AI model weights (Tensor7, design 0008) ---------- */
+/* ---------- AI model weights (Heptazip, design 0008) ---------- */
 
 static size_t CountSubstr(const Byte *buf, size_t size, const char *s)
 {
@@ -522,6 +522,7 @@ static const UInt64 kGgufScanMax = (UInt64)64 << 20;
 struct CGgufReader
 {
   ISequentialInStream *Stream;
+  IInStream *InStream;   // (Stream) if it's seekable: big values are skipped with Seek()
   CByteBuffer Data;
   size_t Pos, Lim;
   UInt64 Total;   // bytes of the file consumed
@@ -545,9 +546,19 @@ struct CGgufReader
     Total += n;
     if (Total > kGgufScanMax)
       return false;
+    const size_t avail = Lim - Pos;
+    if (n <= avail)
+    {
+      Pos += (size_t)n;
+      return true;
+    }
+    n -= avail;
+    Pos = Lim = 0;
+    if (InStream)
+      return InStream->Seek((Int64)n, STREAM_SEEK_CUR, NULL) == S_OK;
     while (n != 0)
     {
-      if (Pos == Lim && !Need(1))
+      if (!Need(1))
         return false;
       const size_t k = (size_t)MyMin(n, (UInt64)(Lim - Pos));
       Pos += k;
@@ -604,14 +615,18 @@ static bool Scan_Gguf(ISequentialInStream *stream, const Byte *buf, size_t size,
     return false;
   CGgufReader r;
   r.Stream = stream;
+  CMyComPtr<IInStream> inStream;
+  stream->QueryInterface(IID_IInStream, (void **)&inStream);
+  r.InStream = inStream;
   r.Data.Alloc((size_t)1 << 16);
   memcpy(r.Data, buf, MyMin(size, r.Data.Size()));
   r.Pos = 0;
   r.Lim = MyMin(size, r.Data.Size());
   r.Total = 0;
-  UInt32 version;
+  UInt32 magic, version;
   UInt64 numTensors, numKv;
-  if (!r.ReadU32(version) || !r.ReadU32(version) || (version != 2 && version != 3)
+  // the magic "GGUF" was checked by Parse_Gguf
+  if (!r.ReadU32(magic) || !r.ReadU32(version) || (version != 2 && version != 3)
       || !r.ReadU64(numTensors) || !r.ReadU64(numKv))
     return false;
   static const char kKey[] = "general.file_type";
@@ -792,7 +807,7 @@ static unsigned Get_FilterGroup_for_Folder(
         m.Id = k_Delta;
       }
     }
-    else if (coder.MethodID == k_FLOAT && f.Coders.Size() == 1)
+    else if (coder.MethodID == k_FLOAT)   // also FLOAT + AES
       m.Id = k_FLOAT_FilterGroup;
     else if (IsExeFilter(coder.MethodID))
     {
@@ -1248,7 +1263,7 @@ struct CAnalysis
   CByteBuffer Buffer;
 
   bool ParseWav;
-  bool ParseModel;   // Tensor7: .safetensors, .gguf (FLOAT method, design 0008)
+  bool ParseModel;   // Heptazip: .safetensors, .gguf (FLOAT method, design 0008)
   bool ParseExe;
   bool ParseExeUnix;
   bool ParseNoExt;
@@ -1396,8 +1411,8 @@ HRESULT CAnalysis::GetFilterGroup(UInt32 index, const CUpdateItem &ui, CFilterMo
           if (result == S_OK)
           {
             parseRes = ParseFile(Buffer, size, &filterModeTemp);
-            // Tensor7: GGUF with general.file_type beyond the buffer
-            UInt32 fileType;
+            // Heptazip: GGUF with general.file_type beyond the buffer
+            UInt32 fileType = 0;
             if (!parseRes && ParseModel
                 && Scan_Gguf(stream, Buffer, size, fileType) && Is_FloatGgufType(fileType))
             {
@@ -1671,7 +1686,7 @@ static HRESULT MakeExeMethod(CCompressionMethodMode &mode,
 }
 
 
-/* Tensor7: the group of AI model weights uses FLOAT (design 0008) instead of the main
+/* Heptazip: the group of AI model weights uses FLOAT (design 0008) instead of the main
    method, if that is LZMA or LZMA2 (the default) alone. Other choices of the user (zstd,
    PPMd, copy with -mx0, chains of methods) are kept; -mf=off disables the analysis. */
 static bool UseFloatMethod(CCompressionMethodMode &mode)
@@ -2156,7 +2171,7 @@ static void GetFile(const CDatabase &inDb, unsigned index, CFileItem &file, CFil
   // file2.IsAux = inDb.IsItemAux(index);
 }
 
-/* Tensor7: the part of the compression of a new folder that follows
+/* Heptazip: the part of the compression of a new folder that follows
    CEncoder::Encode1() / Encode_Post(): it adds to (newDatabase) the files of the
    folder, with the sizes, CRCs, times and attributes collected by (inStream),
    and the number of unpack streams of the folder; it updates the progress
@@ -2263,7 +2278,7 @@ static HRESULT AddNewFolderFiles(
 }
 
 
-/* Tensor7: what the compression of a new folder needs, besides the encoder
+/* Heptazip: what the compression of a new folder needs, besides the encoder
    and the files. Common to EncodeNewFolderInline() and CParallelFolderEncoder. */
 struct CNewFolderContext
 {
@@ -2289,7 +2304,7 @@ static void SetFolderInStreamOptions(CFolderInStream &s, const CUpdateOptions &o
 }
 
 
-/* Tensor7: compresses a new folder in the calling thread and adds it to
+/* Heptazip: compresses a new folder in the calling thread and adds it to
    the database: the body of the "Compress files to new solid blocks" loop of
    upstream. (inStream) provides the data of the files: (folderInStream) itself,
    or a stream that ends with it (CFolderReplayInStream after a read ahead). */
@@ -2326,7 +2341,7 @@ static HRESULT EncodeNewFolderInline(const CNewFolderContext &ctx, CEncoder &enc
 #ifndef Z7_ST
 
 // ---------------------------------------------------------------------------
-// Tensor7: parallel compression of new folders (docs/design/0003)
+// Heptazip: parallel compression of new folders (docs/design/0003)
 //
 // The main thread reads the files of a folder into memory (CFolderInStream,
 // so the callbacks are called in the same order as in the sequential loop),
@@ -3356,7 +3371,7 @@ HRESULT Update(
   newFolderCtx.LpsProgress = lps;
   newFolderCtx.Complexity = &complexity;
 
-  /* Tensor7: parallel compression of the new folders (design 0003). One
+  /* Heptazip: parallel compression of the new folders (design 0003). One
      object for all the groups: the folders of a group are compressed while the
      last folders of the previous group are still being compressed. */
  #ifndef Z7_ST

@@ -498,7 +498,7 @@ HRESULT CHandler::ReadHeader(ISequentialInStream *stream, bool isMainHeader)
   size_t headerSize = indexSize + dataLen;
   if (headerSize < dataLen)
     return S_FALSE;
-  // Tensor7: headerSize (up to 4.3 GB) is read from the file: grow the buffer with the data.
+  // Heptazip: headerSize (up to 4.3 GB) is read from the file: grow the buffer with the data.
   CByteBuffer buffer;
   RINOK(ReadToBuffer_Growing(buffer, headerSize,
       [stream](void *data, size_t *size) { return ReadStream(stream, data, size); }))

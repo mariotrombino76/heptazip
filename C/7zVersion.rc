@@ -34,14 +34,14 @@ BEGIN \
     BEGIN  \
         BLOCK "040904b0" \
         BEGIN \
-            VALUE "CompanyName", "Igor Pavlov" \
+            VALUE "CompanyName", "Heptazip (Mario Trombino), based on 7-Zip by Igor Pavlov" \
             VALUE "FileDescription", descr \
             VALUE "FileVersion", MY_VERSION  \
             VALUE "InternalName", intName \
-            VALUE "LegalCopyright", MY_COPYRIGHT \
+            VALUE "LegalCopyright", MY_COPYRIGHT_CR ", 2026 Mario Trombino" \
             VALUE "OriginalFilename", origName \
-            VALUE "ProductName", "7-Zip" \
-            VALUE "ProductVersion", MY_VERSION \
+            VALUE "ProductName", "Heptazip" \
+            VALUE "ProductVersion", HZ_VERSION \
         END \
     END \
     BLOCK "VarFileInfo" \

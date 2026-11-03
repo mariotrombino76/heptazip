@@ -13,8 +13,8 @@ I file nuovi del fork (`CMakeLists.txt`, `cmake/`, `tools/`, `tests/`, `docs/`, 
 nuovi come `7zExtractMt.*`, `7zUpdateMt.*`, `Common/MtTaskPool.*`, `ZstdLibEncoder.*`, `ZstdCodecRegister.cpp`) non sono elencati
 qui. Il codice esterno incluso è in `third_party/` (provenienza e versione nel README di
 ciascuna libreria). 
-Nel codice ogni modifica è marcata con un commento che inizia con `Tensor7:`
-(`grep -rn "Tensor7:" C CPP`).
+Nel codice ogni modifica è marcata con un commento che inizia con `Heptazip:`
+(`grep -rn "Heptazip:" C CPP`).
 
 | File | Modifica | Motivo | Effetto sull'output / sulle prestazioni |
 |---|---|---|---|

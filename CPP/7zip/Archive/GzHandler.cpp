@@ -977,7 +977,7 @@ static HRESULT UpdateArchive(
   CMyComPtr2_Create<ICompressCoder, NEncoder::CCOMCoder> deflateEncoder;
 
   {
-    // Tensor7: the Deflate encoder codes in parallel (design 0009); as for bzip2, the
+    // Heptazip: the Deflate encoder codes in parallel (design 0009); as for bzip2, the
     // number of threads (-mmt, all the processors by default) goes to the coder.
     CMethodProps props2 = props;
 #ifndef Z7_ST

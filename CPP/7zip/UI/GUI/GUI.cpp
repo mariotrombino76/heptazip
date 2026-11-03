@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #ifdef _WIN32
 #include "../../../../C/DllSecur.h"
 #endif
@@ -26,6 +28,7 @@
 #include "../Common/ExitCode.h"
 
 #include "../FileManager/StringUtils.h"
+#include "../FileManager/DarkMode.h"
 #include "../FileManager/LangUtils.h"
 
 #include "BenchmarkDialog.h"
@@ -99,7 +102,7 @@ DECLARE_AND_SET_CLIENT_VERSION_VAR
 static void ErrorMessage(LPCWSTR message)
 {
   if (!g_DisableUserQuestions)
-    MessageBoxW(NULL, message, L"7-Zip", MB_ICONERROR | MB_OK);
+    MessageBoxW(NULL, message, HZ_NAME_W, MB_ICONERROR | MB_OK);
 }
 
 static void ErrorMessage(const char *s)
@@ -112,7 +115,7 @@ static void ErrorLangMessage(UINT resourceID)
   ErrorMessage(LangString(resourceID));
 }
 
-static const char * const kNoFormats = "7-Zip cannot find the code that works with archives.";
+static const char * const kNoFormats = "Heptazip cannot find the code that works with archives.";
 
 static int ShowMemErrorMessage()
 {
@@ -145,7 +148,7 @@ static int Main2()
   #endif
   if (commandStrings.Size() == 0)
   {
-    MessageBoxW(NULL, L"Specify command", L"7-Zip", 0);
+    MessageBoxW(NULL, L"Specify command", HZ_NAME_W, 0);
     return 0;
   }
 
@@ -180,7 +183,7 @@ static int Main2()
     if (!s.IsEmpty())
     {
       if (!g_DisableUserQuestions)
-        MessageBoxW(NULL, s, L"7-Zip", MB_ICONERROR);
+        MessageBoxW(NULL, s, HZ_NAME_W, MB_ICONERROR);
     }
   }
   #endif
@@ -195,7 +198,7 @@ static int Main2()
     #ifdef Z7_EXTERNAL_CODECS
     if (!codecs->MainDll_ErrorPath.IsEmpty())
     {
-      UString s ("7-Zip cannot load module: ");
+      UString s ("Heptazip cannot load module: ");
       s += fs2us(codecs->MainDll_ErrorPath);
       throw s;
     }
@@ -442,6 +445,9 @@ int APIENTRY WinMain(HINSTANCE  hInstance, HINSTANCE /* hPrevInstance */,
   #ifdef Z7_LANG
   LoadLangOneTime();
   #endif
+
+  // Heptazip: dark theme of the dialogs (follows Windows or the choice in 7zFM)
+  NDarkMode::Init();
 
   // setlocale(LC_COLLATE, ".ACP");
   try

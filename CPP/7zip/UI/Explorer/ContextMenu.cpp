@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/ComTry.h"
 #include "../../../Common/IntToString.h"
 #include "../../../Common/StringConvert.h"
@@ -1015,7 +1017,7 @@ Z7_COMWF_B CZipContextMenu::QueryContextMenu(HMENU hMenu, UINT indexMenu,
     CMenu menu;
     menu.Attach(hMenu);
     menuDestroyer.Disable();
-    MyAddSubMenu(_commandMap, kMainVerb, menu, indexMenu++, currentCommandID++, (UString)"7-Zip",
+    MyAddSubMenu(_commandMap, kMainVerb, menu, indexMenu++, currentCommandID++, (UString)HZ_NAME,
         popupMenu, // popupMenu.Detach(),
         bitmap);
   }
@@ -1642,10 +1644,10 @@ Z7_COMWF_B CZipExplorerCommand::GetTitle(IShellItemArray *psiItemArray, LPWSTR *
   if (IsRoot)
   {
     LoadItems(psiItemArray);
-    name = "7-Zip"; //  "New"
+    name = HZ_NAME; //  "New"
   }
   else
-    name = "7-Zip item";
+    name = HZ_NAME " item";
   
   if (!_commandMap_Cur.IsEmpty())
   {

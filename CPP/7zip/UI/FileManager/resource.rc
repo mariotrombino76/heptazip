@@ -2,7 +2,7 @@
 #include "../../GuiCommon.rc"
 #include "resource.h"
 
-MY_VERSION_INFO_APP("7-Zip File Manager", "7zFM")
+MY_VERSION_INFO_APP("Heptazip File Manager", "7zFM")
 
 IDR_ACCELERATOR1 ACCELERATORS
 BEGIN
@@ -121,6 +121,12 @@ BEGIN
       MENUITEM "Large Buttons",             IDM_VIEW_TOOLBARS_LARGE_BUTTONS
       MENUITEM "Show Buttons Text",         IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT
     END
+    POPUP "T&heme" MY_MENUITEM_ID(IDM_VIEW_THEME)
+    BEGIN
+      MENUITEM "&System",                   IDM_VIEW_THEME_SYSTEM
+      MENUITEM "&Light",                    IDM_VIEW_THEME_LIGHT
+      MENUITEM "&Dark",                     IDM_VIEW_THEME_DARK
+    END
     MENUITEM "Open Root Folder\t\\",        IDM_OPEN_ROOT_FOLDER
     MENUITEM "Up One Level\tBackspace",     IDM_OPEN_PARENT_FOLDER
     MENUITEM "Folders History...\tAlt+F12", IDM_FOLDERS_HISTORY
@@ -156,7 +162,7 @@ BEGIN
     MENUITEM "&Contents...\tF1",            IDM_HELP_CONTENTS
   #endif
     MY_MENUITEM_SEPARATOR
-  MENUITEM "&About 7-Zip...",               IDM_ABOUT
+  MENUITEM "&About Heptazip...",               IDM_ABOUT
   END
 END
 
@@ -167,20 +173,20 @@ IDI_ICON  ICON  "../../UI/FileManager/FM.ico"
 1  24  MOVEABLE PURE   "../../UI/FileManager/7zFM.exe.manifest"
 #endif
 
-IDB_ADD        BITMAP  "../../UI/FileManager/Add.bmp"
-IDB_EXTRACT    BITMAP  "../../UI/FileManager/Extract.bmp"
-IDB_TEST       BITMAP  "../../UI/FileManager/Test.bmp"
-IDB_COPY       BITMAP  "../../UI/FileManager/Copy.bmp"
-IDB_MOVE       BITMAP  "../../UI/FileManager/Move.bmp"
-IDB_DELETE     BITMAP  "../../UI/FileManager/Delete.bmp"
-IDB_INFO       BITMAP  "../../UI/FileManager/Info.bmp"
-IDB_ADD2       BITMAP  "../../UI/FileManager/Add2.bmp"
-IDB_EXTRACT2   BITMAP  "../../UI/FileManager/Extract2.bmp"
-IDB_TEST2      BITMAP  "../../UI/FileManager/Test2.bmp"
-IDB_COPY2      BITMAP  "../../UI/FileManager/Copy2.bmp"
-IDB_MOVE2      BITMAP  "../../UI/FileManager/Move2.bmp"
-IDB_DELETE2    BITMAP  "../../UI/FileManager/Delete2.bmp"
-IDB_INFO2      BITMAP  "../../UI/FileManager/Info2.bmp"
+IDI_TB_ADD      ICON  "../../UI/FileManager/tb_add.ico"
+IDI_TB_EXTRACT  ICON  "../../UI/FileManager/tb_extract.ico"
+IDI_TB_TEST     ICON  "../../UI/FileManager/tb_test.ico"
+IDI_TB_COPY     ICON  "../../UI/FileManager/tb_copy.ico"
+IDI_TB_MOVE     ICON  "../../UI/FileManager/tb_move.ico"
+IDI_TB_DELETE   ICON  "../../UI/FileManager/tb_delete.ico"
+IDI_TB_INFO     ICON  "../../UI/FileManager/tb_info.ico"
+210             ICON  "../../UI/FileManager/tb_add_dark.ico"
+211             ICON  "../../UI/FileManager/tb_extract_dark.ico"
+212             ICON  "../../UI/FileManager/tb_test_dark.ico"
+213             ICON  "../../UI/FileManager/tb_copy_dark.ico"
+214             ICON  "../../UI/FileManager/tb_move_dark.ico"
+215             ICON  "../../UI/FileManager/tb_delete_dark.ico"
+216             ICON  "../../UI/FileManager/tb_info_dark.ico"
 
 
 STRINGTABLE

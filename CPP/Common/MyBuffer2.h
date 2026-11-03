@@ -74,7 +74,7 @@ public:
     _data = NULL;
     _data = (Byte *)z7_AlignedAlloc(size);
     if (!_data)
-      throw CNewException();  // Tensor7: allocation failed (E_OUTOFMEMORY)
+      throw CNewException();  // Heptazip: allocation failed (E_OUTOFMEMORY)
   }
 
   operator       Byte *()       { return _data; }
@@ -102,7 +102,7 @@ public:
     _data = NULL;
     _data = (Byte *)z7_AlignedAlloc(size);
     if (!_data)
-      throw CNewException();  // Tensor7: allocation failed (E_OUTOFMEMORY)
+      throw CNewException();  // Heptazip: allocation failed (E_OUTOFMEMORY)
     _size = size;
   }
   */

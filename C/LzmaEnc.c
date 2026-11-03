@@ -95,7 +95,10 @@ void LzmaEncProps_Normalize(CLzmaEncProps *p)
   if (p->pb < 0) p->pb = 2;
 
   if (p->algo < 0) p->algo = (unsigned)level < 5 ? 0 : 1;
-  if (p->fb < 0) p->fb = (unsigned)level < 7 ? 32 : 64;
+  /* Heptazip: 64 also at levels 5 and 6 (upstream: 32 below level 7). Silesia, -mx5:
+     23.42% -> 23.03% for 8% of compression speed; the ratio is then spent in smaller
+     LZMA2 blocks (Lzma2Enc_GetAutoBlockSize): see docs/benchmark-mercato.md. */
+  if (p->fb < 0) p->fb = (unsigned)level < 5 ? 32 : 64;
   if (p->btMode < 0) p->btMode = (p->algo == 0 ? 0 : 1);
   if (p->numHashBytes < 0) p->numHashBytes = (p->btMode ? 4 : 5);
   if (p->mc == 0) p->mc = (16 + ((unsigned)p->fb >> 1)) >> (p->btMode ? 0 : 1);
@@ -2169,7 +2172,7 @@ static void WriteEndMarker(CLzmaEnc *p, unsigned posState)
 }
 
 
-/* Tensor7: atomic read of CMatchFinder::result (see LzFind.h). It's not
+/* Heptazip: atomic read of CMatchFinder::result (see LzFind.h). It's not
    inlined: CheckErrors() is inlined into the hot LzmaEnc_CodeOneBlock(), and an
    inlined __atomic load there changes the inlining and the register allocation
    of the whole function (measured: 1.4% slower compression). */
@@ -2398,6 +2401,12 @@ void LzmaEnc_Destroy(CLzmaEncHandle p, ISzAllocPtr alloc, ISzAllocPtr allocBig)
 }
 
 
+#ifdef Z7_LZMA_TOKEN_TRACE
+/* Heptazip, research only: called for each decision of the parser after the first
+   byte: (len, MARK_LIT for a literal / 0..3 rep index / dist + LZMA_NUM_REPS) */
+void (*g_LzmaTokenTrace)(unsigned len, UInt32 backRes);
+#endif
+
 Z7_NO_INLINE
 static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, UInt32 maxPackSize, UInt32 maxUnpackSize)
 {
@@ -2471,6 +2480,12 @@ static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, UInt32 maxPackSize, UInt32 maxUnpa
 
     #ifdef SHOW_STAT2
     printf("\n pos = %6X, len = %3u  pos = %6u", nowPos32, len, dist);
+    #endif
+
+    #ifdef Z7_LZMA_TOKEN_TRACE
+    // Heptazip, research only (tools/research/lzstatic): the decisions of the parser
+    if (g_LzmaTokenTrace)
+      g_LzmaTokenTrace(len, dist);
     #endif
 
     if (dist == MARK_LIT)

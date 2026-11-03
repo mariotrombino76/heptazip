@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/MyWindows.h"
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -33,6 +35,7 @@
 #include "resource.h"
 
 #include "App.h"
+#include "DarkMode.h"
 #include "FormatUtils.h"
 #include "LangUtils.h"
 #include "MyLoadMenu.h"
@@ -198,7 +201,7 @@ CApp g_App;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-static const wchar_t * const kWindowClass = L"7-Zip::FM";
+static const wchar_t * const kWindowClass = L"Heptazip::FM";
 
 #ifdef UNDER_CE
 #define WS_OVERLAPPEDWINDOW ( \
@@ -246,7 +249,7 @@ static BOOL InitInstance(int nCmdShow)
 
   // LoadString(hInstance, IDS_CLASS, windowClass, MAX_LOADSTRING);
 
-  UString title ("7-Zip"); // LangString(IDS_APP_TITLE, 0x03000000);
+  UString title (HZ_NAME); // LangString(IDS_APP_TITLE, 0x03000000);
 
   /*
   //If it is already running, then focus on the window
@@ -566,7 +569,7 @@ static const CSwitchForm kSwitchForms[kNumSwitches] =
 
 static void ErrorMessage(const wchar_t *s)
 {
-  MessageBoxW(NULL, s, L"7-Zip", MB_ICONERROR);
+  MessageBoxW(NULL, s, HZ_NAME_W, MB_ICONERROR);
 }
 
 static void ErrorMessage(const char *s)
@@ -735,6 +738,7 @@ static int WINAPI WinMain2(int nCmdShow)
   #endif
 
   g_App.ReloadLangItems();
+  NDarkMode::Init();
 
   MSG msg;
   if (!InitInstance (nCmdShow))
@@ -1021,6 +1025,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       }
 
       g_WindowWasCreated = true;
+      NDarkMode::ApplyMainWindow(hWnd);
+      // Heptazip: opened on a screen with a scale other than the main one (the
+      // columns were already created at that scale)
+      g_App.OnDpiChanged(NDarkMode::GetWindowDpi(hWnd), true);
       
       // g_SplitterPos = 0;
 
@@ -1139,10 +1147,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       return 0;
     */
       
-    /*
+    case 0x02E0: // WM_DPICHANGED (PerMonitorV2): new scale, then the suggested rectangle
+    {
+      g_App.OnDpiChanged(HIWORD(wParam));
+      const RECT *r = (const RECT *)lParam;
+      ::SetWindowPos(hWnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
+          SWP_NOZORDER | SWP_NOACTIVATE);
+      return 0;
+    }
+
     case WM_SETTINGCHANGE:
+      // Heptazip: the "Apps" theme of Windows (dark / light) was changed
+      if (NDarkMode::OnSettingChange(wParam, lParam))
+        g_App.ApplyTheme();
       break;
-    */
     
     case WM_NOTIFY:
     {

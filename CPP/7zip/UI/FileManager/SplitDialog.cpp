@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Windows/FileName.h"
 
 #include "LangUtils.h"
@@ -107,7 +109,7 @@ void CSplitDialog::OnOK()
   volumeString.Trim();
   if (!ParseVolumeSizes(volumeString, VolumeSizes) || VolumeSizes.Size() == 0)
   {
-    ::MessageBoxW(*this, LangString(IDS_INCORRECT_VOLUME_SIZE), L"7-Zip", MB_ICONERROR);
+    ::MessageBoxW(*this, LangString(IDS_INCORRECT_VOLUME_SIZE), HZ_NAME_W, MB_ICONERROR);
     return;
   }
   CModalDialog::OnOK();

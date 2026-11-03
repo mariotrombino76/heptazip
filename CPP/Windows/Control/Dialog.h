@@ -12,6 +12,10 @@ namespace NControl {
 #define IDCONTINUE 11
 #endif
 
+/* Heptazip: called after WM_INITDIALOG of every dialog and property page
+   (the dark theme of 7zFM and 7zG sets it); NULL in the other programs */
+extern void (*g_DialogInitHook)(HWND dialog);
+
 class CDialog: public CWindow
 {
   // Z7_CLASS_NO_COPY(CDialog)

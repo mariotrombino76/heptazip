@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // unit_7zextract_mt.cpp
 //
 // Test unitari di CPP/7zip/Archive/7z/7zExtractMt.{h,cpp} e CPP/7zip/Common/MtTaskPool.{h,cpp}
@@ -222,6 +222,240 @@ static void Test_BufInStreamAt()
   spec->Init(data, 4, kBase, E_OUTOFMEMORY);
   CHECK(stream->Read(buf, 10, &processed) == S_OK && processed == 4);
   CHECK(stream->Read(buf, 10, &processed) == E_OUTOFMEMORY && processed == 0);
+}
+
+
+// ---------------------------------------------------------------------------
+// CBufInStreamAt con caricamento a richiesta (CBufRefill)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/* Sorgente di prova: carica i dati a blocchi di (Step) byte fino a (Avail),
+   poi riporta (FinalRes) come risultato di fine dati. */
+struct CTestRefill: public CBufRefill
+{
+  const Byte *Data;
+  size_t Avail;
+  size_t Step;
+  size_t Loaded;
+  HRESULT FinalRes;
+  unsigned NumCalls;
+  size_t LastNeedEnd;
+
+  CTestRefill(): Data(NULL), Avail(0), Step(1), Loaded(0), FinalRes(S_OK), NumCalls(0), LastNeedEnd(0) {}
+
+  void Refill(size_t needEnd, size_t &size, HRESULT &endRes) Z7_override
+  {
+    NumCalls++;
+    LastNeedEnd = needEnd;
+    size_t target = Loaded + Step;
+    if (target < needEnd)
+      target = needEnd;
+    if (target > Avail)
+      target = Avail;
+    Loaded = target;
+    size = Loaded;
+    endRes = (Loaded == Avail) ? FinalRes : S_OK;
+  }
+};
+
+}
+
+static void Test_BufInStreamAt_Refill()
+{
+  Byte data[64];
+  for (unsigned i = 0; i < sizeof(data); i++)
+    data[i] = (Byte)(100 + i);
+  const UInt64 kBase = 1000;
+  Byte buf[64];
+  UInt32 processed = 0;
+  UInt64 pos = 0;
+
+  // i primi 8 byte sono gia' caricati; il resto arriva a blocchi di 16
+  {
+    CTestRefill refill;
+    refill.Data = data;
+    refill.Avail = sizeof(data);
+    refill.Step = 16;
+    refill.Loaded = 8;
+    CBufInStreamAt *spec = new CBufInStreamAt;
+    CMyComPtr<IInStream> stream = spec;
+    spec->Init(data, 8, kBase, S_OK, &refill);
+
+    // dentro i dati caricati: nessuna ricarica
+    CHECK(stream->Read(buf, 5, &processed) == S_OK && processed == 5 && buf[4] == 104);
+    CHECK(refill.NumCalls == 0);
+    // fino alla fine dei dati caricati: ancora nessuna ricarica
+    CHECK(stream->Read(buf, 3, &processed) == S_OK && processed == 3 && buf[2] == 107);
+    CHECK(refill.NumCalls == 0);
+    // oltre: ricarica con needEnd = posizione + richiesta (28), poi i byte richiesti
+    CHECK(stream->Read(buf, 20, &processed) == S_OK && processed == 20 && buf[0] == 108 && buf[19] == 127);
+    CHECK(refill.NumCalls == 1 && refill.LastNeedEnd == 28 && refill.Loaded == 28);
+    // il Seek non carica nulla
+    CHECK(stream->Seek((Int64)kBase + 40, STREAM_SEEK_SET, &pos) == S_OK && pos == kBase + 40);
+    CHECK(refill.NumCalls == 1);
+    // lettura oltre i 28 byte caricati: la ricarica porta fino a needEnd (44)
+    CHECK(stream->Read(buf, 4, &processed) == S_OK && processed == 4 && buf[0] == 140);
+    CHECK(refill.NumCalls == 2 && refill.LastNeedEnd == 44 && refill.Loaded == 44);
+    // tutto il resto in una ricarica (needEnd oltre la fine: si ferma a 64)
+    CHECK(stream->Read(buf, 64, &processed) == S_OK && processed == 20 && buf[19] == 163);
+    CHECK(refill.NumCalls == 3 && refill.Loaded == 64);
+    // fine dei dati: la sorgente non aggiunge nulla e viene scartata
+    CHECK(stream->Read(buf, 1, &processed) == S_OK && processed == 0);
+    CHECK(refill.NumCalls == 4);
+    CHECK(stream->Read(buf, 1, &processed) == S_OK && processed == 0);
+    CHECK(refill.NumCalls == 4);
+  }
+
+  // errore di lettura dell'archivio dopo 24 byte: i byte caricati, poi l'errore
+  {
+    CTestRefill refill;
+    refill.Data = data;
+    refill.Avail = 24;
+    refill.Step = 16;
+    refill.Loaded = 8;
+    refill.FinalRes = E_FAIL;
+    CBufInStreamAt *spec = new CBufInStreamAt;
+    CMyComPtr<IInStream> stream = spec;
+    spec->Init(data, 8, kBase, S_OK, &refill);
+    CHECK(stream->Read(buf, 64, &processed) == S_OK && processed == 8);
+    CHECK(stream->Read(buf, 64, &processed) == S_OK && processed == 16);
+    CHECK(refill.NumCalls == 1);
+    CHECK(stream->Read(buf, 64, &processed) == E_FAIL && processed == 0);
+    CHECK(refill.NumCalls == 1); // scartata al primo errore
+    CHECK(stream->Read(buf, 64, &processed) == E_FAIL && processed == 0);
+  }
+
+  // dati gia' completi con errore finale: la sorgente non viene mai usata
+  {
+    CTestRefill refill;
+    CBufInStreamAt *spec = new CBufInStreamAt;
+    CMyComPtr<IInStream> stream = spec;
+    spec->Init(data, 4, kBase, E_OUTOFMEMORY, &refill);
+    CHECK(stream->Read(buf, 64, &processed) == S_OK && processed == 4);
+    CHECK(stream->Read(buf, 64, &processed) == E_OUTOFMEMORY && processed == 0);
+    CHECK(refill.NumCalls == 0);
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// CSharedInStream / CSharedInStreamView
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/* IInStream di prova in memoria che conta Seek e Read e limita ogni Read a
+   (MaxRead) byte, come uno stream reale che restituisce meno del richiesto. */
+Z7_CLASS_IMP_IInStream(
+  CCountingInStream
+)
+public:
+  const Byte *Data;
+  size_t Size;
+  UInt64 Pos;
+  UInt32 MaxRead;
+  unsigned NumSeeks;
+  unsigned NumReads;
+  CCountingInStream(): Data(NULL), Size(0), Pos(0), MaxRead(0xFFFFFFFF), NumSeeks(0), NumReads(0) {}
+};
+
+Z7_COM7F_IMF(CCountingInStream::Read(void *data, UInt32 size, UInt32 *processedSize))
+{
+  NumReads++;
+  if (processedSize)
+    *processedSize = 0;
+  if (Pos >= Size)
+    return S_OK;
+  size_t rem = Size - (size_t)Pos;
+  if (rem > size)
+    rem = size;
+  if (rem > MaxRead)
+    rem = MaxRead;
+  memcpy(data, Data + (size_t)Pos, rem);
+  Pos += rem;
+  if (processedSize)
+    *processedSize = (UInt32)rem;
+  return S_OK;
+}
+
+Z7_COM7F_IMF(CCountingInStream::Seek(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition))
+{
+  NumSeeks++;
+  switch (seekOrigin)
+  {
+    case STREAM_SEEK_SET: break;
+    case STREAM_SEEK_CUR: offset += (Int64)Pos; break;
+    case STREAM_SEEK_END: offset += (Int64)Size; break;
+    default: return STG_E_INVALIDFUNCTION;
+  }
+  if (offset < 0)
+    return HRESULT_WIN32_ERROR_NEGATIVE_SEEK;
+  Pos = (UInt64)offset;
+  if (newPosition)
+    *newPosition = Pos;
+  return S_OK;
+}
+
+}
+
+static void Test_SharedInStream()
+{
+  Byte data[100];
+  for (unsigned i = 0; i < sizeof(data); i++)
+    data[i] = (Byte)i;
+  CCountingInStream *baseSpec = new CCountingInStream;
+  CMyComPtr<IInStream> base = baseSpec;
+  baseSpec->Data = data;
+  baseSpec->Size = sizeof(data);
+
+  CSharedInStream shared;
+  shared.Init(base);
+
+  Byte buf[100];
+  UInt32 processed = 0;
+  UInt64 pos = 0;
+
+  // due viste con posizioni proprie, letture alternate: ognuna vede i propri byte
+  CSharedInStreamView *aSpec = new CSharedInStreamView;
+  CMyComPtr<IInStream> a = aSpec;
+  aSpec->Init(&shared, 0);
+  CSharedInStreamView *bSpec = new CSharedInStreamView;
+  CMyComPtr<IInStream> b = bSpec;
+  bSpec->Init(&shared, 50);
+
+  CHECK(a->Read(buf, 10, &processed) == S_OK && processed == 10 && buf[0] == 0 && buf[9] == 9);
+  CHECK(b->Read(buf, 10, &processed) == S_OK && processed == 10 && buf[0] == 50 && buf[9] == 59);
+  CHECK(a->Read(buf, 10, &processed) == S_OK && processed == 10 && buf[0] == 10);
+  CHECK(b->Read(buf, 10, &processed) == S_OK && processed == 10 && buf[0] == 60);
+  // una lettura consecutiva della stessa vista non fa Seek
+  const unsigned seeks = baseSpec->NumSeeks;
+  CHECK(b->Read(buf, 5, &processed) == S_OK && processed == 5 && buf[0] == 70);
+  CHECK(baseSpec->NumSeeks == seeks);
+  CHECK(a->Read(buf, 5, &processed) == S_OK && processed == 5 && buf[0] == 20);
+  CHECK(baseSpec->NumSeeks == seeks + 1);
+
+  // Seek delle viste: relativo, assoluto, dalla fine
+  CHECK(a->Seek(-5, STREAM_SEEK_CUR, &pos) == S_OK && pos == 20);
+  CHECK(a->Seek(0, STREAM_SEEK_END, &pos) == S_OK && pos == 100);
+  CHECK(a->Read(buf, 5, &processed) == S_OK && processed == 0);
+  CHECK(a->Seek(-3, STREAM_SEEK_CUR, &pos) == S_OK && pos == 97);
+  CHECK(a->Read(buf, 5, &processed) == S_OK && processed == 3 && buf[0] == 97);
+  CHECK(a->Seek(-1, STREAM_SEEK_SET, &pos) == HRESULT_WIN32_ERROR_NEGATIVE_SEEK);
+  CHECK(a->Seek(0, 9, &pos) == STG_E_INVALIDFUNCTION);
+
+  // ReadFullAt: completa la lettura anche se lo stream restituisce poco per volta
+  baseSpec->MaxRead = 7;
+  size_t size = 30;
+  CHECK(shared.ReadFullAt(40, buf, size) == S_OK && size == 30 && buf[0] == 40 && buf[29] == 69);
+  size = 30;
+  CHECK(shared.ReadFullAt(90, buf, size) == S_OK && size == 10 && buf[9] == 99);
+  // la vista dopo un ReadFullAt riparte dalla propria posizione
+  CHECK(b->Read(buf, 5, &processed) == S_OK && processed == 5 && buf[0] == 75);
+
+  UInt64 end = 0;
+  CHECK(shared.GetEnd(end) == S_OK && end == 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +688,8 @@ int main()
   Test_MemoryBudget();
   Test_FolderBufOutStream();
   Test_BufInStreamAt();
+  Test_BufInStreamAt_Refill();
+  Test_SharedInStream();
 #ifndef Z7_NO_CRYPTO
   Test_CachedPassword();
 #endif

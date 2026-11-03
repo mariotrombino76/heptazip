@@ -1,0 +1,146 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
+# Rilascio: al push di un tag "26.05-m1" (base 7-Zip + "-m" numero di rilascio) compila
+# i binari, li prova e crea una bozza di release su GitHub con i pacchetti e le somme
+# SHA-256. La bozza va pubblicata a mano dopo un controllo (issue #68).
+#
+#   heptazip-<tag>-linux-x64.tar.xz   7zz statico, con le routine assembly (uasm)
+#   heptazip-<tag>-windows-x64.zip    7zFM, 7zG, 7z.exe, 7z.dll, 7-zip.dll (MSVC) + 7zz.exe (MinGW)
+
+name: Release
+
+on:
+  push:
+    tags: ['[0-9][0-9].[0-9][0-9]-m[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UASM_REPO: https://github.com/Terraspace/UASM.git
+  UASM_SHA: 97f643891c19ef257e45f1bf67cb47244ae72784   # v2.57r
+
+jobs:
+  linux:
+    name: Linux x64 (7zz statico, assembly)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: UASM v2.57r
+        run: |
+          git clone -q "$UASM_REPO" uasm-src
+          git -C uasm-src checkout -q "$UASM_SHA"
+          make -C uasm-src -f Makefile-Linux-GCC-64.mak -j"$(nproc)" CFLAGS=-fcommon >/dev/null
+          mkdir -p ~/.local/bin && cp uasm-src/GccUnixR/uasm ~/.local/bin/
+          ~/.local/bin/uasm -h | head -1
+      - name: Configura
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=ON
+          -DCMAKE_EXE_LINKER_FLAGS=-static
+      - name: Compila
+        run: cmake --build build -j"$(nproc)" --target 7zz
+      - name: Versione (deve dire ASM)
+        run: build/7zz | tee banner.txt && grep -q ASM banner.txt
+      - name: Andata e ritorno
+        run: python3 tests/roundtrip_smoke.py --7zz build/7zz
+      - name: Deflate parallelo
+        run: python3 tests/deflate_mt.py --7zz build/7zz
+      - name: Pacchetto
+        run: |
+          d="heptazip-${GITHUB_REF_NAME}-linux-x64"
+          mkdir "$d"
+          cp build/7zz LICENSE-Heptazip LICENSE-Heptazip.en DOC/License.txt README.md README.en.md "$d/"
+          tar -cJf "$d.tar.xz" "$d"
+          ls -l "$d.tar.xz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: heptazip-*-linux-x64.tar.xz
+
+  windows-mingw:
+    name: 7zz.exe (MinGW-w64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64-posix
+      - name: Compila
+        working-directory: CPP/7zip/Bundles/Alone2
+        run: >
+          make -f makefile.gcc -j"$(nproc)" O=_mingw IS_MINGW=1
+          CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix
+          RC=x86_64-w64-mingw32-windres
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-7zz-mingw
+          path: CPP/7zip/Bundles/Alone2/_mingw/7zz.exe
+
+  windows:
+    name: Windows x64 (MSVC + 7zz.exe)
+    needs: windows-mingw
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compila con MSVC (nmake)
+        shell: cmd
+        run: tools\windows\build-msvc.bat out-msvc
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-7zz-mingw
+          path: out-msvc
+      - name: Versione
+        run: |
+          out-msvc\7z.exe
+          out-msvc\7zz.exe
+      - name: Andata e ritorno (7z.exe e 7zz.exe)
+        run: |
+          python tests/roundtrip_smoke.py --7zz out-msvc/7z.exe
+          python tests/roundtrip_smoke.py --7zz out-msvc/7zz.exe
+      - name: Deflate parallelo
+        run: python tests/deflate_mt.py --7zz out-msvc/7z.exe
+      - name: Pacchetto
+        shell: pwsh
+        run: |
+          $d = "heptazip-$env:GITHUB_REF_NAME-windows-x64"
+          New-Item -ItemType Directory $d | Out-Null
+          Copy-Item out-msvc/7zFM.exe, out-msvc/7zG.exe, out-msvc/7z.exe, out-msvc/7z.dll, out-msvc/7-zip.dll, out-msvc/7zz.exe $d
+          Copy-Item LICENSE-Heptazip, LICENSE-Heptazip.en, DOC/License.txt, README.md, README.en.md $d
+          Compress-Archive -Path $d -DestinationPath "$d.zip"
+          Get-Item "$d.zip" | Format-List Name, Length
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: heptazip-*-windows-x64.zip
+
+  release:
+    name: Bozza di release su GitHub
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Somme SHA-256
+        working-directory: dist
+        run: sha256sum heptazip-* | tee SHA256SUMS
+      - name: Crea la bozza
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            gh release create "$GITHUB_REF_NAME" --draft --title "Heptazip $GITHUB_REF_NAME" \
+              --notes-file "$notes" dist/*
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --title "Heptazip $GITHUB_REF_NAME" \
+              --generate-notes dist/*
+          fi

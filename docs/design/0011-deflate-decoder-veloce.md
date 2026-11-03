@@ -73,10 +73,10 @@ byte scritti prima dell'errore siano quelli di 7-Zip 26.05. Due punti delicati:
 Un thread (core fisso), `7zz e -so` su `/dev/shm`, minimo di 7 ripetizioni; libdeflate
 `libdeflate-gzip -d -c` (master dopo la 1.26):
 
-| file | 7-Zip 26.05 | Tensor7 | libdeflate |
+| file | 7-Zip 26.05 | Heptazip | libdeflate |
 |---|---|---|---|
 | silesia, gzip -6 | 316 MB/s | **~820 MB/s** | 895 MB/s |
-| silesia, Tensor7 `-mx5` | 318 MB/s | **~825 MB/s** | 910 MB/s |
+| silesia, Heptazip `-mx5` | 318 MB/s | **~825 MB/s** | 910 MB/s |
 | silesia, zip Deflate64 | 334 MB/s | **~840 MB/s** | (non lo legge) |
 | corpus, gzip -6 | 870 MB/s | **~2150 MB/s** | 1675 MB/s |
 
@@ -150,6 +150,6 @@ corpus 2100-2230 MB/s (26.05: 730, libdeflate 1540-1590). Con meno della metà d
 
 - Distanze 2..7: copie a parole con passo (libdeflate), per dati con molte ripetizioni corte.
 - Decoder in parallelo per un solo gzip grande: non possibile in generale (i blocchi di
-  Tensor7 usano la storia del blocco precedente, design 0009).
+  Heptazip usano la storia del blocco precedente, design 0009).
 - Estrazione zip in parallelo sui file (oggi un file alla volta), come per i folder 7z
   (design 0001): da misurare.

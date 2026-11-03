@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // 7zExtractMt.cpp
-// Tensor7: building blocks for parallel extraction of 7z folders.
+// Heptazip: building blocks for parallel extraction of 7z folders.
 // See docs/design/0001-estrazione-parallela-folder-7z.md
 
 #include "StdAfx.h"
@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include "../../../../C/CpuArch.h"
+
+#include "../../Common/StreamUtils.h"
 
 #include "7zExtractMt.h"
 #include "7zHeader.h"
@@ -34,7 +36,7 @@ static const UInt64 kMem_BCJ2    = (UInt64)8 << 20;  // input buffers of 4 strea
    frame. The properties don't contain the window: we use the largest window of
    the standard levels (2^27, level 22). Frames with bigger windows (long mode,
    custom window) and without content size can use more memory than estimated.
-   The Tensor7 encoder stores the content size only for folders up to
+   The Heptazip encoder stores the content size only for folders up to
    128 KiB (compressed in one call); bigger frames use the window of the level,
    at most 2^27. */
 static const UInt64 kMem_Zstd = (UInt64)1 << 27;
@@ -184,6 +186,96 @@ Z7_COM7F_IMF(CFolderBufOutStream::Write(const void *data, UInt32 size, UInt32 *p
 
 
 // ---------------------------------------------------------------------------
+// CSharedInStream
+// ---------------------------------------------------------------------------
+
+HRESULT CSharedInStream::ReadAt(UInt64 pos, void *data, UInt32 size, UInt32 &processed)
+{
+  processed = 0;
+  NWindows::NSynchronization::CCriticalSectionLock lock(_lock);
+  if (!_posKnown || _pos != pos)
+  {
+    _posKnown = false;
+    RINOK(InStream_SeekSet(_stream, pos))
+    _pos = pos;
+    _posKnown = true;
+  }
+  const HRESULT res = _stream->Read(data, size, &processed);
+  if (res != S_OK)
+    _posKnown = false;
+  else
+    _pos += processed;
+  return res;
+}
+
+HRESULT CSharedInStream::ReadFullAt(UInt64 pos, void *data, size_t &size)
+{
+  const size_t wanted = size;
+  size = 0;
+  NWindows::NSynchronization::CCriticalSectionLock lock(_lock);
+  if (!_posKnown || _pos != pos)
+  {
+    _posKnown = false;
+    RINOK(InStream_SeekSet(_stream, pos))
+    _pos = pos;
+    _posKnown = true;
+  }
+  size = wanted;
+  const HRESULT res = ReadStream(_stream, data, &size);
+  if (res != S_OK)
+    _posKnown = false;
+  else
+    _pos += size;
+  return res;
+}
+
+HRESULT CSharedInStream::GetEnd(UInt64 &end)
+{
+  NWindows::NSynchronization::CCriticalSectionLock lock(_lock);
+  _posKnown = false;
+  return _stream->Seek(0, STREAM_SEEK_END, &end);
+}
+
+
+// ---------------------------------------------------------------------------
+// CSharedInStreamView
+// ---------------------------------------------------------------------------
+
+Z7_COM7F_IMF(CSharedInStreamView::Read(void *data, UInt32 size, UInt32 *processedSize))
+{
+  UInt32 processed = 0;
+  const HRESULT res = _shared->ReadAt(_pos, data, size, processed);
+  _pos += processed;
+  if (processedSize)
+    *processedSize = processed;
+  return res;
+}
+
+Z7_COM7F_IMF(CSharedInStreamView::Seek(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition))
+{
+  switch (seekOrigin)
+  {
+    case STREAM_SEEK_SET: break;
+    case STREAM_SEEK_CUR: offset += (Int64)_pos; break;
+    case STREAM_SEEK_END:
+    {
+      UInt64 end;
+      RINOK(_shared->GetEnd(end))
+      offset += (Int64)end;
+      break;
+    }
+    default: return STG_E_INVALIDFUNCTION;
+  }
+  if (offset < 0)
+    return HRESULT_WIN32_ERROR_NEGATIVE_SEEK;
+  _pos = (UInt64)offset;
+  if (newPosition)
+    *newPosition = (UInt64)offset;
+  return S_OK;
+}
+
+
+// ---------------------------------------------------------------------------
 // CBufInStreamAt
 // ---------------------------------------------------------------------------
 
@@ -196,6 +288,14 @@ Z7_COM7F_IMF(CBufInStreamAt::Read(void *data, UInt32 size, UInt32 *processedSize
   if (_pos < _base)
     return E_FAIL; // the decoder reads only inside the packed streams of the folder
   const UInt64 offset = _pos - _base;
+  if (offset >= _size && _refill)
+  {
+    const UInt64 needEnd = offset + size;
+    const size_t prevSize = _size;
+    _refill->Refill((needEnd < (UInt64)(size_t)-1) ? (size_t)needEnd : (size_t)-1, _size, _endRes);
+    if (_size == prevSize || _endRes != S_OK)
+      _refill = NULL; // the data is complete
+  }
   if (offset >= _size)
     return _endRes;
   size_t rem = _size - (size_t)offset;

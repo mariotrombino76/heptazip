@@ -1271,7 +1271,7 @@ HRESULT CHandler::Decompress(ISequentialOutStream *outStream, Byte *outBuf, bool
             && (state.status == ZSTD_STATUS_NEEDS_MORE_INPUT ||
                 state.status == ZSTD_STATUS_FINISHED_FRAME))
           break;
-        // Tensor7: a frame larger than the block (outSizeMax) fills the output buffer;
+        // Heptazip: a frame larger than the block (outSizeMax) fills the output buffer;
         // then the decoder returns ZSTD_STATUS_NOT_FINISHED without progress, and
         // calling it again looped forever (a 4 KB image hung 7-Zip, found by fuzzing).
         // The status check below reports the error.

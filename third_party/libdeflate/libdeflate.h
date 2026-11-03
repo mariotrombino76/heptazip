@@ -88,7 +88,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
 			    void *out, size_t out_nbytes_avail);
 
 /*
- * Tensor7: libdeflate_deflate_compress_chunk() compresses (in_nbytes) bytes after
+ * Heptazip: libdeflate_deflate_compress_chunk() compresses (in_nbytes) bytes after
  * (dict_nbytes) bytes of history at (in) (only the last 32768 are used).  If
  * !final, the output does not end the stream: it ends with an empty stored
  * block on a byte boundary, and the output of the next chunk can follow it.

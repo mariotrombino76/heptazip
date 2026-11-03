@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 # Crea il corpus di test in bench-data/corpus (o $BENCH_DATA/corpus).
 #
 #   tools/bench/make-corpus.sh [--silesia]

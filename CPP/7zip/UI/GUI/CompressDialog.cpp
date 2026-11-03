@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../../C/CpuArch.h"
 
 #include "../../../Common/IntToString.h"
@@ -44,6 +46,7 @@ extern bool g_IsNT;
 
 static const UInt32 kLangIDs[] =
 {
+  IDT_COMPRESS_PROFILE,
   IDT_COMPRESS_ARCHIVE,
   IDT_COMPRESS_UPDATE_MODE,
   IDT_COMPRESS_FORMAT,
@@ -106,6 +109,25 @@ static const UInt32 kZstd_MAX_DictSize_Chain = (UInt32)1 << kMaxDictChain;
 */
 
 static LPCSTR const kExeExt = ".exe";
+
+// Heptazip: profiles of the dialog (format, level, Parameters field)
+struct CProfile
+{
+  UInt32 StringID;
+  const char *Format;
+  UInt32 Level;
+  const char *Params;
+};
+
+static const CProfile k_Profiles[] =
+{
+  { IDS_COMPRESS_PROFILE_CUSTOM,       "",    0, "" },
+  { IDS_COMPRESS_PROFILE_FASTEST,      "7z",  3, "0=zstd" },
+  { IDS_COMPRESS_PROFILE_FAST_EXTRACT, "7z",  9, "0=brotli" },
+  { IDS_COMPRESS_PROFILE_BALANCED,     "7z",  5, "" },
+  { IDS_COMPRESS_PROFILE_BEST,         "7z",  9, "" },
+  { IDS_COMPRESS_PROFILE_COMPATIBLE,   "zip", 5, "" }
+};
 
 static const UInt32 g_Levels[] =
 {
@@ -492,6 +514,12 @@ bool CCompressDialog::OnInit()
   m_Volume.Attach(GetItem(IDC_COMPRESS_VOLUME));
   m_Params.Attach(GetItem(IDE_COMPRESS_PARAMETERS));
 
+  _profileIsChanging = false;
+  m_Profile.Attach(GetItem(IDC_COMPRESS_PROFILE));
+  for (unsigned i = 0; i < Z7_ARRAY_SIZE(k_Profiles); i++)
+    m_Profile.AddString(LangString(k_Profiles[i].StringID));
+  m_Profile.SetCurSel(0);
+
   AddVolumeItems(m_Volume);
 
   m_RegistryInfo.Load();
@@ -543,6 +571,7 @@ bool CCompressDialog::OnInit()
   CheckButton(IDX_COMPRESS_DEL, Info.DeleteAfterCompressing);
 
   FormatChanged(false); // isChanged
+  Profile_Detect();
 
   // OnButtonSFX();
 
@@ -1228,7 +1257,7 @@ void CCompressDialog::OnOK()
         wchar_t s[32];
         ConvertUInt64ToString(volumeSize, s);
         if (::MessageBoxW(*this, MyFormatNew(IDS_SPLIT_CONFIRM, s),
-            L"7-Zip", MB_YESNOCANCEL | MB_ICONQUESTION) != IDYES)
+            HZ_NAME_W, MB_YESNOCANCEL | MB_ICONQUESTION) != IDYES)
           return;
       }
     }
@@ -1310,8 +1339,130 @@ bool CCompressDialog::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 
+/* Heptazip: profiles. A profile selects the format and the level with the controls of
+   the dialog (as the user would do) and sets the Parameters field: "0=zstd" and
+   "0=brotli" replace the method of the combo box (zstd and brotli are not in its list).
+   A manual change of the format or of the level returns to "Custom". */
+
+void CCompressDialog::ApplyProfile(int index)
+{
+  if (index <= 0 || (unsigned)index >= Z7_ARRAY_SIZE(k_Profiles))
+    return;
+  const CProfile &p = k_Profiles[(unsigned)index];
+  _profileIsChanging = true;
+  {
+    const unsigned count = (unsigned)m_Format.GetCount();
+    for (unsigned i = 0; i < count; i++)
+    {
+      const CArcInfoEx &ai = (*ArcFormats)[(unsigned)m_Format.GetItemData(i)];
+      if (ai.Name.IsEqualTo_Ascii_NoCase(p.Format))
+      {
+        if ((int)i != m_Format.GetCurSel())
+        {
+          m_Format.SetCurSel((int)i);
+          OnCommand(CBN_SELCHANGE, IDC_COMPRESS_FORMAT, 0);
+        }
+        break;
+      }
+    }
+  }
+  {
+    const unsigned count = (unsigned)m_Level.GetCount();
+    for (unsigned i = 0; i < count; i++)
+      if ((UInt32)m_Level.GetItemData(i) == p.Level)
+      {
+        m_Level.SetCurSel((int)i);
+        OnCommand(CBN_SELCHANGE, IDC_COMPRESS_LEVEL, 0);
+        break;
+      }
+  }
+  const UString params (p.Params);
+  m_Params.SetText(params);
+  Params_UpdateMethodEnable();
+  _profileIsChanging = false;
+}
+
+// the options of the format are remembered (also "0=zstd" of a profile): at the opening
+// we show the profile that gave them
+void CCompressDialog::Profile_Detect()
+{
+  UString params;
+  m_Params.GetText(params);
+  if (!params.IsEmpty())
+  {
+    const CArcInfoEx &ai = Get_ArcInfoEx();
+    const UInt32 level = (UInt32)m_Level.GetItemData_of_CurSel();
+    for (unsigned i = 1; i < Z7_ARRAY_SIZE(k_Profiles); i++)
+    {
+      const CProfile &p = k_Profiles[i];
+      if (p.Params[0] != 0 && p.Level == level
+          && ai.Name.IsEqualTo_Ascii_NoCase(p.Format)
+          && params == UString(p.Params))
+      {
+        m_Profile.SetCurSel((int)i);
+        break;
+      }
+    }
+  }
+  Params_UpdateMethodEnable();
+}
+
+// "0=method" (7z) or "m=method" in the Parameters field replaces the method of the
+// combo box (see UpdateGUI.cpp): the method controls are disabled
+void CCompressDialog::Params_UpdateMethodEnable()
+{
+  UString s;
+  m_Params.GetText(s);
+  bool methodOverride = false;
+  for (unsigned i = 0; i + 1 < s.Len(); i++)
+  {
+    const wchar_t c = s[i];
+    if ((i == 0 || s[i - 1] == ' ') && s[i + 1] == '=' && (c == '0' || c == 'm' || c == 'M'))
+    {
+      methodOverride = true;
+      break;
+    }
+  }
+  if (methodOverride)
+  {
+    EnableItem(IDC_COMPRESS_METHOD, false);
+    EnableItem(IDC_COMPRESS_DICTIONARY, false);
+    EnableItem(IDC_COMPRESS_ORDER, false);
+  }
+  else
+  {
+    EnableMultiCombo(IDC_COMPRESS_METHOD);
+    EnableMultiCombo(IDC_COMPRESS_DICTIONARY);
+    EnableMultiCombo(IDC_COMPRESS_ORDER);
+  }
+}
+
+void CCompressDialog::Profile_SetCustom(bool clearProfileParams)
+{
+  if (_profileIsChanging)
+    return;
+  const int cur = m_Profile.GetCurSel();
+  if (cur <= 0)
+    return;
+  m_Profile.SetCurSel(0);
+  if (!clearProfileParams)
+    return;
+  // the method of the profile must not remain without the profile
+  UString params;
+  m_Params.GetText(params);
+  const UString profileParams (k_Profiles[(unsigned)cur].Params);
+  if (!profileParams.IsEmpty() && params == profileParams)
+    m_Params.SetText(L"");
+}
+
 bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
 {
+  if (code == EN_CHANGE && itemID == IDE_COMPRESS_PARAMETERS)
+  {
+    Profile_SetCustom(false);  // the parameters are the user's now
+    Params_UpdateMethodEnable();
+    return true;
+  }
   if (code == CBN_SELCHANGE)
   {
     switch (itemID)
@@ -1336,17 +1487,24 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
         return true;
       }
       
+      case IDC_COMPRESS_PROFILE:
+        ApplyProfile(m_Profile.GetCurSel());
+        return true;
+
       case IDC_COMPRESS_FORMAT:
       {
+        Profile_SetCustom();
         const bool isSFX = IsSFX();
         SaveOptionsInMem();
         FormatChanged(true); // isChanged
         SetArchiveName2(isSFX);
+        Params_UpdateMethodEnable();
         return true;
       }
       
       case IDC_COMPRESS_LEVEL:
       {
+        Profile_SetCustom();
         Get_FormatOptions().ResetForLevelChange();
 
         SetMethod(); // call it if level changes method
@@ -1364,11 +1522,13 @@ bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
         SetNumThreads();
         CheckSFXNameChange();
         SetMemoryUsage();
+        Params_UpdateMethodEnable();
         return true;
       }
       
       case IDC_COMPRESS_METHOD:
       {
+        Profile_SetCustom();
         MethodChanged();
         SetSolidBlockSize();
         SetNumThreads();
@@ -2239,7 +2399,7 @@ void CCompressDialog::SetOrder2()
     case kLZMA:
     case kLZMA2:
     {
-      _auto_Order = (level < 7 ? 32 : 64);
+      _auto_Order = (level < 5 ? 32 : 64); // Heptazip: as LzmaEncProps_Normalize()
       int curSel = AddOrder_Auto();
       for (unsigned i = 2 * 2; i < 8 * 2; i++)
       {

@@ -244,6 +244,11 @@ COMPRESS_OBJS = \
   $O\ZDecoder.obj \
   $O\ZstdDecoder.obj \
   $O\ZstdCodecRegister.obj \
+  $O\ZstdLibEncoder.obj \
+  $O\FloatCoder.obj \
+  $O\FloatRegister.obj \
+  $O\BrotliCoder.obj \
+  $O\BrotliRegister.obj \
 
 CRYPTO_OBJS = \
   $O\7zAes.obj \
@@ -303,6 +308,74 @@ C_OBJS = \
   $O\XzEnc.obj \
   $O\XzIn.obj \
   $O\ZstdDec.obj \
+  $O\FloatPlane.obj \
+  $O\FloatPlaneLz.obj \
+  $O\FloatQuant.obj \
+
+# Heptazip: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# FLOAT) and the libdeflate compressor (Deflate, design 0012). The rules are in 7zip.mak.
+CFLAGS = $(CFLAGS) -DZ7_ZSTD_LIB_ENCODER -DZ7_DEFLATE_LIBDEFLATE
+
+HZ_LIB_OBJS = \
+  $O\debug.obj \
+  $O\entropy_common.obj \
+  $O\error_private.obj \
+  $O\fse_decompress.obj \
+  $O\pool.obj \
+  $O\threading.obj \
+  $O\xxhash.obj \
+  $O\zstd_common.obj \
+  $O\fse_compress.obj \
+  $O\hist.obj \
+  $O\huf_compress.obj \
+  $O\zstd_compress.obj \
+  $O\zstd_compress_literals.obj \
+  $O\zstd_compress_sequences.obj \
+  $O\zstd_compress_superblock.obj \
+  $O\zstd_double_fast.obj \
+  $O\zstd_fast.obj \
+  $O\zstd_lazy.obj \
+  $O\zstd_ldm.obj \
+  $O\zstd_opt.obj \
+  $O\zstd_preSplit.obj \
+  $O\zstdmt_compress.obj \
+  $O\deflate_compress.obj \
+  $O\libdeflate_utils.obj \
+  $O\br_common_constants.obj \
+  $O\br_common_context.obj \
+  $O\br_common_dictionary.obj \
+  $O\br_common_platform.obj \
+  $O\br_common_shared_dictionary.obj \
+  $O\br_common_transform.obj \
+  $O\br_dec_bit_reader.obj \
+  $O\br_dec_decode.obj \
+  $O\br_dec_huffman.obj \
+  $O\br_dec_prefix.obj \
+  $O\br_dec_state.obj \
+  $O\br_dec_static_init.obj \
+  $O\br_enc_backward_references.obj \
+  $O\br_enc_backward_references_hq.obj \
+  $O\br_enc_bit_cost.obj \
+  $O\br_enc_block_splitter.obj \
+  $O\br_enc_brotli_bit_stream.obj \
+  $O\br_enc_cluster.obj \
+  $O\br_enc_command.obj \
+  $O\br_enc_compound_dictionary.obj \
+  $O\br_enc_compress_fragment.obj \
+  $O\br_enc_compress_fragment_two_pass.obj \
+  $O\br_enc_dictionary_hash.obj \
+  $O\br_enc_encode.obj \
+  $O\br_enc_encoder_dict.obj \
+  $O\br_enc_entropy_encode.obj \
+  $O\br_enc_fast_log.obj \
+  $O\br_enc_histogram.obj \
+  $O\br_enc_literal_cost.obj \
+  $O\br_enc_memory.obj \
+  $O\br_enc_metablock.obj \
+  $O\br_enc_static_dict.obj \
+  $O\br_enc_static_dict_lut.obj \
+  $O\br_enc_static_init.obj \
+  $O\br_enc_utf8_util.obj \
 
 !include "../../Aes.mak"
 !include "../../Crc.mak"

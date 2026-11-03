@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "resource.h"
 #include "OverwriteDialogRes.h"
 
@@ -19,6 +21,7 @@
 
 #include "App.h"
 #include "CopyDialog.h"
+#include "DarkMode.h"
 #include "ExtractCallback.h"
 #include "FormatUtils.h"
 #include "IFolder.h"
@@ -134,17 +137,33 @@ HRESULT CApp::CreateOnePanel(unsigned panelIndex, const UString &mainPath, const
   
   const unsigned id = 1000 + 100 * panelIndex; // check it
 
-  return Panels[panelIndex].Create(_window, _window,
+  const HRESULT res = Panels[panelIndex].Create(_window, _window,
       id, path, arcFormat, &m_PanelCallbackImp[panelIndex], &AppState,
       needOpenArc,
       openRes);
+  // Heptazip: a panel created later (F9) on a screen with another scale: the font
+  // (the columns are already created at the scale of the window)
+  if (res == S_OK && Panels[panelIndex].PanelCreated
+      && Dpi != 0 && Dpi != NDarkMode::GetSystemDpi())
+    Panels[panelIndex].OnDpiChanged(NDarkMode::GetUiFont(Dpi), 0, Dpi);
+  return res;
 }
 
+
+/* Heptazip: the toolbar icons are icon resources with several sizes (16..64);
+   the size follows the DPI of the screen: 24 px (32 px with large buttons) at 100% */
+static int GetToolbarIconSize(HWND wnd, bool largeButtons)
+{
+  int dpi = (int)NDarkMode::GetWindowDpi(wnd);
+  if (dpi < 96)
+    dpi = 96;
+  return MulDiv(largeButtons ? 32 : 24, dpi, 96);
+}
 
 static void CreateToolbar(HWND parent,
     NControl::CImageList &imageList,
     NControl::CToolBar &toolBar,
-    bool largeButtons)
+    int iconSize)
 {
   toolBar.Attach(::CreateWindowEx(0, TOOLBARCLASSNAME, NULL, 0
       | WS_CHILD
@@ -152,6 +171,7 @@ static void CreateToolbar(HWND parent,
       | TBSTYLE_FLAT
       | TBSTYLE_TOOLTIPS
       | TBSTYLE_WRAPABLE
+      | CCS_NODIVIDER  // Heptazip: no etched line under the menu (white in the dark theme)
       // | TBSTYLE_AUTOSIZE
       // | CCS_NORESIZE
       #ifdef UNDER_CE
@@ -164,10 +184,7 @@ static void CreateToolbar(HWND parent,
   // backward compatibility.
   toolBar.ButtonStructSize();
 
-  imageList.Create(
-      largeButtons ? 48: 24,
-      largeButtons ? 36: 24,
-      ILC_MASK | ILC_COLOR32, 0, 0);
+  imageList.Create(iconSize, iconSize, ILC_MASK | ILC_COLOR32, 0, 0);
   toolBar.SetImageList(0, imageList);
 }
 
@@ -175,8 +192,7 @@ static void CreateToolbar(HWND parent,
 struct CButtonInfo
 {
   int CommandID;
-  UINT BitmapResID;
-  UINT Bitmap2ResID;
+  UINT IconResID;
   UINT StringResID;
 
   UString GetText() const { return LangString(StringResID); }
@@ -184,17 +200,17 @@ struct CButtonInfo
 
 static const CButtonInfo g_StandardButtons[] =
 {
-  { IDM_COPY_TO,    IDB_COPY,   IDB_COPY2,   IDS_BUTTON_COPY },
-  { IDM_MOVE_TO,    IDB_MOVE,   IDB_MOVE2,   IDS_BUTTON_MOVE },
-  { IDM_DELETE,     IDB_DELETE, IDB_DELETE2, IDS_BUTTON_DELETE } ,
-  { IDM_PROPERTIES, IDB_INFO,   IDB_INFO2,   IDS_BUTTON_INFO }
+  { IDM_COPY_TO,    IDI_TB_COPY,   IDS_BUTTON_COPY },
+  { IDM_MOVE_TO,    IDI_TB_MOVE,   IDS_BUTTON_MOVE },
+  { IDM_DELETE,     IDI_TB_DELETE, IDS_BUTTON_DELETE } ,
+  { IDM_PROPERTIES, IDI_TB_INFO,   IDS_BUTTON_INFO }
 };
 
 static const CButtonInfo g_ArchiveButtons[] =
 {
-  { kMenuCmdID_Toolbar_Add,     IDB_ADD,     IDB_ADD2,     IDS_ADD },
-  { kMenuCmdID_Toolbar_Extract, IDB_EXTRACT, IDB_EXTRACT2, IDS_EXTRACT },
-  { kMenuCmdID_Toolbar_Test,    IDB_TEST,    IDB_TEST2,    IDS_TEST }
+  { kMenuCmdID_Toolbar_Add,     IDI_TB_ADD,     IDS_ADD },
+  { kMenuCmdID_Toolbar_Extract, IDI_TB_EXTRACT, IDS_EXTRACT },
+  { kMenuCmdID_Toolbar_Test,    IDI_TB_TEST,    IDS_TEST }
 };
 
 static bool SetButtonText(int commandID, const CButtonInfo *buttons, unsigned numButtons, UString &s)
@@ -221,7 +237,7 @@ static void SetButtonText(int commandID, UString &s)
 static void AddButton(
     NControl::CImageList &imageList,
     NControl::CToolBar &toolBar,
-    const CButtonInfo &butInfo, bool showText, bool large)
+    const CButtonInfo &butInfo, bool showText, int iconSize)
 {
   TBBUTTON but;
   but.iBitmap = 0;
@@ -236,14 +252,14 @@ static void AddButton(
     but.iString = (INT_PTR)(LPCWSTR)s;
 
   but.iBitmap = imageList.GetImageCount();
-  HBITMAP b = ::LoadBitmap(g_hInstance,
-      large ?
-      MAKEINTRESOURCE(butInfo.BitmapResID):
-      MAKEINTRESOURCE(butInfo.Bitmap2ResID));
-  if (b)
+  const UINT iconID = butInfo.IconResID + (NDarkMode::IsDark() ? IDI_TB_DARK_OFFSET : 0);
+  const HICON icon = (HICON)::LoadImage(g_hInstance,
+      MAKEINTRESOURCE(iconID), IMAGE_ICON,
+      iconSize, iconSize, LR_DEFAULTCOLOR);
+  if (icon)
   {
-    imageList.AddMasked(b, RGB(255, 0, 255));
-    ::DeleteObject(b);
+    imageList.AddIcon(icon);
+    ::DestroyIcon(icon);
   }
   #ifdef _UNICODE
   toolBar.AddButton(1, &but);
@@ -260,17 +276,44 @@ void CApp::ReloadToolbars()
 
   if (ShowArchiveToolbar || ShowStandardToolbar)
   {
-    CreateToolbar(_window, _buttonsImageList, _toolBar, LargeButtons);
+    const int iconSize = GetToolbarIconSize(_window, LargeButtons);
+    CreateToolbar(_window, _buttonsImageList, _toolBar, iconSize);
+    // the font of the scale of the window (the default one is for the main screen)
+    _toolBar.SendMsg(WM_SETFONT, (WPARAM)NDarkMode::GetUiFont(NDarkMode::GetWindowDpi(_window)), FALSE);
     unsigned i;
     if (ShowArchiveToolbar)
       for (i = 0; i < Z7_ARRAY_SIZE(g_ArchiveButtons); i++)
-        AddButton(_buttonsImageList, _toolBar, g_ArchiveButtons[i], ShowButtonsLables, LargeButtons);
+        AddButton(_buttonsImageList, _toolBar, g_ArchiveButtons[i], ShowButtonsLables, iconSize);
     if (ShowStandardToolbar)
       for (i = 0; i < Z7_ARRAY_SIZE(g_StandardButtons); i++)
-        AddButton(_buttonsImageList, _toolBar, g_StandardButtons[i], ShowButtonsLables, LargeButtons);
+        AddButton(_buttonsImageList, _toolBar, g_StandardButtons[i], ShowButtonsLables, iconSize);
 
     _toolBar.AutoSize();
+    NDarkMode::ApplyTree(_toolBar);
   }
+}
+
+void CApp::OnDpiChanged(UInt32 dpi, bool columnsAtNewDpi)
+{
+  if (dpi == 0 || dpi == Dpi)
+    return;
+  const HFONT font = NDarkMode::GetUiFont(dpi);
+  for (unsigned i = 0; i < kNumPanelsMax; i++)
+    if (Panels[i].PanelCreated)
+      Panels[i].OnDpiChanged(font, columnsAtNewDpi ? 0 : Dpi, dpi);
+  Dpi = dpi;
+  ReloadToolbars();
+  MoveSubWindows();
+}
+
+void CApp::ApplyTheme()
+{
+  ReloadToolbars();
+  NDarkMode::ApplyMainWindow(_window);
+  for (unsigned i = 0; i < kNumPanelsMax; i++)
+    if (Panels[i].PanelCreated)
+      Panels[i].OnThemeChanged();
+  MoveSubWindows();
 }
 
 void CApp::SaveToolbarChanges()
@@ -284,6 +327,7 @@ void CApp::SaveToolbarChanges()
 HRESULT CApp::Create(HWND hwnd, const UString &mainPath, const UString &arcFormat, int xSizes[2], bool needOpenArc, COpenResult &openRes)
 {
   _window.Attach(hwnd);
+  Dpi = NDarkMode::GetSystemDpi();
 
   #ifdef UNDER_CE
   _commandBar.Create(g_hInstance, hwnd, 1);
@@ -964,7 +1008,7 @@ void CApp::RefreshTitle(bool always)
 {
   UString path = GetFocusedPanel()._currentFolderPrefix;
   if (path.IsEmpty())
-    path = "7-Zip"; // LangString(IDS_APP_TITLE);
+    path = HZ_NAME; // LangString(IDS_APP_TITLE);
   if (!always && path == PrevTitle)
     return;
   PrevTitle = path;

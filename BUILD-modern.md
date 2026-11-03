@@ -1,4 +1,4 @@
-# Tensor7 (fork di 7-Zip, branch modern) — build e test
+# Heptazip (fork di 7-Zip, branch modern) — build e test
 
 Questo branch (`modern`) affianca ai makefile originali un build system CMake
 e un banco di prova per misurare correttezza e prestazioni di ogni modifica.
@@ -27,6 +27,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_PGO` | `OFF` | `GEN` / `USE`: profile-guided optimization (usare `tools/pgo.sh`) |
 | `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
+| `SEVENZIP_BROTLI` | `ON` | metodo brotli nei `.7z` con `third_party/brotli` (compatibile con 7-Zip-zstd) |
 | `SEVENZIP_LIBDEFLATE` | `ON` | compressore Deflate di `third_party/libdeflate` per gzip, zip e 7z (senza: l'encoder di 7-Zip) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 
@@ -148,6 +149,17 @@ Metodo `0x4F71101`, compatibile con 7-Zip-zstd. L'estrazione usa il decoder di 7
 Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 `docs/design/0002-zstd-nel-formato-7z.md`.
 
+## Brotli nei `.7z` (`-m0=brotli`)
+
+```sh
+7zz a -m0=brotli -mx5 archivio.7z dati/     # equilibrato
+7zz a -m0=brotli -mx11 archivio.7z dati/    # massimo rapporto (lento in compressione)
+```
+
+Metodo `0x4F71102`, nel formato di 7-Zip-zstd (frame indipendenti, compressi e
+decompressi in parallelo). Gli archivi non si aprono con 7-Zip upstream. Dettagli e
+misure: [docs/design/0014-brotli-nel-7z.md](docs/design/0014-brotli-nel-7z.md).
+
 ## Pesi dei modelli AI (`-m0=FLOAT`)
 
 ```sh
@@ -175,6 +187,52 @@ questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 
 Un solo documento JSON su stdout, con gli stessi campi di `-slt` (nomi in camelCase, date
 ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
+
+## Windows: GUI (7zFM, 7zG) con Visual Studio
+
+```bat
+tools\windows\build-msvc.bat out-msvc
+rem -> 7z.dll, 7z.exe, 7zFM.exe, 7zG.exe, 7-zip.dll in out-msvc\
+```
+
+I file si usano senza installazione (stessa cartella). La CI li pubblica come artefatto
+`heptazip-windows-x64-msvc`. Heptazip convive con 7-Zip installato: impostazioni in
+`HKCU\Software\Heptazip`, codec cercati solo nella propria cartella (non in quella di
+7-Zip), associazioni dei file con il prefisso `Heptazip.`, estensione di Explorer con un
+CLSID proprio (`{90642948-CE43-44BE-810E-2CA2A1F77CEE}`). I file di traduzione di 7-Zip
+(`Lang\*.txt`) restano usabili.
+
+## Windows: 7zz.exe con MinGW-w64
+
+La versione da riga di comando per Windows si compila da Linux con i makefile di 7-Zip
+(che ora contengono anche FLOAT, l'encoder zstd e libdeflate):
+
+```sh
+sudo apt install g++-mingw-w64-x86-64-posix
+cd CPP/7zip/Bundles/Alone2
+make -f makefile.gcc -j"$(nproc)" O=_mingw IS_MINGW=1 \
+  CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix \
+  RC=x86_64-w64-mingw32-windres
+# -> _mingw/7zz.exe (statico, nessuna DLL)
+```
+
+Lo stesso makefile senza `IS_MINGW` compila `7zz` per Linux. La CI compila entrambi, e
+prova `7zz.exe` su un runner Windows (`tests/roundtrip_smoke.py`, `tests/deflate_mt.py`);
+l'eseguibile è tra gli artefatti dell'esecuzione (`7zz-windows-x64-mingw`).
+
+## Gestori di archivi di Linux (Ark, File Roller)
+
+Heptazip non ha una GUI per Linux, ma i gestori di archivi dei desktop eseguono 7-Zip e
+ne leggono l'output, quindi usano il motore di Heptazip se lo trovano nel PATH:
+
+```sh
+sudo install -m 755 build/7zz /usr/local/bin/7zz      # File Roller (GNOME) usa 7zz
+sudo ln -sf /usr/local/bin/7zz /usr/local/bin/7z      # Ark (KDE) esegue 7z
+```
+
+La prima riga del banner resta quella di 7-Zip (`7-Zip (z) 26.05 ...`): Ark legge un
+elenco solo dopo questa riga. Il test `gui_compat` legge l'output di `7zz` con le regole
+di Ark e di File Roller (7z, zip, tar, gzip).
 
 ## Test automatici (CTest)
 
@@ -262,8 +320,24 @@ Regole per ogni modifica:
 1. `roundtrip.sh` deve passare sempre.
 2. Se la modifica non deve cambiare l'output (refactoring, build, flag),
    `compare-archives.sh` contro la build **precedente del fork** deve dare `IDENTICI`.
-   Contro 7-Zip upstream i profili LZMA2 su input grandi differiscono per scelta (blocchi
-   LZMA2 da 2 volte il dizionario, `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi
-   si aprono con upstream.
+   Contro 7-Zip upstream i profili LZMA2 dal livello 5 su input grandi differiscono per
+   scelta (dimensione parola 64, `C/LzmaEnc.c`, e blocchi LZMA2 pari al dizionario,
+   `C/Lzma2Enc.h`): il formato è lo stesso e gli archivi si aprono con upstream.
 3. Se la modifica riguarda le prestazioni, allegare l'output di `bench.py`
    (minimo 3 ripetizioni) con il confronto rispetto a upstream.
+
+## Rilascio
+
+La versione è `HZ_VERSION` in `C/7zVersion.h`: base 7-Zip più `-m<n>` (es. `26.05-m1`).
+Per rilasciare:
+
+1. Scrivere `docs/release-notes/<versione>.md` (italiano e inglese) e unirlo in `develop`.
+2. Pull request da `develop` a `modern` (la linea stabile) e merge a CI verde.
+3. Tag sul merge: `git tag 26.05-m1 modern && git push heptazip 26.05-m1`.
+4. Il workflow **Release** (`.github/workflows/release.yml`) compila `7zz` Linux x64 statico
+   con le routine assembly (uasm v2.57r compilato nel runner), il pacchetto Windows x64
+   (MSVC: `7zFM`, `7zG`, `7z.exe`, `7z.dll`, `7-zip.dll`; MinGW: `7zz.exe`), esegue i test di
+   andata e ritorno su ogni binario, calcola `SHA256SUMS` e crea una **bozza** di release
+   con le note del punto 1.
+5. Scaricare i pacchetti dalla bozza, provarli, poi pubblicarla
+   (`gh release edit <versione> --draft=false`) e aggiornare la pagina Installazione del wiki.

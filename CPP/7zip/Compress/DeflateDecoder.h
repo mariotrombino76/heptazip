@@ -24,7 +24,7 @@ const int kLenIdNeedInit = -2;
 const unsigned kNumTableBits_Main = 10;
 const unsigned kNumTableBits_Dist = 6;
 
-/* Tensor7: tables of the fast decoder (DecodeFast(), docs/design/0011). A code is
+/* Heptazip: tables of the fast decoder (DecodeFast(), docs/design/0011). A code is
    looked up by its first bits (LSB first): kFastLitBits / kFastDistBits bits in the
    main table; the longer codes (up to 15 bits) in a subtable of (15 - main) bits. */
 const unsigned kFastLitBits = 11;

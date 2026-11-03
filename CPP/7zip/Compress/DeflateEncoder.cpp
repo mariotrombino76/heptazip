@@ -11,11 +11,9 @@
 #include "../Common/StreamObjects.h"
 #include "../Common/StreamUtils.h"
 #ifdef Z7_DEFLATE_LIBDEFLATE
-#include "libdeflate.h"
+#include "../../../third_party/libdeflate/libdeflate.h"
 #endif
-#ifndef Z7_ST
-#include "../Common/MtTaskPool.h"
-#endif
+#include "../Common/SlotPipeline.h"
 
 #include "DeflateEncoder.h"
 
@@ -113,7 +111,7 @@ void CEncProps::Normalize()
   if (level < 0) level = 5;
   Level = level;
   if (algo < 0) algo = (level < 5 ? 0 : 1);
-  /* Tensor7: -mx1..-mx4 were the same profile (fb 32, mc 32, greedy parsing). The fast
+  /* Heptazip: -mx1..-mx4 were the same profile (fb 32, mc 32, greedy parsing). The fast
      mode now does lazy matching, with a longer search at each level (docs/design/0010;
      silesia, 20 threads: -mx1 is as fast as before with a better ratio, -mx3 is faster
      than pigz -6 with a better ratio, -mx4 has the ratio of pigz -9 at 1.8 times its
@@ -163,7 +161,7 @@ void CCoder::SetProps(const CEncProps *props2)
   }
 }
 
-/* Tensor7: the chunks are coded by libdeflate (design 0012), at the level with a better
+/* Heptazip: the chunks are coded by libdeflate (design 0012), at the level with a better
    ratio than the coder of 7-Zip at the same -mx (silesia, 1 MiB chunks: -mx1 32.78%
    instead of 32.98%, -mx3 31.85% / 32.14%, -mx5 30.61% / 30.99%, -mx9 30.53% / 30.56%),
    with less CPU time (2 to 5 times less; -mx5 about the same). The coder of 7-Zip codes
@@ -377,7 +375,7 @@ void CCoder::MovePos(UInt32 num)
 
 static const UInt32 kIfinityPrice = 0xFFFFFFF;
 
-static const unsigned kNumPassesFirstBlock = 4;  // Tensor7: see CodeStream()
+static const unsigned kNumPassesFirstBlock = 4;  // Heptazip: see CodeStream()
 
 NO_INLINE UInt32 CCoder::Backward(UInt32 &backRes, UInt32 cur)
 {
@@ -511,7 +509,7 @@ NO_INLINE UInt32 CCoder::GetOptimal(UInt32 &backRes)
   }
 }
 
-/* Tensor7: the fast mode does lazy matching (docs/design/0010), as zlib's deflate_slow():
+/* Heptazip: the fast mode does lazy matching (docs/design/0010), as zlib's deflate_slow():
    the match at the current position is coded only if the next position has no better
    match; else the current byte is a literal, and the match of the next position is
    compared in the same way with the following one. "Better" is decided as in zstd's
@@ -572,6 +570,7 @@ UInt32 CCoder::GetOptimalFast(UInt32 &backRes)
      ahead (in the second pass of a block it is at the end of the block, and the
      matches come from m_OnePosMatchesMemory: the decisions must be the same) */
   if (len < m_MatchMaxLen
+      && m_Pos < kMatchArrayLimit   // the pending match skips the check of TryBlock()
       && Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) + m_AdditionalOffset - 1 > len)
   {
     if (len >= kGoodLen)
@@ -1109,7 +1108,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 {
   m_CheckStatic = (m_NumPasses != 1 || m_NumDivPasses != 1);
   m_IsMultiPass = (m_CheckStatic || (m_NumPasses != 1 || m_NumDivPasses != 1));
-  /* Tensor7: the optimal parser prices a block with the Huffman codes of the previous
+  /* Heptazip: the optimal parser prices a block with the Huffman codes of the previous
      block. A chunk after the first one would start with the default codes: its first
      block is parsed again with its own codes (kNumPassesFirstBlock passes; silesia -mx5,
      1 MiB chunks: the loss against a single stream goes from 0.17% to 0.09%, same time).
@@ -1134,7 +1133,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
   UInt64 nowPos = 0;
 
   MatchFinder_Init(&_lzInWindow);
-  // Tensor7: the history before the chunk goes into the match finder, but is not coded.
+  // Heptazip: the history before the chunk goes into the match finder, but is not coded.
   if (prefixSize != 0)
   {
     if (_btMode)
@@ -1171,7 +1170,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 
   m_NumPasses = numPasses;
 
-  // Tensor7: an empty stored block ends the chunk on a byte boundary (as zlib's
+  // Heptazip: an empty stored block ends the chunk on a byte boundary (as zlib's
   // Z_SYNC_FLUSH): the chunks are concatenated as bytes.
   if (!finalChunk)
     WriteStoreBlock(0, 0, false);
@@ -1184,7 +1183,7 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
   return m_OutStream.Flush();
 }
 
-// ---------- Tensor7: chunked and parallel coding (design 0009) ----------
+// ---------- Heptazip: chunked and parallel coding (design 0009) ----------
 //
 // The input is cut in chunks of kChunkSize bytes, coded independently by a pool of
 // coders. Each coder gets the last kHistorySize bytes of the previous chunk as history:
@@ -1194,17 +1193,8 @@ HRESULT CCoder::CodeStream(ISequentialInStream *inStream, ISequentialOutStream *
 // is the same for every -mmt. An input up to kChunkSize is coded as by 7-Zip.
 
 static const size_t kChunkSize = (size_t)1 << 20;
-static const unsigned kNumThreadsMax = 64;
 
-#ifndef Z7_ST
-#define Z7_DEFLATE_TASK_BASE  : public CMtTask
-#define Z7_DEFLATE_TASK_OVERRIDE  Z7_override
-#else
-#define Z7_DEFLATE_TASK_BASE
-#define Z7_DEFLATE_TASK_OVERRIDE
-#endif
-
-class CChunkSlot Z7_DEFLATE_TASK_BASE
+class CChunkSlot Z7_SLOT_TASK_BASE
 {
 public:
   CByteBuffer In;          // history (end of the previous chunk), then the data
@@ -1225,7 +1215,7 @@ public:
       , LibCoders(NULL), LibOutSize(0)
     #endif
     {}
-  void Run(unsigned workerIndex) Z7_DEFLATE_TASK_OVERRIDE;
+  void Run(unsigned workerIndex) Z7_SLOT_TASK_OVERRIDE;
   const Byte *GetOut(size_t &size) const
   {
     #ifdef Z7_DEFLATE_LIBDEFLATE
@@ -1268,21 +1258,16 @@ class CChunkEncoder
 {
   Z7_CLASS_NO_COPY(CChunkEncoder)
 public:
-  CObjectVector<CChunkSlot> Slots;
+  CSlotPipeline<CChunkSlot> Pipeline;
   CRecordVector<CCoder *> Coders;   // one per thread
   #ifdef Z7_DEFLATE_LIBDEFLATE
   CRecordVector<libdeflate_compressor *> LibCoders;   // one per thread
-  #endif
-  #ifndef Z7_ST
-  CMtTaskPool Pool;
   #endif
 
   CChunkEncoder() {}
   ~CChunkEncoder()
   {
-    #ifndef Z7_ST
-    Pool.Stop();
-    #endif
+    Pipeline.Stop();
     FOR_VECTOR (i, Coders)
       delete Coders[i];
     #ifdef Z7_DEFLATE_LIBDEFLATE
@@ -1294,7 +1279,7 @@ public:
       ICompressProgressInfo *progress);
 private:
   HRESULT Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
-      ICompressProgressInfo *progress, unsigned numThreads);
+      ICompressProgressInfo *progress);
 };
 
 void CCoder::DeleteChunkEncoder()
@@ -1306,40 +1291,26 @@ void CCoder::DeleteChunkEncoder()
 HRESULT CChunkEncoder::Code(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
     ICompressProgressInfo *progress)
 {
-  unsigned numThreads = main._numThreads;
-  if (numThreads < 1)
-    numThreads = 1;
-  if (numThreads > kNumThreadsMax)
-    numThreads = kNumThreadsMax;
-  #ifdef Z7_ST
-  numThreads = 1;
-  #endif
+  Pipeline.Init(main._numThreads);
   HRESULT res;
   // the threads are stopped in any case (BaseCode() catches the exceptions)
-  try { res = Code2(main, inStream, outStream, progress, numThreads); }
+  try { res = Code2(main, inStream, outStream, progress); }
   catch (...)
   {
-    #ifndef Z7_ST
-    Pool.Stop();
-    #endif
+    Pipeline.Stop();
     throw;
   }
-  #ifndef Z7_ST
-  Pool.Stop();
-  #endif
+  Pipeline.Stop();
   return res;
 }
 
 HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISequentialOutStream *outStream,
-    ICompressProgressInfo *progress, unsigned numThreads)
+    ICompressProgressInfo *progress)
 {
   const size_t history = main.m_Deflate64Mode ? kHistorySize64 : kHistorySize32;
-  // The chunks in work and a few more, read in advance or waiting to be written in order
-  // (silesia, 20 threads: as fast as 2 slots per thread, 96 MiB instead of 110 MiB;
-  // with (numThreads + 2) slots 6% slower)
-  const unsigned numSlots = (numThreads == 1) ? 1 : numThreads + numThreads / 2 + 1;
-  while (Slots.Size() < numSlots)
-    Slots.AddNew();
+  const unsigned numThreads = Pipeline.NumThreads;
+  const unsigned numSlots = Pipeline.NumSlots();
+  CObjectVector<CChunkSlot> &Slots = Pipeline.Slots;
   #ifdef Z7_DEFLATE_LIBDEFLATE
   const bool useLib = (main._libLevel != 0);
   if (useLib)
@@ -1407,12 +1378,7 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
     Coders.Add(c);
     c->SetProps(&main._props);
   }
-  #ifndef Z7_ST
-  if (numThreads > 1)
-  {
-    RINOK(Pool.Start(numThreads))
-  }
-  #endif
+  RINOK(Pipeline.Start())
 
   UInt64 inProcessed = 0, outProcessed = 0;
   unsigned next = 0, numInWork = 0;
@@ -1449,30 +1415,13 @@ HRESULT CChunkEncoder::Code2(CCoder &main, ISequentialInStream *inStream, ISeque
       }
       last = k;
       numInWork++;
-      #ifndef Z7_ST
-      if (numThreads > 1)
-      {
-        RINOK(Pool.Submit(&s))
-      }
-      else
-      #endif
-        s.Run(0);
+      RINOK(Pipeline.Submit(s))
     }
 
     if (numInWork == 0)
       break;
     CChunkSlot &s = Slots[next];
-    #ifndef Z7_ST
-    if (numThreads > 1)
-    {
-      const WRes wres = s.Done.Lock();
-      if (wres != 0)
-        return HRESULT_FROM_WIN32(wres);
-      if (s.ExceptionWasCaught)
-        return E_FAIL;
-    }
-    #endif
-    RINOK(s.Res)
+    RINOK(Pipeline.Wait(s))
     size_t outSize;
     const Byte *outData = s.GetOut(outSize);
     RINOK(WriteStream(outStream, outData, outSize))

@@ -3,6 +3,8 @@
 
 # Output dei makefile originali (makefile.gcc)
 _o/
+_linux/
+_mingw/
 b/
 
 # Dati di benchmark/PGO generati localmente
@@ -20,3 +22,4 @@ Asm/**/*.err
 __pycache__/
 *.pyc
 __pycache__/
+/out-msvc/

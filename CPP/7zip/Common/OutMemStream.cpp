@@ -113,7 +113,7 @@ Z7_COM7F_IMF(COutMemStream::Write(const void *data, UInt32 size, UInt32 *process
     void *p = _memManager->AllocateBlock();
     if (!p)
       return E_FAIL;
-    // Tensor7: Write() is throw(), and Add() can throw when the vector grows.
+    // Heptazip: Write() is throw(), and Add() can throw when the vector grows.
     try { Blocks.Blocks.Add(p); }
     catch (...) { _memManager->FreeBlock(p); return E_OUTOFMEMORY; }
   }

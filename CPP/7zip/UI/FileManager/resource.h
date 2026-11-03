@@ -4,21 +4,16 @@
 #define IDM_MENU          71
 #define IDR_ACCELERATOR1  72
 
-#define IDB_ADD      100
-#define IDB_EXTRACT  101
-#define IDB_TEST     102
-#define IDB_COPY     103
-#define IDB_MOVE     104
-#define IDB_DELETE   105
-#define IDB_INFO     106
-
-#define IDB_ADD2     150
-#define IDB_EXTRACT2 151
-#define IDB_TEST2    152
-#define IDB_COPY2    153
-#define IDB_MOVE2    154
-#define IDB_DELETE2  155
-#define IDB_INFO2    156
+// toolbar icons (Heptazip: one icon resource per button, sizes 16..64 for the DPI)
+#define IDI_TB_ADD      200
+#define IDI_TB_EXTRACT  201
+#define IDI_TB_TEST     202
+#define IDI_TB_COPY     203
+#define IDI_TB_MOVE     204
+#define IDI_TB_DELETE   205
+#define IDI_TB_INFO     206
+// the same icons for the dark theme: IDI_TB_* + IDI_TB_DARK_OFFSET
+#define IDI_TB_DARK_OFFSET  10
 
 #define IDM_HASH_ALL             101
 #define IDM_CRC32                102
@@ -102,6 +97,11 @@
 #define IDM_VIEW_STANDARD_TOOLBAR           751
 #define IDM_VIEW_TOOLBARS_LARGE_BUTTONS     752
 #define IDM_VIEW_TOOLBARS_SHOW_BUTTONS_TEXT 753
+
+#define IDM_VIEW_THEME           770
+#define IDM_VIEW_THEME_SYSTEM    771
+#define IDM_VIEW_THEME_LIGHT     772
+#define IDM_VIEW_THEME_DARK      773
 
 #define IDM_VIEW_TIME_POPUP      760
 #define IDM_VIEW_TIME            761

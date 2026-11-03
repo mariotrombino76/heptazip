@@ -684,7 +684,7 @@ HRESULT CDatabase::Open(IInStream *inStream)
 
   UInt64 fileSize;
   RINOK(InStream_GetSize_SeekToEnd(inStream, fileSize))
-  // Tensor7: the FAT sectors are in the file. With 4 KiB sectors the header alone
+  // Heptazip: the FAT sectors are in the file. With 4 KiB sectors the header alone
   // could ask for 4 G FAT items, allocated below before any check (found by fuzzing).
   if (numSectorsForFAT > (fileSize >> sectorSizeBits))
     return S_FALSE;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // 7zUpdateMt.h
-// Tensor7: building blocks for the parallel compression of 7z folders.
+// Heptazip: building blocks for the parallel compression of 7z folders.
 // See docs/design/0003-compressione-parallela-folder-7z.md
 
 #ifndef ZIP7_INC_7Z_UPDATE_MT_H

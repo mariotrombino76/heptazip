@@ -631,7 +631,7 @@ $O/7zSpecStream.o: ../../Archive/7z/7zSpecStream.cpp
 $O/7zUpdate.o: ../../Archive/7z/7zUpdate.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/7zUpdateMt.o: ../../Archive/7z/7zUpdateMt.cpp
-	$(CXX) $(CXXFLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
 
 
 $O/CabBlockInStream.o: ../../Archive/Cab/CabBlockInStream.cpp
@@ -758,7 +758,7 @@ $O/Deflate64Register.o: ../../Compress/Deflate64Register.cpp
 $O/DeflateDecoder.o: ../../Compress/DeflateDecoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/DeflateEncoder.o: ../../Compress/DeflateEncoder.cpp
-	$(CXX) $(CXXFLAGS) $<
+	$(CXX) $(CXXFLAGS) $(HZ_DEFLATE_FLAGS) $<
 $O/DeflateRegister.o: ../../Compress/DeflateRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/DeltaFilter.o: ../../Compress/DeltaFilter.cpp
@@ -832,6 +832,16 @@ $O/ZlibEncoder.o: ../../Compress/ZlibEncoder.cpp
 $O/ZstdDecoder.o: ../../Compress/ZstdDecoder.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/ZstdCodecRegister.o: ../../Compress/ZstdCodecRegister.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
+$O/ZstdLibEncoder.o: ../../Compress/ZstdLibEncoder.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_ZSTD_FLAGS) $<
+$O/FloatCoder.o: ../../Compress/FloatCoder.cpp
+	$(CXX) $(CXXFLAGS) $<
+$O/FloatRegister.o: ../../Compress/FloatRegister.cpp
+	$(CXX) $(CXXFLAGS) $<
+$O/BrotliCoder.o: ../../Compress/BrotliCoder.cpp
+	$(CXX) $(CXXFLAGS) -I../../../../third_party/brotli/c/include $<
+$O/BrotliRegister.o: ../../Compress/BrotliRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/ZstdRegister.o: ../../Compress/ZstdRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
@@ -1208,6 +1218,94 @@ $O/HuffEnc.o: ../../../../C/HuffEnc.c
 	$(CC) $(CFLAGS) $<
 $O/LzFind.o: ../../../../C/LzFind.c
 	$(CC) $(CFLAGS) $<
+$O/FloatPlane.o: ../../../../C/FloatPlane.c
+	$(CC) $(CFLAGS) $<
+$O/FloatPlaneLz.o: ../../../../C/FloatPlaneLz.c
+	$(CC) $(CFLAGS) $(HZ_ZSTD_FLAGS) $<
+$O/FloatQuant.o: ../../../../C/FloatQuant.c
+	$(CC) $(CFLAGS) $<
+
+# Heptazip: third-party libraries (third_party/), without warnings (-w after -Werror)
+HZ_ZSTD_LIB_FLAGS = -DZSTD_MULTITHREAD -DZSTD_DISABLE_ASM -DXXH_NAMESPACE=ZSTD_ -w
+$O/%.o: ../../../../third_party/zstd/lib/common/%.c
+	$(CC) $(CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
+$O/%.o: ../../../../third_party/zstd/lib/compress/%.c
+	$(CC) $(CFLAGS) $(HZ_ZSTD_LIB_FLAGS) $<
+$O/deflate_compress.o: ../../../../third_party/libdeflate/lib/deflate_compress.c
+	$(CC) $(CFLAGS) -w $<
+$O/libdeflate_utils.o: ../../../../third_party/libdeflate/lib/utils.c
+	$(CC) $(CFLAGS) -w $<
+HZ_BROTLI_LIB_FLAGS = -I../../../../third_party/brotli/c/include -w
+$O/br_common_constants.o: ../../../../third_party/brotli/c/common/constants.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_common_context.o: ../../../../third_party/brotli/c/common/context.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_common_dictionary.o: ../../../../third_party/brotli/c/common/dictionary.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_common_platform.o: ../../../../third_party/brotli/c/common/platform.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_common_shared_dictionary.o: ../../../../third_party/brotli/c/common/shared_dictionary.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_common_transform.o: ../../../../third_party/brotli/c/common/transform.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_bit_reader.o: ../../../../third_party/brotli/c/dec/bit_reader.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_decode.o: ../../../../third_party/brotli/c/dec/decode.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_huffman.o: ../../../../third_party/brotli/c/dec/huffman.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_prefix.o: ../../../../third_party/brotli/c/dec/prefix.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_state.o: ../../../../third_party/brotli/c/dec/state.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_dec_static_init.o: ../../../../third_party/brotli/c/dec/static_init.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_backward_references.o: ../../../../third_party/brotli/c/enc/backward_references.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_backward_references_hq.o: ../../../../third_party/brotli/c/enc/backward_references_hq.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_bit_cost.o: ../../../../third_party/brotli/c/enc/bit_cost.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_block_splitter.o: ../../../../third_party/brotli/c/enc/block_splitter.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_brotli_bit_stream.o: ../../../../third_party/brotli/c/enc/brotli_bit_stream.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_cluster.o: ../../../../third_party/brotli/c/enc/cluster.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_command.o: ../../../../third_party/brotli/c/enc/command.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_compound_dictionary.o: ../../../../third_party/brotli/c/enc/compound_dictionary.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_compress_fragment.o: ../../../../third_party/brotli/c/enc/compress_fragment.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_compress_fragment_two_pass.o: ../../../../third_party/brotli/c/enc/compress_fragment_two_pass.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_dictionary_hash.o: ../../../../third_party/brotli/c/enc/dictionary_hash.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_encode.o: ../../../../third_party/brotli/c/enc/encode.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_encoder_dict.o: ../../../../third_party/brotli/c/enc/encoder_dict.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_entropy_encode.o: ../../../../third_party/brotli/c/enc/entropy_encode.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_fast_log.o: ../../../../third_party/brotli/c/enc/fast_log.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_histogram.o: ../../../../third_party/brotli/c/enc/histogram.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_literal_cost.o: ../../../../third_party/brotli/c/enc/literal_cost.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_memory.o: ../../../../third_party/brotli/c/enc/memory.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_metablock.o: ../../../../third_party/brotli/c/enc/metablock.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_static_dict.o: ../../../../third_party/brotli/c/enc/static_dict.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_static_dict_lut.o: ../../../../third_party/brotli/c/enc/static_dict_lut.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_static_init.o: ../../../../third_party/brotli/c/enc/static_init.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+$O/br_enc_utf8_util.o: ../../../../third_party/brotli/c/enc/utf8_util.c
+	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
 
 # ifdef MT_FILES
 $O/LzFindMt.o: ../../../../C/LzFindMt.c

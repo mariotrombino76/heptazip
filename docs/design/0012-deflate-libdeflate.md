@@ -12,11 +12,11 @@
 
 ## 1. Problema
 
-Dopo i design 0009 (blocchi paralleli) e 0010 (lazy matching) Tensor7 batteva pigz nel
+Dopo i design 0009 (blocchi paralleli) e 0010 (lazy matching) Heptazip batteva pigz nel
 tempo reale, ma per core l'encoder di 7-Zip restava molto meno efficiente di libdeflate
 (silesia, un thread, CPU in secondi):
 
-| libdeflate | rapporto | CPU | | 7-Zip (Tensor7 0010) | rapporto | CPU |
+| libdeflate | rapporto | CPU | | 7-Zip (Heptazip 0010) | rapporto | CPU |
 |---|---|---|---|---|---|---|
 | L4 | 32,78% | 1,2 | | `-mx1` | 32,98% | 2,7 |
 | L6 | 31,85% | 1,5 | | `-mx3` | 32,14% | 4,2 |
@@ -32,7 +32,7 @@ finiscono con un blocco stored vuoto, l'uscita è un solo stream Deflate ed è l
 ogni `-mmt`.
 
 libdeflate comprime un buffer intero in uno stream completo: due modifiche (in
-`third_party/libdeflate`, marcate `Tensor7`, elenco in `README-Tensor7.md`):
+`third_party/libdeflate`, marcate `Heptazip`, elenco in `README-Heptazip.md`):
 
 - **storia**: `libdeflate_deflate_compress_chunk()` riceve la storia prima dei dati; le
   quattro strategie (fastest, greedy, lazy, near-optimal) la inseriscono nel match finder

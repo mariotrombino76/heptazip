@@ -89,7 +89,7 @@ public:
 };
 
 
-/* Tensor7: writes up to (maxSize) bytes into a CByteBuffer that grows (1 MiB, then
+/* Heptazip: writes up to (maxSize) bytes into a CByteBuffer that grows (1 MiB, then
    doubling, never beyond maxSize) only while data arrive. For outputs whose size comes
    from the archive header: a corrupted header cannot make the handler allocate gigabytes
    before any data are decoded (found by fuzzing). When exactly maxSize bytes were

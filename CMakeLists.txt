@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+# Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 # 7-Zip "modern" fork - build CMake per Linux (GCC/Clang).
 #
 # Affianca (non sostituisce) i makefile originali: CPP/7zip/Bundles/*/makefile.gcc
@@ -29,9 +29,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -DNDEBUG" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -DNDEBUG" CACHE STRING "")
 
-project(Tensor7
+project(Heptazip
   VERSION 26.05
-  DESCRIPTION "Tensor7, fork of 7-Zip 26.05"
+  DESCRIPTION "Heptazip, fork of 7-Zip 26.05"
   LANGUAGES C CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -86,6 +86,8 @@ option(SEVENZIP_ZSTD_ENCODER
   "Encoder Zstandard per .7z con la libreria inclusa in third_party/zstd (il decoder e' sempre presente)" ON)
 option(SEVENZIP_LIBDEFLATE
   "Compressore Deflate di libdeflate (third_party/libdeflate) per gzip, zip e 7z" ON)
+option(SEVENZIP_BROTLI
+  "Metodo brotli nei .7z con la libreria di third_party/brotli (compatibile con 7-Zip-zstd)" ON)
 option(SEVENZIP_BUILD_TESTS "Compila i programmi di test e registra la suite CTest" ON)
 
 set(CMAKE_C_STANDARD 17)
@@ -200,6 +202,9 @@ include(cmake/SevenZipZstd.cmake)
 # Compressore Deflate di libdeflate opzionale (definisce SEVENZIP_LIBDEFLATE_OBJECTS)
 include(cmake/SevenZipLibdeflate.cmake)
 
+# Metodo brotli opzionale (modifica SEVENZIP_CPP_SOURCES, definisce SEVENZIP_BROTLI_OBJECTS)
+include(cmake/SevenZipBrotli.cmake)
+
 # ---------------------------------------------------------------------------
 # Librerie
 #
@@ -230,7 +235,7 @@ add_executable(7zz
   $<TARGET_OBJECTS:sevenzip_cpp>
   $<TARGET_OBJECTS:sevenzip_console>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
 target_link_libraries(7zz PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 if(TARGET sevenzip_asm)
   add_dependencies(7zz sevenzip_asm)
@@ -250,7 +255,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Riepilogo configurazione
 # ---------------------------------------------------------------------------
-message(STATUS "Tensor7: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
+message(STATUS "Heptazip: build=${CMAKE_BUILD_TYPE} -O${SEVENZIP_OPT_LEVEL} "
                "native=${SEVENZIP_NATIVE} lto=${SEVENZIP_LTO} asm=${SEVENZIP_ASM} "
                "pgo=${SEVENZIP_PGO} c++=${SEVENZIP_CXX_STANDARD} "
                "sanitize=${SEVENZIP_SANITIZE} tests=${SEVENZIP_BUILD_TESTS} "

@@ -283,6 +283,11 @@ COMPRESS_OBJS = \
   $O/ZDecoder.o \
   $O/ZstdDecoder.o \
   $O/ZstdCodecRegister.o \
+  $O/ZstdLibEncoder.o \
+  $O/FloatCoder.o \
+  $O/FloatRegister.o \
+  $O/BrotliCoder.o \
+  $O/BrotliRegister.o \
 
 ifdef DISABLE_RAR
 DISABLE_RAR_COMPRESS=1
@@ -372,6 +377,80 @@ C_OBJS = \
   $O/XzCrc64.o \
   $O/XzCrc64Opt.o \
   $O/ZstdDec.o \
+  $O/FloatPlane.o \
+  $O/FloatPlaneLz.o \
+  $O/FloatQuant.o \
+
+
+# Heptazip: third-party libraries (third_party/): the zstd encoder (method zstd in .7z,
+# FLOAT) and the libdeflate compressor (Deflate, design 0012)
+HZ_ZSTD_FLAGS = -DZ7_ZSTD_LIB_ENCODER
+HZ_DEFLATE_FLAGS = -DZ7_DEFLATE_LIBDEFLATE
+
+ZSTD_LIB_OBJS = \
+  $O/debug.o \
+  $O/entropy_common.o \
+  $O/error_private.o \
+  $O/fse_decompress.o \
+  $O/pool.o \
+  $O/threading.o \
+  $O/xxhash.o \
+  $O/zstd_common.o \
+  $O/fse_compress.o \
+  $O/hist.o \
+  $O/huf_compress.o \
+  $O/zstd_compress.o \
+  $O/zstd_compress_literals.o \
+  $O/zstd_compress_sequences.o \
+  $O/zstd_compress_superblock.o \
+  $O/zstd_double_fast.o \
+  $O/zstd_fast.o \
+  $O/zstd_lazy.o \
+  $O/zstd_ldm.o \
+  $O/zstd_opt.o \
+  $O/zstd_preSplit.o \
+  $O/zstdmt_compress.o \
+
+BROTLI_LIB_OBJS = \
+  $O/br_common_constants.o \
+  $O/br_common_context.o \
+  $O/br_common_dictionary.o \
+  $O/br_common_platform.o \
+  $O/br_common_shared_dictionary.o \
+  $O/br_common_transform.o \
+  $O/br_dec_bit_reader.o \
+  $O/br_dec_decode.o \
+  $O/br_dec_huffman.o \
+  $O/br_dec_prefix.o \
+  $O/br_dec_state.o \
+  $O/br_dec_static_init.o \
+  $O/br_enc_backward_references.o \
+  $O/br_enc_backward_references_hq.o \
+  $O/br_enc_bit_cost.o \
+  $O/br_enc_block_splitter.o \
+  $O/br_enc_brotli_bit_stream.o \
+  $O/br_enc_cluster.o \
+  $O/br_enc_command.o \
+  $O/br_enc_compound_dictionary.o \
+  $O/br_enc_compress_fragment.o \
+  $O/br_enc_compress_fragment_two_pass.o \
+  $O/br_enc_dictionary_hash.o \
+  $O/br_enc_encode.o \
+  $O/br_enc_encoder_dict.o \
+  $O/br_enc_entropy_encode.o \
+  $O/br_enc_fast_log.o \
+  $O/br_enc_histogram.o \
+  $O/br_enc_literal_cost.o \
+  $O/br_enc_memory.o \
+  $O/br_enc_metablock.o \
+  $O/br_enc_static_dict.o \
+  $O/br_enc_static_dict_lut.o \
+  $O/br_enc_static_init.o \
+  $O/br_enc_utf8_util.o \
+
+LIBDEFLATE_OBJS = \
+  $O/deflate_compress.o \
+  $O/libdeflate_utils.o \
 
 ARC_OBJS = \
   $(LZMA_DEC_OPT_OBJS) \
@@ -395,5 +474,8 @@ ARC_OBJS = \
   $(ZIP_OBJS) \
   $(COMPRESS_OBJS) \
   $(CRYPTO_OBJS) \
+  $(ZSTD_LIB_OBJS) \
+  $(LIBDEFLATE_OBJS) \
+  $(BROTLI_LIB_OBJS) \
 
 # we need empty line after last line above

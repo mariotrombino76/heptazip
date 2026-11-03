@@ -2,7 +2,7 @@
 #include "../../GuiCommon.rc"
 
 #define xc 400
-#define yc 320
+#define yc 341
 
 #undef gSize
 #undef gSpace
@@ -63,50 +63,54 @@ BEGIN
   COMBOBOX  IDC_COMPRESS_ARCHIVE, m + xArcFolderOffs, 18, xc - bxsDots - 12 - xArcFolderOffs, 126, MY_COMBO_WITH_EDIT
   PUSHBUTTON  "...", IDB_COMPRESS_SET_ARCHIVE, xs - m - bxsDots, 16, bxsDots, bys, WS_GROUP
 
-  LTEXT     "Archive &format:", IDT_COMPRESS_FORMAT,      m,  41, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_FORMAT, g1x, 39, g1xs, 80, MY_COMBO | CBS_SORT
-  
-  LTEXT     "Compression &level:", IDT_COMPRESS_LEVEL,    m,  62, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_LEVEL,  g1x, 60, g1xs, 80, MY_COMBO
-  
-  LTEXT     "Compression &method:", IDT_COMPRESS_METHOD,  m,  83, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_METHOD, g1x, 81, g1xs, 80, MY_COMBO
+  // Heptazip: profiles (they set format, level and method)
+  LTEXT     "Pr&ofile:", IDT_COMPRESS_PROFILE,      m,  41, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_PROFILE, g1x, 39, g1xs, 120, MY_COMBO
 
-  LTEXT     "&Dictionary size:", IDT_COMPRESS_DICTIONARY, m, 104, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_DICTIONARY, g1x, 102, g1xs, 167, MY_COMBO
+  LTEXT     "Archive &format:", IDT_COMPRESS_FORMAT,      m, 62, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_FORMAT, g1x, 60, g1xs, 80, MY_COMBO | CBS_SORT
+  
+  LTEXT     "Compression &level:", IDT_COMPRESS_LEVEL,    m, 83, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_LEVEL,  g1x, 81, g1xs, 80, MY_COMBO
+  
+  LTEXT     "Compression &method:", IDT_COMPRESS_METHOD,  m, 104, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_METHOD, g1x, 102, g1xs, 80, MY_COMBO
+
+  LTEXT     "&Dictionary size:", IDT_COMPRESS_DICTIONARY, m, 125, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_DICTIONARY, g1x, 123, g1xs, 167, MY_COMBO
   // LTEXT     "&Dictionary size:", IDT_COMPRESS_DICTIONARY, m, 104, DICT_x - m, 16 // 8, SS_LEFTNOWORDWRAP
   // LTEXT     "", IDT_COMPRESS_PARAMS_INFO, m, 283, xs, MY_TEXT_NOPREFIX
   // CTEXT     "-", 0, DICT_x - DICT_SIZE_SPACE, 104, DICT_SIZE_SPACE, 8
   // COMBOBOX  IDC_COMPRESS_DICTIONARY2, DICT2_x, 102, DICT_SIZE, 140, MY_COMBO
   // COMBOBOX  IDC_COMPRESS_DICTIONARY,  DICT_x,  102, DICT_SIZE, 140, MY_COMBO
 
-  LTEXT     "&Word size:", IDT_COMPRESS_ORDER,            m, 125, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_ORDER,  g1x, 123, g1xs, 140, MY_COMBO
+  LTEXT     "&Word size:", IDT_COMPRESS_ORDER,            m, 146, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_ORDER,  g1x, 144, g1xs, 140, MY_COMBO
 
-  LTEXT     "&Solid Block size:", IDT_COMPRESS_SOLID,     m, 146, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_SOLID,  g1x, 144, g1xs, 140, MY_COMBO
+  LTEXT     "&Solid Block size:", IDT_COMPRESS_SOLID,     m, 167, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_SOLID,  g1x, 165, g1xs, 140, MY_COMBO
 
-  LTEXT     "Number of CPU &threads:", IDT_COMPRESS_THREADS, m, 167, g0xs, 8
-  COMBOBOX  IDC_COMPRESS_THREADS,  g1x, 165, g1xs - 40, 140, MY_COMBO
-  RTEXT     "", IDT_COMPRESS_HARDWARE_THREADS, g1x + g1xs - 40, 167, 40, 16, SS_NOPREFIX
+  LTEXT     "Number of CPU &threads:", IDT_COMPRESS_THREADS, m, 188, g0xs, 8
+  COMBOBOX  IDC_COMPRESS_THREADS,  g1x, 186, g1xs - 40, 140, MY_COMBO
+  RTEXT     "", IDT_COMPRESS_HARDWARE_THREADS, g1x + g1xs - 40, 188, 40, 16, SS_NOPREFIX
 
   
-  LTEXT     "Memory usage for Compressing:", IDT_COMPRESS_MEMORY,      m, 184, g2xs, 8
-  COMBOBOX  IDC_COMPRESS_MEM_USE,  g3x, 188, g3xs, 140, MY_COMBO
-  LTEXT     "", IDT_COMPRESS_MEMORY_VALUE,    m, 194, g2xs, MY_TEXT_NOPREFIX
+  LTEXT     "Memory usage for Compressing:", IDT_COMPRESS_MEMORY,      m, 205, g2xs, 8
+  COMBOBOX  IDC_COMPRESS_MEM_USE,  g3x, 209, g3xs, 140, MY_COMBO
+  LTEXT     "", IDT_COMPRESS_MEMORY_VALUE,    m, 215, g2xs, MY_TEXT_NOPREFIX
   
-  LTEXT     "Memory usage for Decompressing:", IDT_COMPRESS_MEMORY_DE, m, 208, g2xs, 8
-  RTEXT     "", IDT_COMPRESS_MEMORY_DE_VALUE, g3x, 208, g3xs, MY_TEXT_NOPREFIX
+  LTEXT     "Memory usage for Decompressing:", IDT_COMPRESS_MEMORY_DE, m, 229, g2xs, 8
+  RTEXT     "", IDT_COMPRESS_MEMORY_DE_VALUE, g3x, 229, g3xs, MY_TEXT_NOPREFIX
 
 
-  LTEXT     "Split to &volumes, bytes:", IDT_SPLIT_TO_VOLUMES, m, 225, gSize, 8
-  COMBOBOX  IDC_COMPRESS_VOLUME, m, 237, gSize, 73, MY_COMBO_WITH_EDIT
+  LTEXT     "Split to &volumes, bytes:", IDT_SPLIT_TO_VOLUMES, m, 246, gSize, 8
+  COMBOBOX  IDC_COMPRESS_VOLUME, m, 258, gSize, 73, MY_COMBO_WITH_EDIT
 
-  LTEXT     "Parameters:", IDT_COMPRESS_PARAMETERS, m, 256, gSize, 8
-  EDITTEXT  IDE_COMPRESS_PARAMETERS, m, 268, gSize, 14, ES_AUTOHSCROLL
+  LTEXT     "Parameters:", IDT_COMPRESS_PARAMETERS, m, 277, gSize, 8
+  EDITTEXT  IDE_COMPRESS_PARAMETERS, m, 289, gSize, 14, ES_AUTOHSCROLL
 
-  PUSHBUTTON  "Options", IDB_COMPRESS_OPTIONS, m, 292, bxs, bys
-  LTEXT     "", IDT_COMPRESS_OPTIONS, m + bxs + m, 294, gSize - bxs - m, 16, SS_NOPREFIX
+  PUSHBUTTON  "Options", IDB_COMPRESS_OPTIONS, m, 313, bxs, bys
+  LTEXT     "", IDT_COMPRESS_OPTIONS, m + bxs + m, 315, gSize - bxs - m, 16, SS_NOPREFIX
            
 
   LTEXT     "&Update mode:", IDT_COMPRESS_UPDATE_MODE, g4x, 41, 80, 8
@@ -210,6 +214,13 @@ BEGIN
     IDS_METHOD_MAXIMUM  "Maximum"
     IDS_METHOD_ULTRA    "Ultra"
 
+    IDS_COMPRESS_PROFILE_CUSTOM        "Custom"
+    IDS_COMPRESS_PROFILE_FASTEST       "Fastest (zstd)"
+    IDS_COMPRESS_PROFILE_FAST_EXTRACT  "Fast extraction (brotli)"
+    IDS_COMPRESS_PROFILE_BALANCED      "Balanced (LZMA2)"
+    IDS_COMPRESS_PROFILE_BEST          "Best compression (LZMA2)"
+    IDS_COMPRESS_PROFILE_COMPATIBLE    "Compatible (ZIP)"
+
     IDS_COMPRESS_UPDATE_MODE_ADD    "Add and replace files"
     IDS_COMPRESS_UPDATE_MODE_UPDATE "Update and add files"
     IDS_COMPRESS_UPDATE_MODE_FRESH  "Freshen existing files"
@@ -226,7 +237,7 @@ BEGIN
     IDS_COMPRESS_SEC "sec"
     IDS_COMPRESS_NS "ns"
 
-    IDS_MEM_OPERATION_BLOCKED  "The operation was blocked by 7-Zip."
+    IDS_MEM_OPERATION_BLOCKED  "The operation was blocked by Heptazip."
 END
 
 

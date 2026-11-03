@@ -3,6 +3,7 @@
 #ifndef ZIP7_INC_COMPRESS_DIALOG_H
 #define ZIP7_INC_COMPRESS_DIALOG_H
 
+
 #include "../../../Common/Wildcard.h"
 
 #include "../../../Windows/Control/ComboBox.h"
@@ -167,6 +168,8 @@ private:
   UStringVector _memUse_Strings;
 
   NWindows::NControl::CDialogChildControl m_Params;
+  NWindows::NControl::CComboBox m_Profile;   // Heptazip
+  bool _profileIsChanging;
 
   NWindows::NControl::CComboBox m_UpdateMode;
   NWindows::NControl::CComboBox m_PathMode;
@@ -350,6 +353,10 @@ public:
   // void CheckVolumeEnable();
   void EnableMultiCombo(unsigned id);
   void FormatChanged(bool isChanged);
+  void ApplyProfile(int index);
+  void Profile_SetCustom(bool clearProfileParams = true);
+  void Profile_Detect();
+  void Params_UpdateMethodEnable();
 
   void OnButtonSetArchive();
   bool IsSFX();
@@ -364,7 +371,7 @@ public:
 
   void MessageBoxError(LPCWSTR message)
   {
-    MessageBoxW(*this, message, L"7-Zip", MB_ICONERROR);
+    MessageBoxW(*this, message, L"Heptazip" /* HZ_NAME_W: no version header in this header (MY_VERSION_CPU) */, MB_ICONERROR);
   }
 
   void ShowOptionsString();

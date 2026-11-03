@@ -2,6 +2,8 @@
  
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #include "../../../Common/MyWindows.h"
 
 #include "../../../Common/IntToString.h"
@@ -57,7 +59,7 @@ using namespace NFind;
 
 static void MessageBox_Error_Global(HWND wnd, const wchar_t *message)
 {
-  ::MessageBoxW(wnd, message, L"7-Zip", MB_ICONERROR);
+  ::MessageBoxW(wnd, message, HZ_NAME_W, MB_ICONERROR);
 }
 
 #ifdef USE_MY_BROWSE_DIALOG

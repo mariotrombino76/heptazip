@@ -385,7 +385,7 @@ void AString::ReAlloc(unsigned newLimit)
   _limit = newLimit;
 }
 
-// Tensor7: allocation impossible: CNewException (E_OUTOFMEMORY), see ComTry.h
+// Heptazip: allocation impossible: CNewException (E_OUTOFMEMORY), see ComTry.h
 #define THROW_STRING_ALLOC_EXCEPTION  { throw CNewException(); }
 
 #define CHECK_STRING_ALLOC_LEN(len) \

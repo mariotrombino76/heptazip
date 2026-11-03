@@ -46,7 +46,7 @@ typedef struct
   Byte numHashBytes_Min;
   Byte numHashOutBits;
   Byte _pad2_[2];
-  /* Tensor7: with the multithreaded match finder (LzFindMt) the hash thread
+  /* Heptazip: with the multithreaded match finder (LzFindMt) the hash thread
      writes (result) at each read of the input stream, while the encoder thread
      can read it (CheckErrors() in LzmaEnc.c after each LZMA2 chunk). So it's
      written with Z7_ATOMIC32_STORE_RELAXED, and read with Z7_ATOMIC32_LOAD_RELAXED

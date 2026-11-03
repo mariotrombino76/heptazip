@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // MtTaskPool.cpp
-// Tensor7: see MtTaskPool.h
+// Heptazip: see MtTaskPool.h
 
 #include "StdAfx.h"
 

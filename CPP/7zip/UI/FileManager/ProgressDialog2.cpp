@@ -2,6 +2,8 @@
 
 #include "StdAfx.h"
 
+#include "../../MyVersion.h"
+
 #ifdef Z7_OLD_WIN_SDK
 #include <ShlGuid.h>
 #endif
@@ -985,7 +987,7 @@ INT_PTR CProgressDialog::Create(const UString &title, NWindows::CThread &thread,
   thread.Wait_Close();
   if (!MessagesDisplayed)
   if (!g_DisableUserQuestions)
-    MessageBoxW(wndParent, L"Progress Error", L"7-Zip", MB_ICONERROR);
+    MessageBoxW(wndParent, L"Progress Error", HZ_NAME_W, MB_ICONERROR);
   return res;
 }
 
@@ -1019,7 +1021,7 @@ bool CProgressDialog::OnExternalCloseMessage()
   {
     MessagesDisplayed = true;
     if (fm.ErrorMessage.Title.IsEmpty())
-      fm.ErrorMessage.Title = "7-Zip";
+      fm.ErrorMessage.Title = HZ_NAME;
     if (!g_DisableUserQuestions)
       MessageBoxW(*this, fm.ErrorMessage.Message, fm.ErrorMessage.Title, MB_ICONERROR);
   }
@@ -1030,7 +1032,7 @@ bool CProgressDialog::OnExternalCloseMessage()
     if (!fm.OkMessage.Message.IsEmpty())
     {
       if (fm.OkMessage.Title.IsEmpty())
-        fm.OkMessage.Title = "7-Zip";
+        fm.OkMessage.Title = HZ_NAME;
       if (!g_DisableUserQuestions)
         MessageBoxW(*this, fm.OkMessage.Message, fm.OkMessage.Title, MB_OK);
     }

@@ -98,15 +98,15 @@ di 2 ripetizioni. Silesia (212 MB):
 | | rapporto | compressione | CPU s | RSS |
 |---|---|---|---|---|
 | 7-Zip 26.05 `-tgzip -mx5` | 30,96% | 12,2 MB/s | 17,6 | 7 MB |
-| **Tensor7 `-tgzip -mx1`** | 33,15% | **512 MB/s** | 7,5 | 80 MB |
-| **Tensor7 `-tgzip -mx5`** | **30,99%** | **105 MB/s** | 37,8 | 94 MB |
-| Tensor7 `-tgzip -mx9` | 30,56% | 15,3 MB/s | 263,8 | 110 MB |
+| **Heptazip `-tgzip -mx1`** | 33,15% | **512 MB/s** | 7,5 | 80 MB |
+| **Heptazip `-tgzip -mx5`** | **30,99%** | **105 MB/s** | 37,8 | 94 MB |
+| Heptazip `-tgzip -mx9` | 30,56% | 15,3 MB/s | 263,8 | 110 MB |
 | pigz -6 | 32,20% | 340 MB/s | 12,3 | 16 MB |
 | pigz -9 | 31,92% | 152 MB/s | 25,8 | 16 MB |
 | gzip -6 | 32,19% | 38 MB/s | 5,7 | 2 MB |
 
 Corpus (110 MB, sorgenti e documenti): `-mx5` da 29,8 a 205 MB/s (pigz -9: 298 MB/s a
-66,32%, Tensor7 66,09%).
+66,32%, Heptazip 66,09%).
 
 `-mx5` è 8,6 volte più veloce di prima e comprime meglio di pigz -9 (0,9 punti) a due
 terzi della sua velocità; `-mx1` è più veloce di pigz -6. Nessuno dei due domina pigz su

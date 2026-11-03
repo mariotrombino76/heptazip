@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // 7zUpdateMt.cpp
-// Tensor7: see 7zUpdateMt.h and docs/design/0003-compressione-parallela-folder-7z.md
+// Heptazip: see 7zUpdateMt.h and docs/design/0003-compressione-parallela-folder-7z.md
 
 #include "StdAfx.h"
 
@@ -253,10 +253,10 @@ bool EstimateFolderEncodeCost(const CCompressionMethodMode &mode,
       {
         // one thread; input and output buffer of one block (FloatCoder.cpp)
         UInt64 blockSize = (UInt64)1 << 20;
-        const int i = m.FindProp(NCoderPropID::kBlockSize);
-        if (i >= 0)
+        const int propIndex = m.FindProp(NCoderPropID::kBlockSize);
+        if (propIndex >= 0)
         {
-          const NWindows::NCOM::CPropVariant &v = m.Props[(unsigned)i].Value;
+          const NWindows::NCOM::CPropVariant &v = m.Props[(unsigned)propIndex].Value;
           if (v.vt == VT_UI4)
             blockSize = v.ulVal;
           else if (v.vt == VT_UI8)

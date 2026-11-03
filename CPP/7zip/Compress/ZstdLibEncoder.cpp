@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ZstdLibEncoder.cpp
-// Tensor7: Zstandard encoder based on the reference library (third_party/zstd).
+// Heptazip: Zstandard encoder based on the reference library (third_party/zstd).
 
 #include "StdAfx.h"
 
@@ -67,7 +67,17 @@ void EstimateEncoder(int levelProp, UInt64 windowSizeProp, CEncoderEstimate &e)
   // streaming context: also the window and the input/output buffers
   e.CCtxMemory = ZSTD_estimateCStreamSize_usingCParams(cp);
   // job size of ZSTDMT without long distance matching (ZSTDMT_computeTargetJobLog)
-  e.JobSize = (UInt64)1 << (cp.windowLog + 2 > 20 ? cp.windowLog + 2 : 20);
+  {
+    unsigned jobLog = cp.windowLog + 2 > 20 ? cp.windowLog + 2 : 20;
+    #if defined(MY_CPU_64BIT)
+    const unsigned kJobLogMax = 30;   // ZSTDMT_JOBLOG_MAX
+    #else
+    const unsigned kJobLogMax = 29;
+    #endif
+    if (jobLog > kJobLogMax)
+      jobLog = kJobLogMax;
+    e.JobSize = (UInt64)1 << jobLog;
+  }
 }
 
 
@@ -189,17 +199,13 @@ public:
 
 HRESULT ZstdErrorToHRESULT(size_t code)
 {
-  switch (ZSTD_getErrorCode(code))
-  {
-    case ZSTD_error_memory_allocation:
-    case ZSTD_error_workSpace_tooSmall:
-      return E_OUTOFMEMORY;
-    case ZSTD_error_parameter_unsupported:
-    case ZSTD_error_parameter_outOfBound:
-      return E_INVALIDARG;
-    default:
-      return E_FAIL;
-  }
+  // not a switch: MSVC -Wall wants a case for each value of the enum (C4061)
+  const ZSTD_ErrorCode e = ZSTD_getErrorCode(code);
+  if (e == ZSTD_error_memory_allocation || e == ZSTD_error_workSpace_tooSmall)
+    return E_OUTOFMEMORY;
+  if (e == ZSTD_error_parameter_unsupported || e == ZSTD_error_parameter_outOfBound)
+    return E_INVALIDARG;
+  return E_FAIL;
 }
 
 #define RINOK_ZSTD(x) { const size_t _r_ = (x); if (ZSTD_isError(_r_)) return ZstdErrorToHRESULT(_r_); }

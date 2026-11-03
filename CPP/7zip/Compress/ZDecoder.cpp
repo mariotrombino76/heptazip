@@ -12,7 +12,7 @@
 #include "ZDecoder.h"
 
 #ifdef MY_CPU_LE_UNALIGN
-// Tensor7: memcpy load (Z7_LoadNative32): (p) is at any byte offset, and a
+// Heptazip: memcpy load (Z7_LoadNative32): (p) is at any byte offset, and a
 // misaligned load through a UInt32 pointer is undefined behaviour (found by fuzzing).
 #define GetUi24or32(p)      Z7_LoadNative32(p)
 #define GetUi24or32_TOP(p)  Z7_LoadNative32(p)

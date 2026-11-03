@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Copyright (c) 2026 Mario Trombino (Tensor7, LICENSE-Tensor7)
+// Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 // ListJson.h
-// Tensor7: JSON output of the "l" (list) command, switch -json.
+// Heptazip: JSON output of the "l" (list) command, switch -json.
 
 #ifndef ZIP7_INC_LIST_JSON_H
 #define ZIP7_INC_LIST_JSON_H
