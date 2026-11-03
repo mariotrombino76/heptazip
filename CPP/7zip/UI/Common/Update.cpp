@@ -6,6 +6,7 @@
 
 #include "Update.h"
 
+#include "../../../Common/IntToString.h"
 #include "../../../Common/StringConvert.h"
 
 #include "../../../Windows/DLL.h"
@@ -1093,6 +1094,61 @@ typedef Z7_WIN_MAPISENDMAILW FAR *Z7_WIN_LPMAPISENDMAILW;
 
 #endif // MAPI_FORCE_UNICODE
 }
+
+/* Heptazip: the mail services refuse big attachments (Gmail 25 MB, Outlook.com 20 MB,
+   counted after the base64 encoding, +33%). An archive bigger than k_EmailPartSize is
+   split into volumes (.001, .002, ... as with -v: 7-Zip and Heptazip open the .001) and
+   each volume is sent in its own message. */
+
+static const UInt64 k_EmailPartSize = (UInt64)14 << 20;
+
+static HRESULT SplitForEmail(const FString &path, UInt64 partSize, FStringVector &parts)
+{
+  NWindows::NFile::NFind::CFileInfo fi;
+  if (!fi.Find(path))
+    return GetLastError_noZero_HRESULT();
+  if (fi.Size <= partSize)
+  {
+    parts.Add(path);
+    return S_OK;
+  }
+  NWindows::NFile::NIO::CInFile in;
+  if (!in.Open(path))
+    return GetLastError_noZero_HRESULT();
+  const size_t kBufSize = (size_t)1 << 20;
+  CByteBuffer buf(kBufSize);
+  UInt64 rem = fi.Size;
+  for (unsigned n = 1; rem != 0; n++)
+  {
+    FString name = path;
+    char s[16];
+    // 001, 002, ...: at least 3 digits
+    const unsigned len = (unsigned)(ConvertUInt32ToString(n, s + 4) - (s + 4));
+    char *p = s + 4;
+    for (unsigned k = len; k < 3; k++)
+      *(--p) = '0';
+    name.Add_Dot();
+    name += p;
+    NWindows::NFile::NIO::COutFile out;
+    if (!out.Create_ALWAYS(name))
+      return GetLastError_noZero_HRESULT();
+    UInt64 partRem = (rem < partSize ? rem : partSize);
+    while (partRem != 0)
+    {
+      const size_t cur = (size_t)(partRem < kBufSize ? partRem : kBufSize);
+      size_t processed = 0;
+      if (!in.ReadFull(buf, cur, processed) || processed != cur)
+        return E_FAIL;
+      if (!out.WriteFull(buf, cur))
+        return GetLastError_noZero_HRESULT();
+      partRem -= cur;
+      rem -= cur;
+    }
+    parts.Add(name);
+  }
+  return S_OK;
+}
+
 #endif // _WIN32
 
 
@@ -1740,12 +1796,28 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
 
     CCurrentDirRestorer curDirRestorer;
 
+    // Heptazip: big archives are split, one volume per message
+    FStringVector sendPaths;
+    for (i = 0; i < fullPaths.Size(); i++)
+    {
+      const HRESULT hres = SplitForEmail(fullPaths[i], k_EmailPartSize, sendPaths);
+      if (hres != S_OK)
+        return errorInfo.SetFromError_DWORD("cannot split the archive for the e-mail",
+            fullPaths[i], (DWORD)hres);
+    }
+    const bool split = (sendPaths.Size() > fullPaths.Size());
+    const unsigned numMessages = split ? sendPaths.Size() : 1;
+
+    for (unsigned msgIndex = 0; msgIndex < numMessages; msgIndex++)
+    {
     UStringVector paths;
     UStringVector names;
     
-    for (i = 0; i < fullPaths.Size(); i++)
+    for (i = 0; i < sendPaths.Size(); i++)
     {
-      const UString arcPath2 = fs2us(fullPaths[i]);
+      if (split && i != msgIndex)
+        continue;
+      const UString arcPath2 = fs2us(sendPaths[i]);
       const UString fileName = ExtractFileNameFromPath(arcPath2);
       paths.Add(arcPath2);
       names.Add(fileName);
@@ -1770,6 +1842,25 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
       memset(&m, 0, sizeof(m));
       m.nFileCount = files.Size();
       m.lpFiles = files.NonConstData();
+
+      UString subject, note;
+      if (split)
+      {
+        subject = names[0];
+        subject += " (";
+        subject.Add_UInt32(msgIndex + 1);
+        subject.Add_Char('/');
+        subject.Add_UInt32(numMessages);
+        subject.Add_Char(')');
+        note = "Part ";
+        note.Add_UInt32(msgIndex + 1);
+        note += " of ";
+        note.Add_UInt32(numMessages);
+        note += ". Save all the parts in one folder and open the .001 file"
+            " with Heptazip or 7-Zip.";
+        m.lpszSubject = subject.Ptr_non_const();
+        m.lpszNoteText = note.Ptr_non_const();
+      }
       
       const UString addr (options.EMailAddress);
       Z7_WIN_MapiRecipDescW rec;
@@ -1783,6 +1874,7 @@ Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
       }
       
       sendMailW((LHANDLE)0, 0, &m, MAPI_DIALOG, 0);
+    }
     }
    }
    else
