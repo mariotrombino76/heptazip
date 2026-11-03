@@ -75,7 +75,8 @@ jobs:
           RC=x86_64-w64-mingw32-windres
       - uses: actions/upload-artifact@v7
         with:
-          name: release-7zz-mingw
+          # non "release-*": il job finale allega solo i pacchetti (issue #71)
+          name: build-7zz-mingw
           path: CPP/7zip/Bundles/Alone2/_mingw/7zz.exe
 
   windows:
@@ -90,7 +91,7 @@ jobs:
         run: tools\windows\build-msvc.bat out-msvc
       - uses: actions/download-artifact@v8
         with:
-          name: release-7zz-mingw
+          name: build-7zz-mingw
           path: out-msvc
       - name: Versione
         run: |
