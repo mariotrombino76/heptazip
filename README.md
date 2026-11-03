@@ -36,8 +36,13 @@ con una società omonima).
   da libdeflate: `-mx3` comprime più di pigz -6 a 2,5 volte la velocità (820 MB/s),
   `-mx1` supera 1 GB/s. Decompressione Deflate 2,7-3 volte più
   veloce (silesia 800 MB/s, come libdeflate entro l'8%; sul corpus più veloce di libdeflate).
-- **Più velocità**: assembly attivo di default (LZMA 1,4x in decompressione), CRC32 con
-  PCLMULQDQ, match finder ottimizzato, decoder SIMD (AVX2, NEON).
+- **LZMA2 più veloce** (il metodo di default): a `-mx5` silesia al 23,19% a 15,5 MB/s con
+  decompressione a 560 MB/s, contro 23,40%, 9,2 e 159 MB/s di 7-Zip 26.05; meglio di xz -6
+  in rapporto e compressione (23,35%, 13,3 MB/s) e al 94% della sua decompressione (595).
+  Dal livello 5 dimensione parola 64 e blocchi pari al dizionario; a `-mx1` e `-mx9` gli
+  archivi sono identici a quelli di 7-Zip e si decomprimono 1,4-1,5 volte più in fretta.
+- **Più velocità**: assembly attivo di default, CRC32 con PCLMULQDQ, match finder
+  ottimizzato, decoder SIMD (AVX2, NEON).
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,
   sanitizer, fuzzing (libFuzzer) e build ARM64.
 
