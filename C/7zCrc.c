@@ -9,9 +9,6 @@
 /* Heptazip: CRC32 with PCLMULQDQ folding on x86-64 (selected at runtime).
    Implementation header with static functions: see C/7zCrcClmul.h */
 #include "7zCrcClmul.h"
-#if defined(Z7_CRC_CLMUL) && (defined(__ARM_FEATURE_CRC32) || defined(Z7_CRC_HW_USE))
-#undef Z7_CRC_CLMUL
-#endif
 
 // for debug:
 // #define __ARM_FEATURE_CRC32 1
@@ -259,6 +256,11 @@ static unsigned g_Crc_Be;
 
 
 Z7_NO_INLINE
+// the CLMUL code is for x86-64 only: not with the ARM hardware CRC
+#if defined(Z7_CRC_CLMUL) && (defined(__ARM_FEATURE_CRC32) || defined(Z7_CRC_HW_USE))
+#undef Z7_CRC_CLMUL
+#endif
+
 #if defined(Z7_CRC_HW_USE) || defined(Z7_CRC_CLMUL)
   static UInt32 Z7_FASTCALL CrcUpdate_Base
 #else

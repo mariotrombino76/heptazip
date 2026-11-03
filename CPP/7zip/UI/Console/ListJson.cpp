@@ -131,6 +131,7 @@ class CJsonWriter
   unsigned _depth;
   bool _hasValue;   // the current object/array has a value already
   bool _afterKey;
+  AString _open;    // '{' or '[' for each open level
 
   void NewLine()
   {
@@ -155,10 +156,23 @@ class CJsonWriter
 public:
   CJsonWriter(CStdOutStream &so): _so(so), _depth(0), _hasValue(false), _afterKey(false) {}
 
-  void BeginObject() { BeforeValue(); _out.Add_Char('{'); _depth++; _hasValue = false; }
-  void BeginArray()  { BeforeValue(); _out.Add_Char('['); _depth++; _hasValue = false; }
-  void EndObject() { _depth--; if (_hasValue) NewLine(); _out.Add_Char('}'); AfterValue(); }
-  void EndArray()  { _depth--; if (_hasValue) NewLine(); _out.Add_Char(']'); AfterValue(); }
+  void BeginObject() { BeforeValue(); _out.Add_Char('{'); _open.Add_Char('{'); _depth++; _hasValue = false; }
+  void BeginArray()  { BeforeValue(); _out.Add_Char('['); _open.Add_Char('['); _depth++; _hasValue = false; }
+  void EndObject() { _depth--; _open.DeleteBack(); if (_hasValue) NewLine(); _out.Add_Char('}'); AfterValue(); }
+  void EndArray()  { _depth--; _open.DeleteBack(); if (_hasValue) NewLine(); _out.Add_Char(']'); AfterValue(); }
+  // an error in the middle of the document: what was written stays valid JSON
+  void CloseAll()
+  {
+    if (_afterKey)
+      Raw("null");
+    while (_depth != 0)
+    {
+      if (_open.Back() == '{')
+        EndObject();
+      else
+        EndArray();
+    }
+  }
 
   void Key(const char *k)
   {
@@ -559,6 +573,14 @@ HRESULT ListArchives_Json(
   HRESULT lastError = 0;
 
   w.BeginObject();
+  // an early return (error, Ctrl-C) leaves a complete document
+  struct CCloser
+  {
+    CJsonWriter &W;
+    bool Armed;
+    CCloser(CJsonWriter &w): W(w), Armed(true) {}
+    ~CCloser() { if (Armed) { W.CloseAll(); W.Finish(); } }
+  } closer(w);
   w.Key("archives");
   w.BeginArray();
 
@@ -796,6 +818,7 @@ HRESULT ListArchives_Json(
   w.EndArray();
 
   w.EndObject();
+  closer.Armed = false;
   w.Finish();
 
   if (numErrors == 1 && lastError != 0)

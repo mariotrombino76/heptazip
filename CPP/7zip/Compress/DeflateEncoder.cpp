@@ -572,6 +572,7 @@ UInt32 CCoder::GetOptimalFast(UInt32 &backRes)
      ahead (in the second pass of a block it is at the end of the block, and the
      matches come from m_OnePosMatchesMemory: the decisions must be the same) */
   if (len < m_MatchMaxLen
+      && m_Pos < kMatchArrayLimit   // the pending match skips the check of TryBlock()
       && Inline_MatchFinder_GetNumAvailableBytes(&_lzInWindow) + m_AdditionalOffset - 1 > len)
   {
     if (len >= kGoodLen)

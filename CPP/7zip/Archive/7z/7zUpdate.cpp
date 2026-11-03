@@ -609,9 +609,10 @@ static bool Scan_Gguf(ISequentialInStream *stream, const Byte *buf, size_t size,
   r.Pos = 0;
   r.Lim = MyMin(size, r.Data.Size());
   r.Total = 0;
-  UInt32 version;
+  UInt32 magic, version;
   UInt64 numTensors, numKv;
-  if (!r.ReadU32(version) || !r.ReadU32(version) || (version != 2 && version != 3)
+  // the magic "GGUF" was checked by Parse_Gguf
+  if (!r.ReadU32(magic) || !r.ReadU32(version) || (version != 2 && version != 3)
       || !r.ReadU64(numTensors) || !r.ReadU64(numKv))
     return false;
   static const char kKey[] = "general.file_type";
@@ -792,7 +793,7 @@ static unsigned Get_FilterGroup_for_Folder(
         m.Id = k_Delta;
       }
     }
-    else if (coder.MethodID == k_FLOAT && f.Coders.Size() == 1)
+    else if (coder.MethodID == k_FLOAT)   // also FLOAT + AES
       m.Id = k_FLOAT_FilterGroup;
     else if (IsExeFilter(coder.MethodID))
     {
