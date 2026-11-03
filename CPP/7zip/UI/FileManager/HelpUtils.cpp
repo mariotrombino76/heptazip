@@ -61,9 +61,22 @@ static const char *GetWikiPage(LPCSTR topic, bool italian)
   return italian ? "Home" : "Home-en";
 }
 
+#ifdef Z7_LANG
+extern UString g_LangID;   // LangUtils: name of the language file ("it"), "-" English, empty: default
+#endif
+
+static bool HelpIsItalian()
+{
+  #ifdef Z7_LANG
+  if (!g_LangID.IsEmpty())
+    return g_LangID.IsPrefixedBy_Ascii_NoCase("it");
+  #endif
+  return PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_ITALIAN;
+}
+
 static void ShowWiki(LPCSTR topic)
 {
-  const bool italian = (PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_ITALIAN);
+  const bool italian = HelpIsItalian();
   AString url (HZ_HOME_PAGE "/wiki/");
   url += GetWikiPage(topic, italian);
   ::ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);

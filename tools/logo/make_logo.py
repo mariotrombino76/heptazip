@@ -34,22 +34,6 @@ def fmt(pts):
     return " ".join("%.3f,%.3f" % p for p in pts)
 
 
-def rounded_path(pts, radius):
-    """path di un poligono con gli angoli arrotondati (archi tangenti ai lati)"""
-    n = len(pts)
-    d = []
-    for i in range(n):
-        p0, p1, p2 = pts[i - 1], pts[i], pts[(i + 1) % n]
-        v1 = (p0[0] - p1[0], p0[1] - p1[1])
-        v2 = (p2[0] - p1[0], p2[1] - p1[1])
-        l1, l2 = math.hypot(*v1), math.hypot(*v2)
-        ang = math.acos((v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2))
-        t = radius / math.tan(ang / 2)          # distanza del punto di tangenza dal vertice
-        a = (p1[0] + v1[0] / l1 * t, p1[1] + v1[1] / l1 * t)
-        b = (p1[0] + v2[0] / l2 * t, p1[1] + v2[1] / l2 * t)
-        d.append(("M" if i == 0 else "L") + "%.3f,%.3f" % a)
-        d.append("A%.3f,%.3f 0 0 1 %.3f,%.3f" % (radius, radius, b[0], b[1]))
-    return " ".join(d) + " Z"
 
 
 PALETTES = {
@@ -124,7 +108,7 @@ def mark_shapes(size, detail=True, x0=0.0, y0=0.0):
     return blades, core
 
 
-def mark_svg_body(size, detail=True, palette="light", uid="m", x0=0.0, y0=0.0):
+def mark_svg_body(size, detail=True, palette="light", x0=0.0, y0=0.0):
     """il segno in un riquadro size x size con l'angolo in (x0, y0), fondo trasparente.
     detail=False: versione per le icone piccole (senza fenditure)"""
     blade, core_col, _ = PALETTES[palette]
@@ -167,7 +151,7 @@ def logo_svg(font_path, palette="light", mark=256):
     baseline = mark / 2 + xh / 2                # la x-height centrata sul segno
     d, w = text_path(font_path, "heptazip", mark + gap, baseline, size, tracking=-0.01)
     width = mark + gap + w + mark * 0.04
-    body = mark_svg_body(mark, True, palette, uid="l" + palette)
+    body = mark_svg_body(mark, True, palette)
     body += '\n  <path d="%s" fill="%s"/>' % (d, word_col)
     return width, mark, body
 
@@ -203,7 +187,7 @@ def sheet_svg(font_word, font_mono):
         vx, vy = poly(c[0], c[1], R * 1.09, 0)[i]
         out.append('<line x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f" stroke-dasharray="1 7"/>' % (c[0], c[1], vx, vy))
     out.append('</g>')
-    out.append(mark_svg_body(M, True, "light", uid="tav", x0=mx, y0=my))
+    out.append(mark_svg_body(M, True, "light", x0=mx, y0=my))
     # quote della costruzione
     mono("R = 0,48 L  ·  r = 0,34 R  ·  360° / 7 = 51,43°", c[0], my + M + 70, 22, anchor="middle")
     mono("FENDITURE TANGENTI ALL'APERTURA · SPESSORE 0,05 R", c[0], my + M + 108, 18, anchor="middle")
@@ -226,7 +210,7 @@ def sheet_svg(font_word, font_mono):
     y = 2350
     x = 140
     for s_ in (16, 24, 32, 48, 64, 128):
-        out.append(mark_svg_body(s_, s_ >= 48, "light", uid="t%d" % s_, x0=x, y0=y + 128 - s_))
+        out.append(mark_svg_body(s_, s_ >= 48, "light", x0=x, y0=y + 128 - s_))
         mono("%d" % s_, x + s_ / 2, y + 170, 18, anchor="middle")
         x += s_ + 90
     mono("SOTTO 48 PX: SENZA FENDITURE", W - 140, y + 170, 18, anchor="end")
@@ -303,7 +287,7 @@ def main():
 
     for pal in ("light", "dark"):
         sfx = "" if pal == "light" else "-dark"
-        mark = svg(512, 512, mark_svg_body(512, True, pal, uid="m" + pal))
+        mark = svg(512, 512, mark_svg_body(512, True, pal))
         write("heptazip-mark%s.svg" % sfx, mark)
         w, h, body = logo_svg(font, pal)
         logo = svg(round(w, 1), h, body)
@@ -313,7 +297,7 @@ def main():
     sizes = (16, 24, 32, 48, 64, 128, 256, 512)
     images = []
     for s_ in sizes:
-        t = svg(s_, s_, mark_svg_body(s_, s_ >= 48, "light", uid="i%d" % s_))
+        t = svg(s_, s_, mark_svg_body(s_, s_ >= 48, "light"))
         png(t, "heptazip-mark-%d.png" % s_)
         images.append(Image.open(os.path.join(outdir, "heptazip-mark-%d.png" % s_)).convert("RGBA"))
     if font_mono:

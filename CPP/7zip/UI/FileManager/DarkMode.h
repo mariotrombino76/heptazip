@@ -40,8 +40,8 @@ UInt32 GetSetting();
 bool SetSetting(UInt32 setting);
 bool IsDark();
 
-// WM_SETTINGCHANGE: returns true if the theme changed (setting "system")
-bool OnSettingChange(LPARAM lParam);
+// WM_SETTINGCHANGE: returns true if the theme changed (Windows theme, high contrast)
+bool OnSettingChange(WPARAM wParam, LPARAM lParam);
 
 // applies the current theme to a window and all its child windows
 void ApplyTree(HWND root);
