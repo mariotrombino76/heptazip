@@ -1026,8 +1026,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
       g_WindowWasCreated = true;
       NDarkMode::ApplyMainWindow(hWnd);
-      // Heptazip: opened on a screen with a scale other than the main one
-      g_App.OnDpiChanged(NDarkMode::GetWindowDpi(hWnd));
+      // Heptazip: opened on a screen with a scale other than the main one (the
+      // columns were already created at that scale)
+      g_App.OnDpiChanged(NDarkMode::GetWindowDpi(hWnd), true);
       
       // g_SplitterPos = 0;
 

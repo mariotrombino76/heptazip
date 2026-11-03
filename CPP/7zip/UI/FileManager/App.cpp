@@ -141,10 +141,11 @@ HRESULT CApp::CreateOnePanel(unsigned panelIndex, const UString &mainPath, const
       id, path, arcFormat, &m_PanelCallbackImp[panelIndex], &AppState,
       needOpenArc,
       openRes);
-  // Heptazip: a panel created later (F9) on a screen with another scale
+  // Heptazip: a panel created later (F9) on a screen with another scale: the font
+  // (the columns are already created at the scale of the window)
   if (res == S_OK && Panels[panelIndex].PanelCreated
       && Dpi != 0 && Dpi != NDarkMode::GetSystemDpi())
-    Panels[panelIndex].OnDpiChanged(NDarkMode::GetUiFont(Dpi), NDarkMode::GetSystemDpi(), Dpi);
+    Panels[panelIndex].OnDpiChanged(NDarkMode::GetUiFont(Dpi), 0, Dpi);
   return res;
 }
 
@@ -292,14 +293,14 @@ void CApp::ReloadToolbars()
   }
 }
 
-void CApp::OnDpiChanged(UInt32 dpi)
+void CApp::OnDpiChanged(UInt32 dpi, bool columnsAtNewDpi)
 {
   if (dpi == 0 || dpi == Dpi)
     return;
   const HFONT font = NDarkMode::GetUiFont(dpi);
   for (unsigned i = 0; i < kNumPanelsMax; i++)
     if (Panels[i].PanelCreated)
-      Panels[i].OnDpiChanged(font, Dpi, dpi);
+      Panels[i].OnDpiChanged(font, columnsAtNewDpi ? 0 : Dpi, dpi);
   Dpi = dpi;
   ReloadToolbars();
   MoveSubWindows();
