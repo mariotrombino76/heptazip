@@ -616,6 +616,51 @@ void CPanel::OnThemeChanged()
   ::RedrawWindow(_headerComboBox, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
+// Heptazip: the window moved to a screen with another scale (PerMonitorV2): the
+// controls get the font of the new scale, the columns and the bar of the path follow
+void CPanel::OnDpiChanged(HFONT font, UInt32 oldDpi, UInt32 newDpi)
+{
+  if (font)
+  {
+    _listView.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _statusBar.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _headerComboBox.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+    _headerToolBar.SendMsg(WM_SETFONT, (WPARAM)font, TRUE);
+  }
+  if (oldDpi != 0)
+  {
+    const HWND header = ListView_GetHeader(_listView);
+    const int num = header ? Header_GetItemCount(header) : 0;
+    for (int i = 0; i < num; i++)
+    {
+      const int w = ListView_GetColumnWidth(_listView, i);
+      ListView_SetColumnWidth(_listView, i, ::MulDiv(w, (int)newDpi, (int)oldDpi));
+    }
+  }
+  // the status bar takes the height of the new font
+  _statusBar.SendMsg(WM_SIZE, 0, 0);
+  if (_headerReBar)
+  {
+    // the bands of the rebar: height of the up button and of the path
+    SIZE size;
+    _headerToolBar.GetMaxSize(&size);
+    REBARBANDINFO rb;
+    memset(&rb, 0, sizeof(rb));
+    rb.cbSize = my_compatib_REBARBANDINFO_size;
+    rb.fMask = RBBIM_CHILDSIZE;
+    rb.cxMinChild = (UINT)size.cx;
+    rb.cyMinChild = (UINT)size.cy;
+    rb.cyChild = (UINT)size.cy;
+    _headerReBar.SendMsg(RB_SETBANDINFO, 0, (LPARAM)&rb);
+    RECT rc;
+    ::GetWindowRect(_headerComboBox, &rc);
+    rb.cxMinChild = 30;
+    rb.cyMinChild = (UINT)(rc.bottom - rc.top);
+    rb.cyChild = rb.cyMinChild;
+    _headerReBar.SendMsg(RB_SETBANDINFO, 1, (LPARAM)&rb);
+  }
+}
+
 void CPanel::OnDestroy()
 {
   SaveListViewInfo();

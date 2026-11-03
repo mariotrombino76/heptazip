@@ -27,6 +27,84 @@ using namespace NWindows;
 
 namespace NDarkMode {
 
+// ---------- scale (PerMonitorV2)
+
+typedef UINT (WINAPI *Func_GetDpiForWindow)(HWND);
+typedef BOOL (WINAPI *Func_SystemParametersInfoForDpi)(UINT, UINT, PVOID, UINT, UINT);
+
+static UInt32 g_SystemDpi;
+
+UInt32 GetSystemDpi()
+{
+  if (g_SystemDpi == 0)
+  {
+    g_SystemDpi = 96;
+    const HDC dc = ::GetDC(NULL);
+    if (dc)
+    {
+      g_SystemDpi = (UInt32)::GetDeviceCaps(dc, LOGPIXELSY);
+      ::ReleaseDC(NULL, dc);
+    }
+  }
+  return g_SystemDpi;
+}
+
+UInt32 GetWindowDpi(HWND wnd)
+{
+  static Func_GetDpiForWindow f;
+  static bool loaded;
+  if (!loaded)
+  {
+    loaded = true;
+    const HMODULE user = ::GetModuleHandleW(L"user32.dll");
+    if (user)
+      f = Z7_GET_PROC_ADDRESS(Func_GetDpiForWindow, user, "GetDpiForWindow");
+  }
+  if (f && wnd)
+  {
+    const UINT dpi = f(wnd);
+    if (dpi != 0)
+      return dpi;
+  }
+  return GetSystemDpi();
+}
+
+HFONT GetUiFont(UInt32 dpi)
+{
+  struct CEntry { UInt32 Dpi; HFONT Font; };
+  static CEntry cache[4];
+  for (unsigned i = 0; i < 4; i++)
+    if (cache[i].Font && cache[i].Dpi == dpi)
+      return cache[i].Font;
+
+  NONCLIENTMETRICSW ncm;
+  memset(&ncm, 0, sizeof(ncm));
+  ncm.cbSize = sizeof(ncm);
+  bool ok = false;
+  const HMODULE user = ::GetModuleHandleW(L"user32.dll");
+  if (user)
+  {
+    const Func_SystemParametersInfoForDpi f = Z7_GET_PROC_ADDRESS(
+        Func_SystemParametersInfoForDpi, user, "SystemParametersInfoForDpi");
+    if (f)
+      ok = f(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0, dpi) != FALSE;
+  }
+  if (!ok)
+  {
+    // older Windows: the font of the system DPI, scaled
+    if (!::SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0))
+      return NULL;
+    ncm.lfMessageFont.lfHeight = ::MulDiv(ncm.lfMessageFont.lfHeight, (int)dpi, (int)GetSystemDpi());
+  }
+  const HFONT font = ::CreateFontIndirectW(&ncm.lfMessageFont);
+  // the oldest entry is replaced (its font is kept: windows can still use it)
+  static unsigned next;
+  cache[next].Dpi = dpi;
+  cache[next].Font = font;
+  next = (next + 1) % 4;
+  return font;
+}
+
 // ---------- colors (close to Explorer of Windows 11 in dark mode)
 
 static const COLORREF k_Back     = RGB(0x20, 0x20, 0x20);  // windows, dialogs
@@ -702,21 +780,12 @@ static void PaintTab(HWND wnd, HDC dc)
 
 // ---------- rounded fields (both themes)
 
-static int g_Dpi;
+// the DPI of the window being drawn (set by the drawing functions)
+static UInt32 g_PaintDpi = 96;
 
 static int Scale(int v)
 {
-  if (g_Dpi == 0)
-  {
-    g_Dpi = 96;
-    const HDC dc = ::GetDC(NULL);
-    if (dc)
-    {
-      g_Dpi = ::GetDeviceCaps(dc, LOGPIXELSX);
-      ::ReleaseDC(NULL, dc);
-    }
-  }
-  return ::MulDiv(v, g_Dpi, 96);
+  return ::MulDiv(v, (int)g_PaintDpi, 96);
 }
 
 static const COLORREF k_Accent = RGB(0x2E, 0xC4, 0xB6);   // the core of the logo
@@ -762,6 +831,7 @@ static void DrawRoundFrame(HDC dc, const RECT &rc, COLORREF fill, COLORREF edge)
 
 static void PaintFieldFrame(HWND wnd)
 {
+  g_PaintDpi = GetWindowDpi(wnd);
   const HDC dc = ::GetWindowDC(wnd);
   if (!dc)
     return;
@@ -794,6 +864,7 @@ static void DrawChevron(HDC dc, int cx, int cy, COLORREF color)
 
 static void PaintFieldCombo(HWND wnd, HDC dc)
 {
+  g_PaintDpi = GetWindowDpi(wnd);
   RECT rc;
   ::GetClientRect(wnd, &rc);
   const LONG style = ::GetWindowLongW(wnd, GWL_STYLE);
@@ -848,6 +919,7 @@ static COLORREF Mix(COLORREF a, COLORREF b, int pctB)
 
 static void PaintPushButton(HWND wnd, HDC dc)
 {
+  g_PaintDpi = GetWindowDpi(wnd);
   RECT rc;
   ::GetClientRect(wnd, &rc);
   const LONG style = ::GetWindowLongW(wnd, GWL_STYLE);
@@ -947,6 +1019,7 @@ static bool FieldMessage(int kind, HWND wnd, UINT msg, WPARAM wParam, LPARAM lPa
     {
       // our frame: FieldBorder() pixels on each side
       RECT *r = (RECT *)lParam;
+      g_PaintDpi = GetWindowDpi(wnd);
       const int b = FieldBorder();
       ::InflateRect(r, -b, -b);
       res = 0;
@@ -1268,6 +1341,9 @@ static LRESULT CALLBACK DarkWindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM
 #else
 
 namespace NDarkMode {
+UInt32 GetSystemDpi() { return 96; }
+UInt32 GetWindowDpi(HWND) { return 96; }
+HFONT GetUiFont(UInt32) { return NULL; }
 void Init() {}
 UInt32 GetSetting() { return 0; }
 bool SetSetting(UInt32) { return false; }

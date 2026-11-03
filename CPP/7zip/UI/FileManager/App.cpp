@@ -137,10 +137,15 @@ HRESULT CApp::CreateOnePanel(unsigned panelIndex, const UString &mainPath, const
   
   const unsigned id = 1000 + 100 * panelIndex; // check it
 
-  return Panels[panelIndex].Create(_window, _window,
+  const HRESULT res = Panels[panelIndex].Create(_window, _window,
       id, path, arcFormat, &m_PanelCallbackImp[panelIndex], &AppState,
       needOpenArc,
       openRes);
+  // Heptazip: a panel created later (F9) on a screen with another scale
+  if (res == S_OK && Panels[panelIndex].PanelCreated
+      && Dpi != 0 && Dpi != NDarkMode::GetSystemDpi())
+    Panels[panelIndex].OnDpiChanged(NDarkMode::GetUiFont(Dpi), NDarkMode::GetSystemDpi(), Dpi);
+  return res;
 }
 
 
@@ -148,13 +153,7 @@ HRESULT CApp::CreateOnePanel(unsigned panelIndex, const UString &mainPath, const
    the size follows the DPI of the screen: 24 px (32 px with large buttons) at 100% */
 static int GetToolbarIconSize(HWND wnd, bool largeButtons)
 {
-  int dpi = 96;
-  const HDC dc = ::GetDC(wnd);
-  if (dc)
-  {
-    dpi = ::GetDeviceCaps(dc, LOGPIXELSY);
-    ::ReleaseDC(wnd, dc);
-  }
+  int dpi = (int)NDarkMode::GetWindowDpi(wnd);
   if (dpi < 96)
     dpi = 96;
   return MulDiv(largeButtons ? 32 : 24, dpi, 96);
@@ -278,6 +277,8 @@ void CApp::ReloadToolbars()
   {
     const int iconSize = GetToolbarIconSize(_window, LargeButtons);
     CreateToolbar(_window, _buttonsImageList, _toolBar, iconSize);
+    // the font of the scale of the window (the default one is for the main screen)
+    _toolBar.SendMsg(WM_SETFONT, (WPARAM)NDarkMode::GetUiFont(NDarkMode::GetWindowDpi(_window)), FALSE);
     unsigned i;
     if (ShowArchiveToolbar)
       for (i = 0; i < Z7_ARRAY_SIZE(g_ArchiveButtons); i++)
@@ -289,6 +290,19 @@ void CApp::ReloadToolbars()
     _toolBar.AutoSize();
     NDarkMode::ApplyTree(_toolBar);
   }
+}
+
+void CApp::OnDpiChanged(UInt32 dpi)
+{
+  if (dpi == 0 || dpi == Dpi)
+    return;
+  const HFONT font = NDarkMode::GetUiFont(dpi);
+  for (unsigned i = 0; i < kNumPanelsMax; i++)
+    if (Panels[i].PanelCreated)
+      Panels[i].OnDpiChanged(font, Dpi, dpi);
+  Dpi = dpi;
+  ReloadToolbars();
+  MoveSubWindows();
 }
 
 void CApp::ApplyTheme()
@@ -312,6 +326,7 @@ void CApp::SaveToolbarChanges()
 HRESULT CApp::Create(HWND hwnd, const UString &mainPath, const UString &arcFormat, int xSizes[2], bool needOpenArc, COpenResult &openRes)
 {
   _window.Attach(hwnd);
+  Dpi = NDarkMode::GetSystemDpi();
 
   #ifdef UNDER_CE
   _commandBar.Create(g_hInstance, hwnd, 1);

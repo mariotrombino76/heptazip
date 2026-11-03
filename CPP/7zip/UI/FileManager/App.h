@@ -248,6 +248,9 @@ public:
 
   void ReloadToolbars();
   void ApplyTheme();  // Heptazip: after a change of the dark/light theme
+  // Heptazip: the window moved to a screen with another scale (PerMonitorV2)
+  UInt32 Dpi;
+  void OnDpiChanged(UInt32 dpi);
   void ReadToolbar()
   {
     const UInt32 mask = ReadToolbarsMask();
