@@ -36,11 +36,13 @@ with a company of the same name).
   libdeflate: `-mx3` compresses more than pigz -6 at 2.5 times the speed (820 MB/s),
   `-mx1` exceeds 1 GB/s. Deflate decompression 2.7-3 times faster (silesia 800 MB/s,
   within 8% of libdeflate; faster than libdeflate on the corpus).
-- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.19% at 15.5 MB/s with
+- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 15.5 MB/s with
   decompression at 560 MB/s, against 23.40%, 9.2 and 159 MB/s for 7-Zip 26.05; better than
   xz -6 in ratio and compression (23.35%, 13.3 MB/s) and at 94% of its decompression (595).
-  From level 5, word size 64 and blocks equal to the dictionary; at `-mx1` and `-mx9` the
-  archives are identical to 7-Zip's and decompress 1.4-1.5 times faster.
+  From level 5, word size 64 and blocks equal to the dictionary of the level, with a 16 MiB
+  dictionary for the 32 MiB blocks of level 5 (1.4 GB of memory on silesia with 20 threads
+  instead of 2.3); at `-mx1` and `-mx9` the archives are identical to 7-Zip's and decompress
+  1.4-1.5 times faster.
 - **More speed**: assembly on by default, CRC32 with PCLMULQDQ, optimized match finder,
   SIMD decoders (AVX2, NEON).
 - **Modern build** with CMake (GCC/Clang, C++20, optional LTO/PGO), tests with CTest,

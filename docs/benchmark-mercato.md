@@ -620,7 +620,7 @@ Silesia sale da 61 a 95 s (fb 64 e più thread su E-core e SMT di questa macchin
 Gli archivi restano leggibili da ogni 7-Zip.
 
 
-## Memoria di compressione LZMA2 `-mx5` (2026-11-03, #73)
+## Memoria di compressione LZMA2 `-mx5` (2026-11-03, #73 e #75)
 
 Il punto 4 della lettura del 2026-11-03, peggiorato dalla #64: Silesia a `-mx5` passa da
 1354 a 2329 MB. Misure (`/usr/bin/time`, RSS massimo, Silesia, binario di develop):
@@ -654,13 +654,26 @@ lenta del benchmark di mercato):
 
 | | Silesia rapporto | comp MB/s | CPU s | RSS comp | dec MB/s | corpus rapporto | comp | RSS comp |
 |---|---|---|---|---|---|---|---|---|
-| d=32m c=32m (ora) | 23,19% | 14,4 | 95,8 | 2329 | 349 | 63,93% | 28,6 | 1394 |
+| d=32m c=32m (fino a #74) | 23,19% | 14,4 | 95,8 | 2329 | 349 | 63,93% | 28,6 | 1394 |
 | d=16m c=16m | 23,37% | 19,5 | 108,1 | 1866 | 421 | 63,94% | 32,6 | 1408 |
-| **d=16m c=32m** | **23,22%** | 14,4 | 99,1 | **1367** | 355 | **63,93%** | 27,6 | **944** |
+| **d=16m c=32m (ora, #75)** | **23,22%** | 14,4 | 99,1 | **1367** | 355 | **63,93%** | 27,6 | **944** |
 | d=8m c=24m (come xz -6) | 23,33% | 20,1 | 104,5 | 1025 | 396 | 63,98% | 29,2 | 722 |
 
 Dentro un blocco da 32 MiB la storia disponibile è in media 16 MiB: il dizionario da 16 MiB
 perde solo i match a distanza 16-32 MiB nella seconda metà del blocco, 0,03 punti su Silesia
-e nulla sul corpus, con la stessa velocità e il 32-41% di memoria in meno. È la candidata per
-ridurre la memoria di `-mx5` senza toccare il parallelismo: non applicata in questa modifica
-perché cambia il dizionario del livello predefinito (decisione di prodotto, vedi issue #73).
+e nulla sul corpus, con la stessa velocità e il 32-41% di memoria in meno.
+
+**Decisione (issue #75, 2026-11-03): al livello 5 i blocchi LZMA2 automatici usano un
+dizionario pari a metà del blocco, 16 MiB con blocchi da 32 MiB.** La regola è una sola,
+`Lzma2Enc_GetAutoBlockDictSize()` in `C/Lzma2Enc.h`, e vale quando il dizionario non è
+dato, i blocchi sono automatici e i dati superano un blocco; la applicano l'encoder 7z
+(`Lzma2EncProps_Normalize`), quello xz (`XzProps_Normalize`), le stime di memoria dei
+handler (`Get_Lzma2_BlockDicSize`) e il dialogo Aggiungi. Non cambiano: LZMA puro, LZMA2 a
+un thread di blocco (`-mmt1`, o dati entro 32 MiB: dizionario 32 MiB o pari ai dati),
+`d=` esplicito, gli altri livelli (`-mx1` e `-mx9` identici a 7-Zip, verificati byte per
+byte). Verifica con la build finale, 20 thread: Silesia 49 210 571 byte (23,22%), archivio
+identico a quello di `-m0=lzma2:d=16m:c=32m` della build precedente, 13,4 s, RSS 1400 MB;
+corpus 71 149 090 (63,93%), RSS 967 MB (era 1394); decompressione invariata (0,52 s, RSS
+263 MB, dominata dai buffer dei blocchi). `-txz -mx5`: 7 blocchi da 32 MiB con
+`dict=16MiB`, a `-mmt1` un blocco con 32 MiB. `-mmemuse=1g` ora tiene 3 encoder (858 MB,
+17,0 s) invece di 2, perché la stima del handler usa il dizionario dei blocchi.

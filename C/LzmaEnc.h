@@ -42,6 +42,21 @@ void LzmaEncProps_Init(CLzmaEncProps *p);
 void LzmaEncProps_Normalize(CLzmaEncProps *p);
 UInt32 LzmaEncProps_GetDictSize(const CLzmaEncProps *props2);
 
+/* Heptazip: the dictionary of a level when dictSize was not given (0): the only copy
+   of the table, used by LzmaEncProps_Normalize(), by the 7z/xz handlers
+   (CMethodProps::Get_Lzma_DicSize) and by the Add dialog. 64 KiB, 1, 4, 16 MiB at
+   levels 1-4; 32, 64, 128, 256 MiB at levels 5-8 on 64-bit (levels 7-8 stay at 64 MiB
+   on 32-bit); level 9 = level 8. LZMA2 with automatic blocks can use a smaller
+   dictionary than the level: Lzma2Enc_GetAutoBlockDictSize() in Lzma2Enc.h. */
+static Z7_FORCE_INLINE UInt32 LzmaEncProps_GetDictSize_ForLevel(unsigned level)
+{
+  return level <= 4 ?
+      (UInt32)1 << (level * 2 + 16) :
+      level <= sizeof(size_t) / 2 + 4 ?
+        (UInt32)1 << (level + 20) :
+        (UInt32)1 << (sizeof(size_t) / 2 + 24);
+}
+
 
 /* ---------- CLzmaEncHandle Interface ---------- */
 

@@ -234,6 +234,7 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
 {
   UInt64 fileSize;
   int t1, t1n, t2, t2r, t3;
+  const BoolInt dictWasAuto = (p->lzmaProps.dictSize == 0);  // Heptazip
   {
     CLzmaEncProps lzmaProps = p->lzmaProps;
     LzmaEncProps_Normalize(&lzmaProps);
@@ -303,8 +304,15 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
   else
   {
     if (p->blockSize == LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO)
-      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);  // Heptazip
-    
+    {
+      /* Heptazip: block = dictionary of the level (reduced to the data size, in which
+         case the data fits one block). With more than one block the dictionary of the
+         block encoders can be smaller than the block: Lzma2Enc_GetAutoBlockDictSize(). */
+      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);
+      if (dictWasAuto && (fileSize == (UInt64)(Int64)-1 || fileSize > p->blockSize))
+        p->lzmaProps.dictSize = Lzma2Enc_GetAutoBlockDictSize((unsigned)p->lzmaProps.level, p->lzmaProps.dictSize);
+    }
+
     if (t2 > 1 && fileSize != (UInt64)(Int64)-1)
     {
       UInt64 numBlocks = fileSize / p->blockSize;
