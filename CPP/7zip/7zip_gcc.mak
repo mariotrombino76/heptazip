@@ -1427,13 +1427,10 @@ $O/AesOpt.o: ../../../../C/AesOpt.c
 endif
 
 
-ifdef USE_X64_ASM
-$O/LzFindOpt.o: ../../../../Asm/x86/LzFindOpt.asm
-	$(MY_ASM) $(AFLAGS) $<
-else
+# Heptazip: always the C version (faster, design 0004; and GetMatchesSpecN_2() has
+# more parameters since #77: Asm/x86/LzFindOpt.asm does not match it any more)
 $O/LzFindOpt.o: ../../../../C/LzFindOpt.c
 	$(CC) $(CFLAGS) $<
-endif
 
 ifdef USE_LZMA_DEC_ASM
 
