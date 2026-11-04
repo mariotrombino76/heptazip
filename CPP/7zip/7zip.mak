@@ -325,6 +325,34 @@ $O\br_enc_utf8_util.obj: ../../../../third_party/brotli/c/enc/utf8_util.c
 	$(CC) $(HZ_CFLAGS) -I../../../../third_party/brotli/c/include -Fo$O\br_enc_utf8_util.obj $**
 $O\BrotliCoder.obj: ../../Compress/BrotliCoder.cpp
 	$(COMPL_O2) -I../../../../third_party/brotli/c/include
+# libbsc (method BWT, design 0016): C++ and C sources, no OpenMP
+HZ_BSC_DIR = ../../../../third_party/libbsc/libbsc
+$O\bsc_adler32.obj: $(HZ_BSC_DIR)/adler32/adler32.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_adler32.obj $**
+$O\bsc_bwt.obj: $(HZ_BSC_DIR)/bwt/bwt.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_bwt.obj $**
+$O\bsc_libsais.obj: $(HZ_BSC_DIR)/bwt/libsais/libsais.c
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_libsais.obj $**
+$O\bsc_coder.obj: $(HZ_BSC_DIR)/coder/coder.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_coder.obj $**
+$O\bsc_qlfc.obj: $(HZ_BSC_DIR)/coder/qlfc/qlfc.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_qlfc.obj $**
+$O\bsc_qlfc_model.obj: $(HZ_BSC_DIR)/coder/qlfc/qlfc_model.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_qlfc_model.obj $**
+$O\bsc_detectors.obj: $(HZ_BSC_DIR)/filters/detectors.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_detectors.obj $**
+$O\bsc_preprocessing.obj: $(HZ_BSC_DIR)/filters/preprocessing.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_preprocessing.obj $**
+$O\bsc_libbsc.obj: $(HZ_BSC_DIR)/libbsc/libbsc.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_libbsc.obj $**
+$O\bsc_lzp.obj: $(HZ_BSC_DIR)/lzp/lzp.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_lzp.obj $**
+$O\bsc_platform.obj: $(HZ_BSC_DIR)/platform/platform.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_platform.obj $**
+$O\bsc_st.obj: $(HZ_BSC_DIR)/st/st.cpp
+	$(CC) $(HZ_CFLAGS) -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -Fo$O\bsc_st.obj $**
+$O\BscCoder.obj: ../../Compress/BscCoder.cpp
+	$(COMPL_O2) -I../../../../third_party/libbsc
 !ENDIF
 
 !include "Asm.mak"

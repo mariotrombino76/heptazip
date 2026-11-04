@@ -47,6 +47,11 @@ which license applies to each part of the code.
    third_party/brotli: brotli 1.2.1, Copyright (c) 2009, 2010, 2013-2016 by the Brotli
    Authors, MIT license (third_party/brotli/LICENSE); unmodified.
 
+   third_party/libbsc: libbsc 3.4.0, Copyright (c) 2009-2026 Ilya Grebnov (libsais included,
+   Copyright (c) 2021-2026 Ilya Grebnov), Apache-2.0 license (third_party/libbsc/LICENSE);
+   without the CUDA part, with one modification (rangecoder.h: byte pointers) described
+   in third_party/libbsc/README-Heptazip.md.
+
 
 2-clause BSD license (BSD-2-Clause)
 -----------------------------------

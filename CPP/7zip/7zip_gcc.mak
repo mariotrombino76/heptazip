@@ -843,6 +843,10 @@ $O/BrotliCoder.o: ../../Compress/BrotliCoder.cpp
 	$(CXX) $(CXXFLAGS) -I../../../../third_party/brotli/c/include $<
 $O/BrotliRegister.o: ../../Compress/BrotliRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/BscCoder.o: ../../Compress/BscCoder.cpp
+	$(CXX) $(CXXFLAGS) -I../../../../third_party/libbsc $<
+$O/BscRegister.o: ../../Compress/BscRegister.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/ZstdRegister.o: ../../Compress/ZstdRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
 
@@ -1306,6 +1310,33 @@ $O/br_enc_static_init.o: ../../../../third_party/brotli/c/enc/static_init.c
 	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
 $O/br_enc_utf8_util.o: ../../../../third_party/brotli/c/enc/utf8_util.c
 	$(CC) $(CFLAGS) $(HZ_BROTLI_LIB_FLAGS) $<
+# libbsc (method BWT, design 0016): C++ and one C source, without OpenMP and warnings
+HZ_BSC_DIR = ../../../../third_party/libbsc/libbsc
+HZ_BSC_LIB_FLAGS = -I../../../../third_party/libbsc -DLIBBSC_NO_UNALIGNED_ACCESS -w
+$O/bsc_adler32.o: $(HZ_BSC_DIR)/adler32/adler32.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_bwt.o: $(HZ_BSC_DIR)/bwt/bwt.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_libsais.o: $(HZ_BSC_DIR)/bwt/libsais/libsais.c
+	$(CC) $(CFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_coder.o: $(HZ_BSC_DIR)/coder/coder.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_qlfc.o: $(HZ_BSC_DIR)/coder/qlfc/qlfc.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_qlfc_model.o: $(HZ_BSC_DIR)/coder/qlfc/qlfc_model.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_detectors.o: $(HZ_BSC_DIR)/filters/detectors.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_preprocessing.o: $(HZ_BSC_DIR)/filters/preprocessing.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_libbsc.o: $(HZ_BSC_DIR)/libbsc/libbsc.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_lzp.o: $(HZ_BSC_DIR)/lzp/lzp.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_platform.o: $(HZ_BSC_DIR)/platform/platform.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
+$O/bsc_st.o: $(HZ_BSC_DIR)/st/st.cpp
+	$(CXX) $(CXXFLAGS) $(HZ_BSC_LIB_FLAGS) $<
 
 # ifdef MT_FILES
 $O/LzFindMt.o: ../../../../C/LzFindMt.c
