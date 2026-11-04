@@ -145,13 +145,24 @@ public:
     UInt64 v;
     if (Get_DicSize(v))
       return v;
-    const unsigned level = GetLevel();
-    const UInt32 dictSize = level <= 4 ?
-        (UInt32)1 << (level * 2 + 16) :
-        level <= sizeof(size_t) / 2 + 4 ?
-          (UInt32)1 << (level + 20) :
-          (UInt32)1 << (sizeof(size_t) / 2 + 24);
-    return dictSize;
+    return LzmaEncProps_GetDictSize_ForLevel(GetLevel());  // Heptazip: shared table (C/LzmaEnc.h)
+  }
+
+  /* Heptazip (issue #75): dictionary of each LZMA2 block encoder when the encoder runs
+     more than one block thread: the dictionary given with d=, or the dictionary of the
+     level, or, with automatic blocks, Lzma2Enc_GetAutoBlockDictSize() of it (half the
+     block at level 5). For the memory estimates of the 7z and xz handlers; the solid
+     block size still comes from Get_Lzma_DicSize(). */
+  UInt64 Get_Lzma2_BlockDicSize() const
+  {
+    UInt64 v;
+    if (Get_DicSize(v))
+      return v;
+    v = Get_Lzma_DicSize();
+    if (GetProp_BlockSize(NCoderPropID::kBlockSize) != 0
+        || GetProp_BlockSize(NCoderPropID::kBlockSize2) != 0)
+      return v;
+    return Lzma2Enc_GetAutoBlockDictSize(GetLevel(), (UInt32)v);
   }
 
   bool Get_Lzma_MatchFinder_IsBt() const
@@ -196,7 +207,12 @@ public:
     return 2;
   }
 
-  UInt64 Get_Lzma_MemUsage(bool addSlidingWindowSize) const;
+  UInt64 Get_Lzma_MemUsage(bool addSlidingWindowSize) const
+  {
+    return Get_Lzma_MemUsage(addSlidingWindowSize, Get_Lzma_DicSize());
+  }
+  // Heptazip: the same estimate for a given dictionary (Get_Lzma2_BlockDicSize())
+  UInt64 Get_Lzma_MemUsage(bool addSlidingWindowSize, UInt64 dicSize) const;
 
   /* returns -1, if numThreads is unknown */
   int Get_Xz_NumThreads(UInt32 &lzmaThreads) const

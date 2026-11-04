@@ -201,8 +201,9 @@ HRESULT CHandler::SetMainMethod(CCompressionMethodMode &methodMode)
     if (methodFull.Id == k_LZMA2)
     {
       /* Heptazip: the solid block size stays as in upstream: 64 x (4 x dictionary),
-         a ratio decision independent of the LZMA2 block size (2 x dictionary now,
-         C/Lzma2Enc.h). Upstream comment:
+         a ratio decision independent of the LZMA2 block size (equal to the dictionary
+         since #64, Lzma2Enc_GetAutoBlockSize() in C/Lzma2Enc.h; the memory estimate
+         below uses the same function through Get_Xz_BlockSize()). Upstream comment:
          he we calculate default chunk Size for LZMA2 as defined in LZMA2 encoder code
          lzma2 code use dictionary up to fake 4 GiB to calculate ChunkSize. */
       UInt64 cs = (UInt64)dicSize << 2;
@@ -246,8 +247,9 @@ HRESULT CHandler::SetMainMethod(CCompressionMethodMode &methodMode)
           */
 
           UInt32 numBlockThreads = numBlockThreads_Original;
-          const UInt64 lzmaMemUsage = oneMethodInfo.Get_Lzma_MemUsage(false); // solid
-          
+          // Heptazip: per block encoder, with the dictionary of the automatic blocks (#75)
+          const UInt64 lzmaMemUsage = oneMethodInfo.Get_Lzma_MemUsage(false, oneMethodInfo.Get_Lzma2_BlockDicSize());
+
           for (; numBlockThreads > 1; numBlockThreads--)
           {
             UInt64 size = numBlockThreads * (lzmaMemUsage + cs);

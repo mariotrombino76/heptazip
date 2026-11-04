@@ -129,6 +129,8 @@ const UInt32 k_AES   = 0x6F10701;
 const UInt32 k_ZSTD_7zZstd = 0x4F71101;
 // Heptazip: FLOAT, lossless coder for float arrays (design 0008); 64-bit random ID
 const UInt64 k_FLOAT = 0x3F707F5E728B0001;
+// Heptazip: method "BWT" (libbsc: LZP + Burrows-Wheeler + QLFC), design 0016, issue #81
+const UInt64 k_BWT = 0x3F707F5E728B0002;
 
 inline bool IsFilterMethod(UInt64 m)
 {

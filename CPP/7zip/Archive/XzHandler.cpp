@@ -1210,7 +1210,8 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
         {
           UInt32 numBlockThreads = numBlockThreads_Original;
           {
-            const UInt64 lzmaMemUsage = oneMethodInfo.Get_Lzma_MemUsage(false);
+            // Heptazip: per block encoder, with the dictionary of the automatic blocks (#75)
+            const UInt64 lzmaMemUsage = oneMethodInfo.Get_Lzma_MemUsage(false, oneMethodInfo.Get_Lzma2_BlockDicSize());
             for (; numBlockThreads > 1; numBlockThreads--)
             {
               UInt64 size = numBlockThreads * (lzmaMemUsage + cs);

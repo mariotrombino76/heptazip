@@ -28,6 +28,10 @@ with a company of the same name).
 - **zstd** and **brotli** in the 7z format (`-m0=zstd`, `-m0=brotli`), compatible with
   7-Zip-zstd: brotli `-mx11` compresses better than zstd -19 and decompresses at over
   1 GB/s with several threads.
+- **BWT method** for text and structured data (`-m0=bwt`, libbsc: Burrows-Wheeler with
+  libsais and the QLFC coder, parallel blocks): silesia at 22.41% at 72 MB/s with 20
+  threads, against 22.97% at 7.6 MB/s for LZMA2 `-mx9`; webster 16.0% vs 20.2%. Heptazip
+  only, like FLOAT; for binaries LZMA2 stays better.
 - **Parallel extraction and compression** of 7z folders (`-mpfd`, `-mpfc`), with
   archives byte-for-byte identical to the single-thread ones.
 - **Parallel gzip and zip**: block-based Deflate on all cores, 8.6 times faster
@@ -36,11 +40,15 @@ with a company of the same name).
   libdeflate: `-mx3` compresses more than pigz -6 at 2.5 times the speed (820 MB/s),
   `-mx1` exceeds 1 GB/s. Deflate decompression 2.7-3 times faster (silesia 800 MB/s,
   within 8% of libdeflate; faster than libdeflate on the corpus).
-- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.19% at 15.5 MB/s with
+- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 15.5 MB/s with
   decompression at 560 MB/s, against 23.40%, 9.2 and 159 MB/s for 7-Zip 26.05; better than
   xz -6 in ratio and compression (23.35%, 13.3 MB/s) and at 94% of its decompression (595).
-  From level 5, word size 64 and blocks equal to the dictionary; at `-mx1` and `-mx9` the
-  archives are identical to 7-Zip's and decompress 1.4-1.5 times faster.
+  From level 5, word size 64 and blocks equal to the dictionary of the level, with a 16 MiB
+  dictionary for the 32 MiB blocks of level 5 (1.4 GB of memory on silesia with 20 threads
+  instead of 2.3); at `-mx1` and `-mx9` the archives are identical to 7-Zip's and decompress
+  1.4-1.5 times faster. With a single block (medium files, `-mx9`, plain LZMA) the match
+  finder runs on several threads, with identical archives: silesia `-mx9` from 42 to 26 s,
+  a 12 MB file at `-mx5` from 2.9 to 1.7 s.
 - **More speed**: assembly on by default, CRC32 with PCLMULQDQ, optimized match finder,
   SIMD decoders (AVX2, NEON).
 - **Modern build** with CMake (GCC/Clang, C++20, optional LTO/PGO), tests with CTest,
@@ -61,7 +69,7 @@ use `-mf=off`.
 
 ## Versions
 
-`26.05-m1`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
+`26.05-m2`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
 (Linux x64, Windows x64) are in the [releases](https://github.com/mariotrombino76/heptazip/releases),
 the changes in [docs/release-notes](docs/release-notes).
 
@@ -86,4 +94,5 @@ notice and the license text. Details, file by file:
 7-Zip is by Igor Pavlov: the original code keeps its licenses (GNU LGPL, with the unRAR
 restriction for the RAR code, and the BSD parts; see `DOC/License.txt`). zstd is
 distributed under the BSD license, the libdeflate compressor and brotli under the MIT
-license. Heptazip is not an official 7-Zip product.
+license, libbsc (BWT method) under the Apache-2.0 license. Heptazip is not an official
+7-Zip product.

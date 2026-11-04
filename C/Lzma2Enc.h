@@ -41,6 +41,29 @@ static Z7_FORCE_INLINE UInt64 Lzma2Enc_GetAutoBlockSize(UInt64 dictSize)
   return blockSize;
 }
 
+/* Heptazip (issue #75): dictionary of the block encoders when the dictionary was not
+   given (dictSize == 0), the blocks are automatic (LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO,
+   the block is Lzma2Enc_GetAutoBlockSize() of the dictionary of the level) and the
+   data spans more than one block. Inside a 32 MiB block the history available to a
+   match is on average 16 MiB, so at level 5 the dictionary is half the block:
+   16 MiB with 32 MiB blocks. Measured at 20 threads (docs/benchmark-mercato.md):
+   Silesia 23.19% -> 23.22%, corpus unchanged (63.93%), same compression and
+   decompression speed, compression memory -41% on Silesia (2329 -> 1367 MB, each bt4
+   block encoder costs 4 B x 3 x dictionary of tables) and -32% on the corpus;
+   decompression memory also halves per thread. The other levels keep the dictionary of
+   the level: -mx9 (256 MiB dictionary and block) still produces archives identical to
+   7-Zip's; plain LZMA, solid LZMA2 (one block thread, data smaller than a block) and an
+   explicit dictionary are not affected.
+   The only definition of the rule: Lzma2EncProps_Normalize() (7z), XzProps_Normalize()
+   (xz), CMethodProps::Get_Lzma2_BlockDicSize() (memory estimates of the 7z and xz
+   handlers) and the Add dialog (CompressDialog.cpp) use it. */
+#define LZMA2_ENC_AUTO_BLOCK_HALF_DICT_LEVEL  5
+
+static Z7_FORCE_INLINE UInt32 Lzma2Enc_GetAutoBlockDictSize(unsigned level, UInt32 dictSizeOfLevel)
+{
+  return level == LZMA2_ENC_AUTO_BLOCK_HALF_DICT_LEVEL ? dictSizeOfLevel >> 1 : dictSizeOfLevel;
+}
+
 typedef struct
 {
   CLzmaEncProps lzmaProps;

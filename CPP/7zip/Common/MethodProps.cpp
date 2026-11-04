@@ -710,9 +710,8 @@ static UInt64 GetMemoryUsage_LZMA(UInt32 dict, bool isBt, UInt32 numThreads)
 
 static const UInt32 kLzmaMaxDictSize = (UInt32)15 << 28;
 
-UInt64 CMethodProps::Get_Lzma_MemUsage(bool addSlidingWindowSize) const
+UInt64 CMethodProps::Get_Lzma_MemUsage(bool addSlidingWindowSize, UInt64 dicSize) const
 {
-  const UInt64 dicSize = Get_Lzma_DicSize();
   const bool isBt = Get_Lzma_MatchFinder_IsBt();
   const UInt32 dict32 = (dicSize >= kLzmaMaxDictSize ? kLzmaMaxDictSize : (UInt32)dicSize);
   const UInt32 numThreads = Get_Lzma_NumThreads();

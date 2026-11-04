@@ -10,6 +10,11 @@ EXTERN_C_BEGIN
 
 typedef UInt32 CLzRef;
 
+/* Heptazip (issue #77): in the match stream of one bt thread of the multithreaded
+   match finder, the single word written for a position owned by another bt thread.
+   A real entry is the number of pairs words (even, <= 2 * matchMaxLen). */
+#define kMtNotOwned ((UInt32)0xFFFFFFFF)
+
 typedef struct
 {
   const Byte *buffer;
@@ -31,6 +36,13 @@ typedef struct
   CLzRef *son;
   UInt32 hashMask;
   UInt32 cutValue;
+  /* Heptazip (issue #77): extra nodes of (son) after the (cyclicBufferSize) ones,
+     for the multithreaded bt match finder with several bt threads: a node stays
+     valid for (sonExtra) positions after leaving the window, so a thread ahead by at
+     most (sonExtra) positions never overwrites a node another thread can still
+     reach. 0 (default) for the single-thread match finder. Set before
+     MatchFinder_Create(). */
+  UInt32 sonExtra;
 
   Byte *bufBase;
   ISeqInStreamPtr stream;

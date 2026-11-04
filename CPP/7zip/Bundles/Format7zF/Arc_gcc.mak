@@ -288,6 +288,8 @@ COMPRESS_OBJS = \
   $O/FloatRegister.o \
   $O/BrotliCoder.o \
   $O/BrotliRegister.o \
+  $O/BscCoder.o \
+  $O/BscRegister.o \
 
 ifdef DISABLE_RAR
 DISABLE_RAR_COMPRESS=1
@@ -447,6 +449,18 @@ BROTLI_LIB_OBJS = \
   $O/br_enc_static_dict_lut.o \
   $O/br_enc_static_init.o \
   $O/br_enc_utf8_util.o \
+  $O/bsc_adler32.o \
+  $O/bsc_bwt.o \
+  $O/bsc_libsais.o \
+  $O/bsc_coder.o \
+  $O/bsc_qlfc.o \
+  $O/bsc_qlfc_model.o \
+  $O/bsc_detectors.o \
+  $O/bsc_preprocessing.o \
+  $O/bsc_libbsc.o \
+  $O/bsc_lzp.o \
+  $O/bsc_platform.o \
+  $O/bsc_st.o \
 
 LIBDEFLATE_OBJS = \
   $O/deflate_compress.o \

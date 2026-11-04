@@ -234,6 +234,8 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
 {
   UInt64 fileSize;
   int t1, t1n, t2, t2r, t3;
+  const BoolInt dictWasAuto = (p->lzmaProps.dictSize == 0);  // Heptazip
+  const BoolInt blockThreadsSplit = (p->lzmaProps.numThreads <= 0);  // Heptazip (#77): lzma threads not given
   {
     CLzmaEncProps lzmaProps = p->lzmaProps;
     LzmaEncProps_Normalize(&lzmaProps);
@@ -303,8 +305,15 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
   else
   {
     if (p->blockSize == LZMA2_ENC_PROPS_BLOCK_SIZE_AUTO)
-      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);  // Heptazip
-    
+    {
+      /* Heptazip: block = dictionary of the level (reduced to the data size, in which
+         case the data fits one block). With more than one block the dictionary of the
+         block encoders can be smaller than the block: Lzma2Enc_GetAutoBlockDictSize(). */
+      p->blockSize = Lzma2Enc_GetAutoBlockSize(p->lzmaProps.dictSize);
+      if (dictWasAuto && (fileSize == (UInt64)(Int64)-1 || fileSize > p->blockSize))
+        p->lzmaProps.dictSize = Lzma2Enc_GetAutoBlockDictSize((unsigned)p->lzmaProps.level, p->lzmaProps.dictSize);
+    }
+
     if (t2 > 1 && fileSize != (UInt64)(Int64)-1)
     {
       UInt64 numBlocks = fileSize / p->blockSize;
@@ -320,6 +329,29 @@ void Lzma2EncProps_Normalize(CLzma2EncProps *p)
     }
   }
   
+  /* Heptazip (issue #77): with a single block in flight (data within one block, -mx9,
+     a solid LZMA2 stream) the threads left over go to the match finder: with the bt
+     match finder (lzma threads = 2: parser + one bt thread) the parser waited for the
+     single bt thread about 45% of the time (docs/design/0015). From 3 total threads the
+     block encoder gets 2 bt threads (3 lzma threads), from 5 it gets 4 (5 lzma threads):
+     Silesia -mx9 at 20 threads 42.5 -> 26.1 s, a 32 MiB block at -mx5 9.0 -> 4.9 s,
+     archives identical. With several blocks in flight the blocks keep the cores: the
+     extra bt threads cost CPU (shared node lines, +30..60%) and gain little there
+     (corpus, 2 blocks per folder: same time for 1.6x the CPU). Only when the lzma
+     threads were not given per method (t1 came from LzmaEncProps_Normalize), for data
+     of at least 8 MiB (or of unknown size: the extra threads start half a hash block
+     after each other and cost thread creation) and with a dictionary of at least 4 MiB
+     (with a 64 KiB dictionary the parser is the bottleneck and 2 bt threads cost 9%).
+     The archives do not depend on the number of threads. */
+  if (t1 == 2 && t2r == 1 && p->numTotalThreads >= 3 && blockThreadsSplit
+      && (fileSize == (UInt64)(Int64)-1 || fileSize >= ((UInt64)1 << 23))
+      && p->lzmaProps.dictSize >= ((UInt32)1 << 22))
+  {
+    t1 = (p->numTotalThreads >= 5) ? 5 : 3;
+    p->lzmaProps.numThreads = t1;
+    t3 = t1;
+  }
+
   p->numBlockThreads_Max = t2;
   p->numBlockThreads_Reduced = t2r;
   p->numTotalThreads = t3;

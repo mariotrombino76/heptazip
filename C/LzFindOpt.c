@@ -210,21 +210,36 @@ else
   to eliminate "movsx" BUG in old MSVC x64 compiler.
 */
 
+/* Heptazip (issue #77): (owners) and (ownerSel), (sonSize) and (kMtNotOwned) are for the
+   bt match finder split over several threads (LzFindMt.c). (owners[i]) is the owner of
+   position (pos + i), chosen by the hash thread from the hash value, so all the positions
+   of one hash bucket (one binary tree) belong to one thread. This call handles only the
+   positions with (owners[i] == ownerSel): for the others it writes the single word
+   kMtNotOwned to (d) and touches neither (son) nor the data. (owners == NULL): one bt
+   thread, every position is handled (the original code path, no extra cost).
+   (sonSize) is the number of nodes of (son), >= _cyclicBufferSize: the node of a
+   position is (position % sonSize), while the window limit stays _cyclicBufferSize,
+   so a node survives (sonSize - _cyclicBufferSize) positions after leaving the window
+   (CMatchFinder::sonExtra). The long-match optimization stops at a position of another
+   owner. Same matches, in the same order, as the single-thread function. */
+
 UInt32 * Z7_FASTCALL GetMatchesSpecN_2(const Byte *lenLimit, size_t pos, const Byte *cur, CLzRef *son,
     UInt32 _cutValue, UInt32 *d, size_t _maxLen, const UInt32 *hash, const UInt32 *limit, const UInt32 *size,
-    size_t _cyclicBufferPos, UInt32 _cyclicBufferSize,
+    size_t _cyclicBufferPos, UInt32 _cyclicBufferSize, UInt32 sonSize,
+    const Byte *owners, UInt32 ownerSel,
     UInt32 *posRes);
 
 Z7_NO_INLINE
 UInt32 * Z7_FASTCALL GetMatchesSpecN_2(const Byte *lenLimit, size_t pos, const Byte *cur, CLzRef *son,
     UInt32 _cutValue, UInt32 *d, size_t _maxLen, const UInt32 *hash, const UInt32 *limit, const UInt32 *size,
-    size_t _cyclicBufferPos, UInt32 _cyclicBufferSize,
+    size_t _cyclicBufferPos, UInt32 _cyclicBufferSize, UInt32 sonSize,
+    const Byte *owners, UInt32 ownerSel,
     UInt32 *posRes)
 {
   do // while (hash != size)
   {
     UInt32 delta;
-    
+
   #ifndef cbs
     UInt32 cbs;
   #endif
@@ -238,6 +253,16 @@ UInt32 * Z7_FASTCALL GetMatchesSpecN_2(const Byte *lenLimit, size_t pos, const B
       return NULL;
 
     lenLimit++;
+
+    if (owners)
+    {
+      const Byte ow = *owners++;
+      if (ow != ownerSel)
+      {
+        *d++ = kMtNotOwned;  // Heptazip (#77): another bt thread handles this position
+        goto next_pos;
+      }
+    }
 
   #ifndef cbs
     cbs = _cyclicBufferSize;
@@ -274,7 +299,7 @@ else
     {
       // SPEC code
       CLzRef *pair = son + ((size_t)((ptrdiff_t)_cyclicBufferPos - (ptrdiff_t)delta
-          + (ptrdiff_t)(UInt32)(_cyclicBufferPos < delta ? cbs : 0)
+          + (ptrdiff_t)(UInt32)(_cyclicBufferPos < delta ? sonSize : 0)  // Heptazip (#77): wrap on the node count
           ) << 1);
 
       const ptrdiff_t diff = (ptrdiff_t)0 - (ptrdiff_t)delta;
@@ -309,7 +334,11 @@ else
 
             #ifdef USE_LONG_MATCH_OPT
 
-                if (hash == size || *hash != delta || lenLimit[diff] != lenLimit[0] || d >= limit)
+                /* Heptazip (#77): the run continues only while the next position has
+                   the same owner (same thread): its node is copied from the node of
+                   (next position - delta), which is in the same tree. */
+                if (hash == size || *hash != delta || lenLimit[diff] != lenLimit[0] || d >= limit
+                    || (owners && *owners != ownerSel))
                   break;
 
             {
@@ -329,7 +358,7 @@ else
                      here, and left shift of a negative value is undefined behavior
                      (reported by UBSan). Same machine code. See docs/upstream-patches.md */
                   const CLzRef *src = dest + ((diff
-                      + (ptrdiff_t)(UInt32)((_cyclicBufferPos < delta) ? cbs : 0)) * 2);
+                      + (ptrdiff_t)(UInt32)((_cyclicBufferPos < delta) ? sonSize : 0)) * 2);
                   // CLzRef *ptr = son + ((size_t)(pos) << 1) - CYC_TO_POS_OFFSET * 2;
                   #if 0
                   *(UInt64 *)(void *)dest = *((const UInt64 *)(const void *)src);
@@ -342,7 +371,10 @@ else
                 }
                 pos++;
                 hash++;
-                if (hash == size || *hash != delta || lenLimit[diff] != lenLimit[0] || d >= limit)
+                if (owners)
+                  owners++;
+                if (hash == size || *hash != delta || lenLimit[diff] != lenLimit[0] || d >= limit
+                    || (owners && *owners != ownerSel))
                   break;
               } // for() end for long matches
             }
@@ -384,6 +416,7 @@ else
     }
   } // for (tree iterations)
 }
+  next_pos:
     pos++;
     _cyclicBufferPos++;
     cur++;

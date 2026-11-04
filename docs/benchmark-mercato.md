@@ -619,3 +619,111 @@ Silesia sale da 61 a 95 s (fb 64 e più thread su E-core e SMT di questa macchin
 2,3 GB invece di 1,35; sui file grandi non cambia: il costo per thread è lo stesso).
 Gli archivi restano leggibili da ogni 7-Zip.
 
+
+## Memoria di compressione LZMA2 `-mx5` (2026-11-03, #73 e #75)
+
+Il punto 4 della lettura del 2026-11-03, peggiorato dalla #64: Silesia a `-mx5` passa da
+1354 a 2329 MB. Misure (`/usr/bin/time`, RSS massimo, Silesia, binario di develop):
+
+| thread | encoder di blocco in volo | RSS | tempo |
+|---|---|---|---|
+| `-mmt2` | 1 | 381 MB | 41,1 s |
+| `-mmt4` | 2 | 746 MB | 22,4 s |
+| `-mmt8` | 4 | 1478 MB | 18,1 s |
+| `-mmt20` | 7 (= blocchi: 212 MB / 32 MiB) | 2330 MB | 13,9 s |
+| 7-Zip 26.05 `-mmt20` | 2 (blocchi da 128 MiB = 4 × dizionario) | 907 MB | 24,4 s |
+
+La memoria è lineare negli encoder in volo: **~365 MB ciascuno**, di cui 320 sono le tabelle
+bt4 del dizionario da 32 MiB (albero binario 8 byte per posizione = 256 MB, hash 2^24 voci =
+64 MB) e 32 il blocco in ingresso (il buffer d'uscita, 34 MB allocati, ne tocca ~7). Il
+dizionario è lo stesso di 7-Zip (`LZMA2:25` in `l -slt` per entrambi): per encoder il fork
+costa meno di upstream (365 contro ~450 MB con blocchi da 128 MiB), ma ne fa girare 7 invece
+di 2, ed è questo che compra 15,5 MB/s contro 9,2 e 560 contro 159 MB/s in decompressione.
+xz -6 (1081 MB) fa 9 blocchi da 24 MiB con dizionario da 8 MiB: ~120 MB per encoder.
+
+Il limite di memoria di 7-Zip (`-mmemuse`) funziona già sui blocchi LZMA2: `-mmemuse=1g` →
+2 encoder, 746 MB, 22,2 s; `-mmemuse=1500m` → 3 encoder, 1118 MB, 18,4 s (stima del handler
+~20% sopra il reale). Con `-mmt` esplicito il limite non interviene, come in upstream.
+Il valore predefinito era l'80% della RAM; xz usa il 25% per i thread automatici.
+**Decisione: metà della RAM per i thread automatici** (`HandlerOut.h`), un compromesso fra
+i due che su macchine da 8 GB in su non cambia nulla e su una da 4 GB tiene `-mx5` a 5
+encoder (~1,9 GB) invece di 7.
+
+Alternative misurate a 20 thread (stessa sessione, valori relativi: la macchina era più
+lenta del benchmark di mercato):
+
+| | Silesia rapporto | comp MB/s | CPU s | RSS comp | dec MB/s | corpus rapporto | comp | RSS comp |
+|---|---|---|---|---|---|---|---|---|
+| d=32m c=32m (fino a #74) | 23,19% | 14,4 | 95,8 | 2329 | 349 | 63,93% | 28,6 | 1394 |
+| d=16m c=16m | 23,37% | 19,5 | 108,1 | 1866 | 421 | 63,94% | 32,6 | 1408 |
+| **d=16m c=32m (ora, #75)** | **23,22%** | 14,4 | 99,1 | **1367** | 355 | **63,93%** | 27,6 | **944** |
+| d=8m c=24m (come xz -6) | 23,33% | 20,1 | 104,5 | 1025 | 396 | 63,98% | 29,2 | 722 |
+
+Dentro un blocco da 32 MiB la storia disponibile è in media 16 MiB: il dizionario da 16 MiB
+perde solo i match a distanza 16-32 MiB nella seconda metà del blocco, 0,03 punti su Silesia
+e nulla sul corpus, con la stessa velocità e il 32-41% di memoria in meno.
+
+**Decisione (issue #75, 2026-11-03): al livello 5 i blocchi LZMA2 automatici usano un
+dizionario pari a metà del blocco, 16 MiB con blocchi da 32 MiB.** La regola è una sola,
+`Lzma2Enc_GetAutoBlockDictSize()` in `C/Lzma2Enc.h`, e vale quando il dizionario non è
+dato, i blocchi sono automatici e i dati superano un blocco; la applicano l'encoder 7z
+(`Lzma2EncProps_Normalize`), quello xz (`XzProps_Normalize`), le stime di memoria dei
+handler (`Get_Lzma2_BlockDicSize`) e il dialogo Aggiungi. Non cambiano: LZMA puro, LZMA2 a
+un thread di blocco (`-mmt1`, o dati entro 32 MiB: dizionario 32 MiB o pari ai dati),
+`d=` esplicito, gli altri livelli (`-mx1` e `-mx9` identici a 7-Zip, verificati byte per
+byte). Verifica con la build finale, 20 thread: Silesia 49 210 571 byte (23,22%), archivio
+identico a quello di `-m0=lzma2:d=16m:c=32m` della build precedente, 13,4 s, RSS 1400 MB;
+corpus 71 149 090 (63,93%), RSS 967 MB (era 1394); decompressione invariata (0,52 s, RSS
+263 MB, dominata dai buffer dei blocchi). `-txz -mx5`: 7 blocchi da 32 MiB con
+`dict=16MiB`, a `-mmt1` un blocco con 32 MiB. `-mmemuse=1g` ora tiene 3 encoder (858 MB,
+17,0 s) invece di 2, perché la stima del handler usa il dizionario dei blocchi.
+
+## Match finder bt su più thread (2026-11-04, #77)
+
+Dopo #75 il tempo di `-mx5` su Silesia a 20 thread (12,5 s) è dettato dal blocco più
+pesante: il blocco 5 da solo costa 9,0 s con i 2 thread di LZMA e 13,9 s in seriale,
+cioè match finder ~9 s e parser ~5 s; il parser aspetta il thread bt il 45% del tempo.
+Il bt4 a output identico è al suo ottimo (design 0004/0005) e le manopole compatibili
+costano rapporto (Silesia `-mx5`: bt5 −12% tempo +0,055 punti; mc=24 −5% +0,04; blocchi
+da 16 MiB −23% +0,15). Resta il parallelismo *dentro* il match finder: gli alberi dei
+bucket di hash sono indipendenti, quindi N thread bt si dividono i bucket e producono gli
+stessi match nello stesso ordine (design 0015). I thread avanzati vanno al match finder
+solo con un blocco in volo (file o folder entro un blocco, `-mx9`, LZMA puro).
+
+| | prima | dopo | CPU |
+|---|---|---|---|
+| blocco da 32 MiB `-mx5`, 2 thread bt (`-mmt3`) | 8,97 s | **6,36 s** | +29% |
+| idem, 4 thread bt (`-mmt5` o più) | 8,97 s | **4,91 s** | +54% |
+| Silesia `-mx9` (un blocco), 20 thread | 42,5 s | **26,1 s** (5,0 → 8,1 MB/s) | +44% |
+| LZMA puro `-m0=lzma -mx5`, 60 MB | 10,9 s | **7,4 s** | +31% |
+| file da 12 MB `-mx5` | 2,92 s | **1,68 s** | +46% |
+| Silesia `-mx5`, 20 thread (7 blocchi: non divide) | 12,5 s | 12,7 s | +1% |
+| corpus `-mx5` (2 folder da 2 blocchi: non divide) | 3,7 s | 3,7 s | +2% |
+
+Archivi identici al riferimento in tutte le prove (bt2-bt5, `fb` 5-273, 1-20 thread, LZMA e
+LZMA2, xz, stdin, file da 1 byte a 212 MB, normalizzazione forzata ogni 8 Mi posizioni).
+Il quarto thread bt rende meno del secondo perché il costo per passo dell'albero cresce
+con i thread (37 ns con uno, 44 con due, 68 con quattro: capacità di cache, non false
+sharing; un prototipo con array di nodi privati per thread è andato peggio, design 0015
+§7). Il parser costa ~2,3 s di CPU sul blocco e non è il limite. La strada "LZMA più
+veloce a output identico" si ferma qui.
+
+## Metodo BWT nei `.7z` con libbsc (2026-11-04, #81)
+
+Il punto "rapporto sui testi" (bzip3 22,29% contro LZMA2 `-mx9` 22,97%) è coperto da un
+metodo nuovo, `-m0=bwt`, solo Heptazip: LZP + Burrows-Wheeler (libsais) + coder QLFC della
+libreria libbsc 3.4 (Apache-2.0), blocchi indipendenti in parallelo (design 0016).
+
+| Silesia, 20 thread | rapporto | compressione | decompressione | RSS comp |
+|---|---|---|---|---|
+| **`-m0=bwt -mx5`** (16 MiB, adattivo) | **22,41%** | **72 MB/s** | 117 MB/s | 1,1 GB |
+| `-m0=bwt -mx3` (8 MiB, statico) | 22,85% | 107 MB/s | 233 MB/s | 0,9 GB |
+| `-m0=bwt -mx1` (2 MiB, veloce) | 24,16% | 193 MB/s | 379 MB/s | 0,3 GB |
+| LZMA2 `-mx9` | 22,97% | 7,6 MB/s | 101 MB/s | 2,1 GB |
+| bzip3 `-j 20` | 22,29% | 59 MB/s | 70 MB/s | 1,7 GB |
+
+Batte LZMA2 `-mx9` di 0,56 punti a 9,5 volte la velocità e bzip3 in velocità (non in
+rapporto: 0,12 punti). Sui testi singoli il vantaggio è grande (webster 16,0% contro
+20,2%, dickens 22,3 contro 27,8, nci 3,65 contro 5,19); sui binari perde (mozilla 31,6
+contro 26,1; corpus 64,8% contro 63,9% con decompressione a 33 MB/s contro 445): è un
+metodo per testi e dati strutturati. A un thread: 25 MB/s contro 3,2 di LZMA2 `-mx5`.

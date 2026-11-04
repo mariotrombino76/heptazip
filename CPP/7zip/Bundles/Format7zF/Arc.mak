@@ -249,6 +249,8 @@ COMPRESS_OBJS = \
   $O\FloatRegister.obj \
   $O\BrotliCoder.obj \
   $O\BrotliRegister.obj \
+  $O\BscCoder.obj \
+  $O\BscRegister.obj \
 
 CRYPTO_OBJS = \
   $O\7zAes.obj \
@@ -341,6 +343,18 @@ HZ_LIB_OBJS = \
   $O\zstdmt_compress.obj \
   $O\deflate_compress.obj \
   $O\libdeflate_utils.obj \
+  $O\bsc_adler32.obj \
+  $O\bsc_bwt.obj \
+  $O\bsc_libsais.obj \
+  $O\bsc_coder.obj \
+  $O\bsc_qlfc.obj \
+  $O\bsc_qlfc_model.obj \
+  $O\bsc_detectors.obj \
+  $O\bsc_preprocessing.obj \
+  $O\bsc_libbsc.obj \
+  $O\bsc_lzp.obj \
+  $O\bsc_platform.obj \
+  $O\bsc_st.obj \
   $O\br_common_constants.obj \
   $O\br_common_context.obj \
   $O\br_common_dictionary.obj \
