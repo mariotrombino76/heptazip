@@ -69,7 +69,7 @@ use `-mf=off`.
 
 ## Versions
 
-`26.05-m1`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
+`26.05-m2`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
 (Linux x64, Windows x64) are in the [releases](https://github.com/mariotrombino76/heptazip/releases),
 the changes in [docs/release-notes](docs/release-notes).
 
