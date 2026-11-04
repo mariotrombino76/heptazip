@@ -702,8 +702,11 @@ solo con un blocco in volo (file o folder entro un blocco, `-mx9`, LZMA puro).
 
 Archivi identici al riferimento in tutte le prove (bt2-bt5, `fb` 5-273, 1-20 thread, LZMA e
 LZMA2, xz, stdin, file da 1 byte a 212 MB, normalizzazione forzata ogni 8 Mi posizioni).
-Il blocco singolo a `-mx5` è ora limitato dal parser (~5 s), non più dal match finder: il
-prossimo passo per il blocco singolo è il parser.
+Il quarto thread bt rende meno del secondo perché il costo per passo dell'albero cresce
+con i thread (37 ns con uno, 44 con due, 68 con quattro: capacità di cache, non false
+sharing; un prototipo con array di nodi privati per thread è andato peggio, design 0015
+§7). Il parser costa ~2,3 s di CPU sul blocco e non è il limite. La strada "LZMA più
+veloce a output identico" si ferma qui.
 
 ## Metodo BWT nei `.7z` con libbsc (2026-11-04, #81)
 
