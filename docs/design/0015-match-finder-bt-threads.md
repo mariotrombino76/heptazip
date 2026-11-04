@@ -156,12 +156,43 @@ Minimo di 3 esecuzioni alternate (riferimento develop a d05005e), i7-12700H 20 t
 | corpus `-mx5`, 20 thread (2 folder da 2 blocchi) | 3,7 s | 3,7 s | 14,6 → 14,9 s |
 | file da 6 MB (sotto la soglia) | 1,36 s | 1,40 s | |
 
-Il blocco singolo a `-mx5` passa da "limitato dal match finder" (9 s) a "limitato dal
-parser" (~5 s): il quarto thread bt aggiunge poco rispetto a due (4,9 contro 6,4 s)
-perché il parser è il nuovo limite. Il prossimo passo per il blocco singolo è il
-parser, non il match finder.
+Il quarto thread bt aggiunge meno del secondo (4,9 contro 6,4 s): non per il parser, come
+sembrava, ma per il costo per passo dell'albero che cresce con i thread (§7).
 
-## 7. Verifica
+## 7. Profilo del thread encoder e tentativo con array privati (issue #79)
+
+`gprof` su una build `-pg` (blocco 5, `-mx5`):
+
+| | CPU |
+|---|---|
+| `LzmaEnc_CodeOneBlock` (parser e range coder, `GetOptimum` inlined) | 2,3 s |
+| interfaccia col match finder nel thread encoder (`MatchFinderMt_GetMatches`, `MixMatches3`, `ReadMatchDistances`, …) | 0,5 s |
+| `GetMatchesSpecN_2`, 1 thread bt (`-mmt2`) | 10,1 s |
+| `GetMatchesSpecN_2`, 2 thread bt (`-mmt3`), somma | 11,8 s (5,9 ciascuno) |
+| `GetMatchesSpecN_2`, 4 thread bt (`-mmt5`), somma | 18,4 s (4,6 ciascuno) |
+
+Il parser costa ~2,3 s, non ~5 come stimato dalla differenza fra `-mmt1` e `-mmt2` (che
+include le attese della pipeline). Il limite con 2 e con 4 thread bt restano i thread bt:
+il costo **per passo dell'albero** cresce con i thread, 37 ns con uno, 44 con due, 68 con
+quattro, identico se i thread sono fissati con `taskset` a P-core, hyper-thread o E-core.
+
+Ipotesi "false sharing residuo" verificata con un prototipo con un array `son` **privato per
+thread** (niente linee condivise, niente sfasamento, niente nodi extra, memoria ×N):
+CPU 17,9 s con 2 thread e 23,7 con 4, tempi 6,8-8,2 e 5,5 s, cioè **peggio** della versione
+condivisa (16,7 / 19,9 s; 6,4 / 4,9 s). Quindi non è il false sharing: è la **capacità di
+cache**. La velocità di bt4 viene dalla località dei nodi recenti (le ultime posizioni,
+densi in memoria): dividendo le posizioni per bucket, i nodi recenti di ogni thread o si
+sparpagliano su N volte le linee (array privati, 1/N di nodi utili per linea) o stanno
+nelle stesse linee e migrano fra i core (array condiviso). Un array denso per thread
+richiederebbe nodi da 16 byte (posizione e indice compatto del figlio) e grande quanto la
+finestra per ogni thread, perché nel caso degenere (tutte le posizioni in un bucket) un
+thread riceve tutto: 2N volte la memoria. Scartato.
+
+**Conclusione**: la versione di #78 è la migliore fra quelle provate; la strada "LZMA più
+veloce a output identico" si ferma qui. Il parser non è il limite finché i thread bt sono
+al massimo 4.
+
+## 8. Verifica
 
 Archivi identici al riferimento (develop a d05005e, un thread bt) con: bt2, bt3, bt4,
 bt5, `fb=273`, `fb=5`, 1-20 thread, LZMA e LZMA2, xz, stdin, file da 1 byte a 60 MB,
