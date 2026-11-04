@@ -597,12 +597,22 @@ SRes LzmaEnc_SetProps(CLzmaEncHandle p, const CLzmaEncProps *props2)
   }
   */
   p->multiThread = (props.numThreads > 1);
-  p->matchFinderMt.btSync.affinity =
-  p->matchFinderMt.hashSync.affinity = props.affinity;
-  p->matchFinderMt.btSync.affinityGroup =
-  p->matchFinderMt.hashSync.affinityGroup = props.affinityGroup;
-  p->matchFinderMt.btSync.affinityInGroup =
-  p->matchFinderMt.hashSync.affinityInGroup = props.affinityInGroup;
+  /* Heptazip (issue #77): numThreads = 1 + bt threads of the multithreaded match finder
+     (2 = one bt thread, as upstream; 3 and 4 = two; 5 and more = four). The hash thread
+     is not counted: it is mostly idle. Same archives for any number of threads. */
+  p->matchFinderMt.numBtThreads = (props.numThreads >= 5) ? 4 : (props.numThreads >= 3 ? 2 : 1);
+  {
+    unsigned k;
+    p->matchFinderMt.hashSync.affinity = props.affinity;
+    p->matchFinderMt.hashSync.affinityGroup = props.affinityGroup;
+    p->matchFinderMt.hashSync.affinityInGroup = props.affinityInGroup;
+    for (k = 0; k < MT_BT_THREADS_MAX; k++)
+    {
+      p->matchFinderMt.bt[k].sync.affinity = props.affinity;
+      p->matchFinderMt.bt[k].sync.affinityGroup = props.affinityGroup;
+      p->matchFinderMt.bt[k].sync.affinityInGroup = props.affinityInGroup;
+    }
+  }
   #endif
 
   return SZ_OK;

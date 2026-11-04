@@ -677,3 +677,30 @@ corpus 71 149 090 (63,93%), RSS 967 MB (era 1394); decompressione invariata (0,5
 263 MB, dominata dai buffer dei blocchi). `-txz -mx5`: 7 blocchi da 32 MiB con
 `dict=16MiB`, a `-mmt1` un blocco con 32 MiB. `-mmemuse=1g` ora tiene 3 encoder (858 MB,
 17,0 s) invece di 2, perché la stima del handler usa il dizionario dei blocchi.
+
+## Match finder bt su più thread (2026-11-04, #77)
+
+Dopo #75 il tempo di `-mx5` su Silesia a 20 thread (12,5 s) è dettato dal blocco più
+pesante: il blocco 5 da solo costa 9,0 s con i 2 thread di LZMA e 13,9 s in seriale,
+cioè match finder ~9 s e parser ~5 s; il parser aspetta il thread bt il 45% del tempo.
+Il bt4 a output identico è al suo ottimo (design 0004/0005) e le manopole compatibili
+costano rapporto (Silesia `-mx5`: bt5 −12% tempo +0,055 punti; mc=24 −5% +0,04; blocchi
+da 16 MiB −23% +0,15). Resta il parallelismo *dentro* il match finder: gli alberi dei
+bucket di hash sono indipendenti, quindi N thread bt si dividono i bucket e producono gli
+stessi match nello stesso ordine (design 0015). I thread avanzati vanno al match finder
+solo con un blocco in volo (file o folder entro un blocco, `-mx9`, LZMA puro).
+
+| | prima | dopo | CPU |
+|---|---|---|---|
+| blocco da 32 MiB `-mx5`, 2 thread bt (`-mmt3`) | 8,97 s | **6,36 s** | +29% |
+| idem, 4 thread bt (`-mmt5` o più) | 8,97 s | **4,91 s** | +54% |
+| Silesia `-mx9` (un blocco), 20 thread | 42,5 s | **26,1 s** (5,0 → 8,1 MB/s) | +44% |
+| LZMA puro `-m0=lzma -mx5`, 60 MB | 10,9 s | **7,4 s** | +31% |
+| file da 12 MB `-mx5` | 2,92 s | **1,68 s** | +46% |
+| Silesia `-mx5`, 20 thread (7 blocchi: non divide) | 12,5 s | 12,7 s | +1% |
+| corpus `-mx5` (2 folder da 2 blocchi: non divide) | 3,7 s | 3,7 s | +2% |
+
+Archivi identici al riferimento in tutte le prove (bt2-bt5, `fb` 5-273, 1-20 thread, LZMA e
+LZMA2, xz, stdin, file da 1 byte a 212 MB, normalizzazione forzata ogni 8 Mi posizioni).
+Il blocco singolo a `-mx5` è ora limitato dal parser (~5 s), non più dal match finder: il
+prossimo passo per il blocco singolo è il parser.

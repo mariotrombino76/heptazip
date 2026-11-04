@@ -42,7 +42,9 @@ con una società omonima).
   Dal livello 5 dimensione parola 64 e blocchi pari al dizionario del livello, con un
   dizionario di 16 MiB per i blocchi da 32 MiB del livello 5 (1,4 GB di memoria su silesia
   a 20 thread, non 2,3); a `-mx1` e `-mx9` gli archivi sono identici a quelli di 7-Zip e si
-  decomprimono 1,4-1,5 volte più in fretta.
+  decomprimono 1,4-1,5 volte più in fretta. Con un solo blocco (file medi, `-mx9`, LZMA
+  puro) il match finder lavora su più thread, con archivi identici: silesia `-mx9` da 42 a
+  26 s, un file da 12 MB a `-mx5` da 2,9 a 1,7 s.
 - **Più velocità**: assembly attivo di default, CRC32 con PCLMULQDQ, match finder
   ottimizzato, decoder SIMD (AVX2, NEON).
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,

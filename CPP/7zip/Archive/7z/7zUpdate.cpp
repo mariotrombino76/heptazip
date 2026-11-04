@@ -2438,9 +2438,10 @@ class CParallelFolderEncoder
   {
     std::unique_ptr<CEncoder> Encoder; // for the method of (Group); NULL: not created
     unsigned Group;
+    UInt32 NumThreads;     // lzma threads given to the LZMA/LZMA2 coder (kLzmaThreads, #77); 0: none
     UInt64 Memory;
     bool Busy;
-    CEncoderSlot(): Group(0), Memory(0), Busy(false) {}
+    CEncoderSlot(): Group(0), NumThreads(0), Memory(0), Busy(false) {}
   };
   std::vector<CEncoderSlot> _slots;
 
@@ -2887,8 +2888,29 @@ HRESULT CParallelFolderEncoder::AddFolder(const UInt32 *indices, unsigned numSub
         {
           if (!slot.Encoder)
           {
-            slot.Encoder = std::make_unique<CEncoder>(*_methods[_curGroup]);
+            /* Heptazip (#77): the LZMA/LZMA2 coder of this folder gets the lzma threads
+               the budget counted (EstimateFolderEncodeCost: 2 with the bt match finder),
+               as the explicit property kLzmaThreads. Otherwise, with the total threads, the
+               encoder of a one-block folder would split its match finder over 4 bt threads
+               (Lzma2EncProps_Normalize) while the budget counts 2, and ten such folders in
+               parallel would run 60 threads for the same time (measured: corpus 1.6x CPU).
+               kNumThreads (the total) stays: it decides the LZMA2 blocks, so the archive is
+               the same as with -mpfc=off (tests/update_equivalence.py). */
+            const CCompressionMethodMode &group = *_methods[_curGroup];
+            UInt32 lzmaThreads = 0;
+            if (!group.Methods.IsEmpty()
+                && (group.Methods[0].Id == k_LZMA || group.Methods[0].Id == k_LZMA2))
+              lzmaThreads = group.Methods[0].Get_Lzma_NumThreads();
+            if (lzmaThreads != 0)
+            {
+              CCompressionMethodMode limited = group;
+              limited.Methods[0].AddProp32(NCoderPropID::kLzmaThreads, lzmaThreads);
+              slot.Encoder = std::make_unique<CEncoder>(limited);
+            }
+            else
+              slot.Encoder = std::make_unique<CEncoder>(group);
             slot.Group = _curGroup;
+            slot.NumThreads = lzmaThreads;
           }
           _budget.Reserve(extra);
           slot.Memory += extra;

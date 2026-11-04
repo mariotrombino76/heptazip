@@ -139,6 +139,11 @@ namespace NCoderPropID
     kNumThreadGroups,   // VT_UI4
     kThreadGroup,       // VT_UI4
     kAffinityInGroup,   // VT_UI8
+    /* Heptazip (issue #77): threads of one LZMA encoder (1 + bt threads of the match
+       finder), set by the parallel folder encoder of 7z so that a folder encoder uses the
+       threads of its budget; kNumThreads (the total) stays as given, so the LZMA2 blocks,
+       hence the archive, do not change. Not a user option. */
+    kLzmaThreads,       // VT_UI4
     /*
     // kHash3Bits,          // VT_UI4
     // kHash2Bits,          // VT_UI4
