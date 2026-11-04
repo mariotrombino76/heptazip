@@ -1,4 +1,7 @@
 ; LzFindOpt.asm -- ASM version of GetMatchesSpecN_2() function
+; Heptazip: NOT USED. GetMatchesSpecN_2() in C/LzFindOpt.c has more parameters since
+; issue #77 (bt threads by hash bucket); this version does not match it and the C one
+; is faster (design 0004). Kept as reference only; no makefile assembles it.
 ; 2024-06-18: Igor Pavlov : Public domain
 ;
 

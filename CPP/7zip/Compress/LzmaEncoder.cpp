@@ -177,6 +177,7 @@ HRESULT SetLzmaProp(PROPID propID, const PROPVARIANT &prop, CLzmaEncProps &ep)
     SET_PROP_32(kLitPosBits, lp)
     SET_PROP_32(kLitContextBits, lc)
     SET_PROP_32(kNumThreads, numThreads)
+    SET_PROP_32(kLzmaThreads, numThreads)  // Heptazip (#77): explicit, so Lzma2EncProps_Normalize() does not add bt threads
     default: return E_INVALIDARG;
   }
   return S_OK;

@@ -243,6 +243,7 @@ void MatchFinder_Construct(CMatchFinder *p)
   unsigned i;
   p->buffer = NULL;
   p->bufBase = NULL;
+  p->sonExtra = 0;  // Heptazip (#77)
   p->directInput = 0;
   p->stream = NULL;
   p->hash = NULL;
@@ -468,7 +469,7 @@ int MatchFinder_Create(CMatchFinder *p, UInt32 historySize,
       p->historySize = historySize;
       p->cyclicBufferSize = newCyclicBufferSize; // it must be = (historySize + 1)
       
-      numSons = newCyclicBufferSize;
+      numSons = (size_t)newCyclicBufferSize + p->sonExtra;  // Heptazip (#77): extra nodes for the MT bt threads
       if (p->btMode)
         numSons <<= 1;
       newSize = hashSizeSum + numSons;
