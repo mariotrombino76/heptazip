@@ -17,7 +17,7 @@ add_executable(extract_trace
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_link_libraries(extract_trace PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Test unitari del modulo di estrazione parallela (7zExtractMt).
@@ -26,7 +26,7 @@ add_executable(unit_7zextract_mt
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_link_libraries(unit_7zextract_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Archivio creato con una callback che dichiara per un file una dimensione diversa da
@@ -36,7 +36,7 @@ add_executable(update_growing
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_link_libraries(update_growing PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Banco di prova dei match finder (strumento, non test: docs/design/0005).
@@ -53,7 +53,7 @@ add_executable(unit_7zupdate_mt
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_link_libraries(unit_7zupdate_mt PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 if(SEVENZIP_ZSTD_ENCODER)
   # i controlli sulla stima dell'encoder zstd
@@ -66,7 +66,7 @@ add_executable(unit_com_try
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_link_libraries(unit_com_try PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
 # Fuzzing dei gestori di archivio (design 0007). fuzz_replay e' lo stesso harness senza
@@ -76,7 +76,7 @@ add_executable(fuzz_replay
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_compile_definitions(fuzz_replay PRIVATE FUZZ_REPLAY)
 target_link_libraries(fuzz_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 # Lo stesso per fuzz_codec (decoder senza gestore): tests/fuzz/regress-codec/<metodo>/.
@@ -85,7 +85,7 @@ add_executable(fuzz_codec_replay
   $<TARGET_OBJECTS:sevenzip_c>
   $<TARGET_OBJECTS:sevenzip_cpp>
   ${SEVENZIP_ASM_OBJECTS}
-  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+  ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
 target_compile_definitions(fuzz_codec_replay PRIVATE FUZZ_REPLAY)
 target_link_libraries(fuzz_codec_replay PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
 
@@ -100,7 +100,7 @@ if(SEVENZIP_FUZZ)
     $<TARGET_OBJECTS:sevenzip_c>
     $<TARGET_OBJECTS:sevenzip_cpp>
     ${SEVENZIP_ASM_OBJECTS}
-    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
   target_link_libraries(fuzz_archive PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_archive PRIVATE -fsanitize=fuzzer)
   add_executable(fuzz_float fuzz/fuzz_float.c
@@ -112,7 +112,7 @@ if(SEVENZIP_FUZZ)
     $<TARGET_OBJECTS:sevenzip_c>
     $<TARGET_OBJECTS:sevenzip_cpp>
     ${SEVENZIP_ASM_OBJECTS}
-    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS})
+    ${SEVENZIP_ZSTD_OBJECTS} ${SEVENZIP_LIBDEFLATE_OBJECTS} ${SEVENZIP_BROTLI_OBJECTS} ${SEVENZIP_BSC_OBJECTS})
   target_link_libraries(fuzz_codec PRIVATE sevenzip_flags Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(fuzz_codec PRIVATE -fsanitize=fuzzer)
   set(_fuzz_targets fuzz_archive fuzz_float fuzz_codec)
@@ -263,6 +263,14 @@ if(SEVENZIP_BROTLI)
     COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/brotli_codec.py
             --7zz ${_7zz})
   set_tests_properties(brotli_codec PROPERTIES TIMEOUT 900 ENVIRONMENT "${_test_env}")
+endif()
+
+# Metodo BWT (libbsc, design 0016): andata e ritorno, blocchi indipendenti dai thread, errori.
+if(SEVENZIP_BSC)
+  add_test(NAME bwt_codec
+    COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/bwt_codec.py
+            --7zz ${_7zz})
+  set_tests_properties(bwt_codec PROPERTIES TIMEOUT 900 ENVIRONMENT "${_test_env}")
 endif()
 
 # Andata e ritorno in ogni formato e metodo principale (anche sul runner Windows, issue #8).

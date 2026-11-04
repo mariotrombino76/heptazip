@@ -43,6 +43,11 @@ quale licenza ha ciascuna parte del codice. Traduzione inglese: LICENSE-Heptazip
    third_party/brotli: brotli 1.2.1, Copyright (c) 2009, 2010, 2013-2016 by the Brotli
    Authors, licenza MIT (third_party/brotli/LICENSE); non modificato.
 
+   third_party/libbsc: libbsc 3.4.0, Copyright (c) 2009-2026 Ilya Grebnov (libsais inclusa,
+   Copyright (c) 2021-2026 Ilya Grebnov), licenza Apache-2.0 (third_party/libbsc/LICENSE);
+   senza la parte CUDA, con una modifica (rangecoder.h: puntatori a byte) descritta in
+   third_party/libbsc/README-Heptazip.md.
+
 
 Licenza BSD a 2 clausole (BSD-2-Clause)
 ---------------------------------------

@@ -704,3 +704,23 @@ Archivi identici al riferimento in tutte le prove (bt2-bt5, `fb` 5-273, 1-20 thr
 LZMA2, xz, stdin, file da 1 byte a 212 MB, normalizzazione forzata ogni 8 Mi posizioni).
 Il blocco singolo a `-mx5` è ora limitato dal parser (~5 s), non più dal match finder: il
 prossimo passo per il blocco singolo è il parser.
+
+## Metodo BWT nei `.7z` con libbsc (2026-11-04, #81)
+
+Il punto "rapporto sui testi" (bzip3 22,29% contro LZMA2 `-mx9` 22,97%) è coperto da un
+metodo nuovo, `-m0=bwt`, solo Heptazip: LZP + Burrows-Wheeler (libsais) + coder QLFC della
+libreria libbsc 3.4 (Apache-2.0), blocchi indipendenti in parallelo (design 0016).
+
+| Silesia, 20 thread | rapporto | compressione | decompressione | RSS comp |
+|---|---|---|---|---|
+| **`-m0=bwt -mx5`** (16 MiB, adattivo) | **22,41%** | **72 MB/s** | 117 MB/s | 1,1 GB |
+| `-m0=bwt -mx3` (8 MiB, statico) | 22,85% | 107 MB/s | 233 MB/s | 0,9 GB |
+| `-m0=bwt -mx1` (2 MiB, veloce) | 24,16% | 193 MB/s | 379 MB/s | 0,3 GB |
+| LZMA2 `-mx9` | 22,97% | 7,6 MB/s | 101 MB/s | 2,1 GB |
+| bzip3 `-j 20` | 22,29% | 59 MB/s | 70 MB/s | 1,7 GB |
+
+Batte LZMA2 `-mx9` di 0,56 punti a 9,5 volte la velocità e bzip3 in velocità (non in
+rapporto: 0,12 punti). Sui testi singoli il vantaggio è grande (webster 16,0% contro
+20,2%, dickens 22,3 contro 27,8, nci 3,65 contro 5,19); sui binari perde (mozilla 31,6
+contro 26,1; corpus 64,8% contro 63,9% con decompressione a 33 MB/s contro 445): è un
+metodo per testi e dati strutturati. A un thread: 25 MB/s contro 3,2 di LZMA2 `-mx5`.

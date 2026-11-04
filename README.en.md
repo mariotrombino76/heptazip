@@ -28,6 +28,10 @@ with a company of the same name).
 - **zstd** and **brotli** in the 7z format (`-m0=zstd`, `-m0=brotli`), compatible with
   7-Zip-zstd: brotli `-mx11` compresses better than zstd -19 and decompresses at over
   1 GB/s with several threads.
+- **BWT method** for text and structured data (`-m0=bwt`, libbsc: Burrows-Wheeler with
+  libsais and the QLFC coder, parallel blocks): silesia at 22.41% at 72 MB/s with 20
+  threads, against 22.97% at 7.6 MB/s for LZMA2 `-mx9`; webster 16.0% vs 20.2%. Heptazip
+  only, like FLOAT; for binaries LZMA2 stays better.
 - **Parallel extraction and compression** of 7z folders (`-mpfd`, `-mpfc`), with
   archives byte-for-byte identical to the single-thread ones.
 - **Parallel gzip and zip**: block-based Deflate on all cores, 8.6 times faster
@@ -90,4 +94,5 @@ notice and the license text. Details, file by file:
 7-Zip is by Igor Pavlov: the original code keeps its licenses (GNU LGPL, with the unRAR
 restriction for the RAR code, and the BSD parts; see `DOC/License.txt`). zstd is
 distributed under the BSD license, the libdeflate compressor and brotli under the MIT
-license. Heptazip is not an official 7-Zip product.
+license, libbsc (BWT method) under the Apache-2.0 license. Heptazip is not an official
+7-Zip product.

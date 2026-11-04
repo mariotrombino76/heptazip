@@ -28,6 +28,7 @@ e archivi prodotti identici byte per byte.
 | `SEVENZIP_CXX_STANDARD` | `20` | standard C++ (17/20/23); upstream compila in gnu++17, il fork in gnu++20 (verificato: nessun warning con GCC 13 e Clang 20, archivi identici) |
 | `SEVENZIP_ZSTD_ENCODER` | `ON` | encoder zstd per `.7z` con `third_party/zstd` (il decoder è sempre presente) |
 | `SEVENZIP_BROTLI` | `ON` | metodo brotli nei `.7z` con `third_party/brotli` (compatibile con 7-Zip-zstd) |
+| `SEVENZIP_BSC` | `ON` | metodo BWT nei `.7z` con libbsc (`third_party/libbsc`, solo Heptazip) |
 | `SEVENZIP_LIBDEFLATE` | `ON` | compressore Deflate di `third_party/libdeflate` per gzip, zip e 7z (senza: l'encoder di 7-Zip) |
 | `SEVENZIP_WERROR` | `ON` | warning = errore, come upstream |
 
@@ -160,6 +161,22 @@ Gli archivi zstd non si aprono con 7-Zip upstream. Dettagli e misure:
 Metodo `0x4F71102`, nel formato di 7-Zip-zstd (frame indipendenti, compressi e
 decompressi in parallelo). Gli archivi non si aprono con 7-Zip upstream. Dettagli e
 misure: [docs/design/0014-brotli-nel-7z.md](docs/design/0014-brotli-nel-7z.md).
+
+## Testi e dati strutturati: BWT (`-m0=bwt`)
+
+```sh
+7zz a -m0=bwt archivio.7z testi/            # livello 5: blocchi da 16 MiB, coder QLFC adattivo
+7zz a -m0=bwt -mx3 archivio.7z testi/       # blocchi da 8 MiB, coder statico: più veloce
+7zz a -m0=bwt:c=64m:a=1 archivio.7z testi/  # blocco e coder dati (c=64 KiB..1 GiB; a=0 veloce, 1 statico, 2 adattivo)
+```
+
+Burrows-Wheeler (libsais) con LZP e coder QLFC della libreria libbsc (`third_party/libbsc`,
+Apache-2.0), in blocchi indipendenti compressi e decompressi in parallelo. Su Silesia a 20
+thread 22,41% a 72 MB/s (LZMA2 `-mx9`: 22,97% a 7,6 MB/s), sui testi molto di più
+(webster 16% contro 20%); sui binari resta meglio LZMA2. Metodo `0x3F707F5E728B0002`, solo
+Heptazip: gli archivi non si aprono con 7-Zip. Memoria ~7 volte il blocco per thread,
+limitata a metà della RAM. Dettagli e misure:
+[docs/design/0016-metodo-bwt-libbsc.md](docs/design/0016-metodo-bwt-libbsc.md).
 
 ## Pesi dei modelli AI (`-m0=FLOAT`)
 
