@@ -652,6 +652,8 @@ bt4 del dizionario da 32 MiB (albero binario 8 byte per posizione = 256 MB, hash
 dizionario è lo stesso di 7-Zip (`LZMA2:25` in `l -slt` per entrambi): per encoder il fork
 costa meno di upstream (365 contro ~450 MB con blocchi da 128 MiB), ma ne fa girare 7 invece
 di 2, ed è questo che compra 15,5 MB/s contro 9,2 e 560 contro 159 MB/s in decompressione.
+(159 MB/s è il 7-Zip compilato senza assembly: con l'assembly sono 221, vedi la sezione del
+2026-11-05.)
 xz -6 (1081 MB) fa 9 blocchi da 24 MiB con dizionario da 8 MiB: ~120 MB per encoder.
 
 Il limite di memoria di 7-Zip (`-mmemuse`) funziona già sui blocchi LZMA2: `-mmemuse=1g` →
