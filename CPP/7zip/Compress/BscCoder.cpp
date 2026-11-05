@@ -181,7 +181,9 @@ Z7_COM7F_IMF(CEncoder::SetCoderProperties(const PROPID *propIDs, const PROPVARIA
     const PROPID propID = propIDs[i];
     if (propID >= NCoderPropID::kReduceSize)
       continue;
-    if (propID == NCoderPropID::kBlockSize)
+    // the block is the "dictionary" of a BWT: the d property (the Dictionary of the
+    // Windows dialog, "0d=") sets it too
+    if (propID == NCoderPropID::kBlockSize || propID == NCoderPropID::kDictionarySize)
     {
       UInt64 v;
       if (prop.vt == VT_UI4) v = prop.ulVal;

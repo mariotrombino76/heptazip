@@ -228,6 +228,14 @@ ISO 8601 UTC, dimensioni numeriche). Contratto completo: `docs/json-output.md`.
 
 ## Windows: GUI (7zFM, 7zG) con Visual Studio
 
+Il dialogo "Aggiungi all'archivio" conosce i metodi del fork per il 7z: **ZSTD**, **BROTLI**,
+**BWT** e **FLOAT** compaiono nella tendina Metodo con il dizionario (finestra di zstd,
+blocco del BWT) e i thread del livello, e con la memoria stimata come per LZMA2. I profili
+(Più veloce = zstd, Estrazione veloce = brotli, Testi = BWT, Bilanciato e Migliore = LZMA2,
+Compatibile = zip) scelgono formato, livello e metodo nelle tendine; con un `0=metodo` nel
+campo Parametri le tendine del metodo restano disabilitate.
+
+
 ```bat
 tools\windows\build-msvc.bat out-msvc
 rem -> 7z.dll, 7z.exe, 7zFM.exe, 7zG.exe, 7-zip.dll in out-msvc\
