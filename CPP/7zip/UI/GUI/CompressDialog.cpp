@@ -110,23 +110,24 @@ static const UInt32 kZstd_MAX_DictSize_Chain = (UInt32)1 << kMaxDictChain;
 
 static LPCSTR const kExeExt = ".exe";
 
-// Heptazip: profiles of the dialog (format, level, Parameters field)
+// Heptazip: profiles of the dialog (format, level, method of the Method combo box)
 struct CProfile
 {
   UInt32 StringID;
   const char *Format;
   UInt32 Level;
-  const char *Params;
+  const char *Method;   // as in kMethodsNames (case-insensitive)
 };
 
 static const CProfile k_Profiles[] =
 {
   { IDS_COMPRESS_PROFILE_CUSTOM,       "",    0, "" },
-  { IDS_COMPRESS_PROFILE_FASTEST,      "7z",  3, "0=zstd" },
-  { IDS_COMPRESS_PROFILE_FAST_EXTRACT, "7z",  9, "0=brotli" },
-  { IDS_COMPRESS_PROFILE_BALANCED,     "7z",  5, "" },
-  { IDS_COMPRESS_PROFILE_BEST,         "7z",  9, "" },
-  { IDS_COMPRESS_PROFILE_COMPATIBLE,   "zip", 5, "" }
+  { IDS_COMPRESS_PROFILE_FASTEST,      "7z",  3, "ZSTD" },
+  { IDS_COMPRESS_PROFILE_FAST_EXTRACT, "7z",  9, "BROTLI" },
+  { IDS_COMPRESS_PROFILE_TEXT,         "7z",  5, "BWT" },
+  { IDS_COMPRESS_PROFILE_BALANCED,     "7z",  5, "LZMA2" },
+  { IDS_COMPRESS_PROFILE_BEST,         "7z",  9, "LZMA2" },
+  { IDS_COMPRESS_PROFILE_COMPATIBLE,   "zip", 5, "Deflate" }
 };
 
 static const UInt32 g_Levels[] =
@@ -153,7 +154,12 @@ enum EMethodID
   kDeflate,
   kDeflate64,
   kPPMdZip,
-  // kZSTD,
+  // Heptazip: the methods of the fork in the 7z format (ZstdLibEncoder, BrotliCoder,
+  // BscCoder, FloatCoder); known to the dialog for their dictionary, threads and memory
+  kZstd,
+  kBrotli,
+  kBwt,
+  kFloat,
   kSha256,
   kSha1,
   kCrc32,
@@ -172,7 +178,10 @@ static LPCSTR const kMethodsNames[] =
   , "Deflate"
   , "Deflate64"
   , "PPMd"
-  // , "ZSTD"
+  , "ZSTD"
+  , "BROTLI"
+  , "BWT"
+  , "FLOAT"
   , "SHA256"
   , "SHA1"
   , "CRC32"
@@ -189,9 +198,76 @@ static const EMethodID g_7zMethods[] =
   kBZip2
   , kDeflate
   , kDeflate64
-  // , kZSTD
+  , kZstd
+  , kBrotli
+  , kBwt
+  , kFloat
   , kCopy
 };
+
+
+/* Heptazip: the parameters of the methods of the fork, as their encoders choose them
+   (the dialog estimates the memory and shows the automatic values; the encoders are
+   not linked into the GUI). */
+
+// zstd: windowLog of a level for an input of unknown size (third_party/zstd clevels.h)
+static unsigned Zstd_WindowLog_ForLevel(UInt32 level)
+{
+  static const Byte k_WindowLog[23] =
+    { 19, 19, 20, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 25, 26, 27 };
+  if (level == 0) level = 3; // ZSTD_CLEVEL_DEFAULT
+  if (level > 22) level = 22;
+  return k_WindowLog[level];
+}
+
+// zstd: memory of one worker: the window and the tables (about 3 x window from level 5)
+// and the job buffers (job = 4 x window, at least 1 MiB, input and output)
+static UInt64 Zstd_ThreadMemory(UInt32 level, UInt64 window)
+{
+  UInt64 job = window << 2;
+  if (job < ((UInt64)1 << 20)) job = (UInt64)1 << 20;
+  const UInt64 tables = (level >= 5) ? window * 3 : window;
+  return window + tables + job * 2 + ((UInt64)1 << 20);
+}
+
+// brotli (BrotliCoder.cpp): frame of a level, window of a frame, memory of a thread
+static size_t Brotli_FrameSize_ForLevel(UInt32 level)
+{
+  if (level >= 10) return (size_t)32 << 20;
+  return (size_t)(level ? level : 1) << 20;
+}
+static unsigned Brotli_WindowLog_ForFrame(size_t frameSize)
+{
+  unsigned w = 10; // BROTLI_MIN_WINDOW_BITS
+  while (w < 24 && ((size_t)1 << w) - 16 < frameSize) // BROTLI_MAX_WINDOW_BITS
+    w++;
+  return w;
+}
+static UInt64 Brotli_ThreadMemory(UInt32 level, size_t frameSize)
+{
+  const UInt64 buffers = (UInt64)frameSize * 3;
+  if (level >= 10) return buffers + ((UInt64)200 << 20);
+  if (level >= 5)  return buffers + (UInt64)frameSize + ((UInt64)24 << 20);
+  return buffers + ((UInt64)8 << 20);
+}
+
+// BWT (BscCoder.cpp): block of a level, memory of a thread (7 x block)
+static UInt32 Bwt_BlockSize_ForLevel(UInt32 level)
+{
+  if (level <= 1) return (UInt32)1 << 21;
+  if (level <= 2) return (UInt32)1 << 22;
+  if (level <= 3) return (UInt32)1 << 23;
+  if (level <= 5) return (UInt32)1 << 24;
+  if (level <= 6) return (UInt32)1 << 25;
+  return (UInt32)1 << 26;
+}
+static UInt64 Bwt_ThreadMemory(UInt64 blockSize)
+{
+  return blockSize * 7 + ((UInt64)16 << 20);
+}
+
+// FLOAT (FloatCoder.h): blocks of 1 MiB, a few buffers per thread
+static const UInt64 k_Float_ThreadMemory = (UInt64)4 << 20;
 
 static const EMethodID g_7zSfxMethods[] =
 {
@@ -1376,28 +1452,61 @@ void CCompressDialog::ApplyProfile(int index)
         break;
       }
   }
-  const UString params (p.Params);
-  m_Params.SetText(params);
-  Params_UpdateMethodEnable();
+  {
+    const int item = FindMethodItem(p.Method);
+    if (item >= 0 && item != m_Method.GetCurSel())
+    {
+      m_Method.SetCurSel(item);
+      OnCommand(CBN_SELCHANGE, IDC_COMPRESS_METHOD, 0);
+    }
+  }
+  // a "0=" / "m=" in the Parameters field would replace the method of the profile
+  if (Params_HasMethodOverride())
+  {
+    m_Params.SetText(L"");
+    Params_UpdateMethodEnable();
+  }
   _profileIsChanging = false;
 }
 
-// the options of the format are remembered (also "0=zstd" of a profile): at the opening
-// we show the profile that gave them
+// the item of the Method combo box whose method is (name); -1 if none. The automatic
+// item (the first) matches too, when its method is (name).
+int CCompressDialog::FindMethodItem(const char *name)
+{
+  const int count = (int)m_Method.GetCount();
+  for (int i = 0; i < count; i++)
+  {
+    int id = (int)(Int32)(UInt32)m_Method.GetItemData(i);
+    if (id < 0)
+      id = _auto_MethodId;
+    if (id < 0)
+      continue;
+    AString method;
+    if ((unsigned)id < Z7_ARRAY_SIZE(kMethodsNames))
+      method = kMethodsNames[id];
+    else
+      method = ExternalMethods[(unsigned)id - (unsigned)Z7_ARRAY_SIZE(kMethodsNames)];
+    if (method.IsEqualTo_Ascii_NoCase(name))
+      return i;
+  }
+  return -1;
+}
+
+// the options of the format are remembered (format, level, method): at the opening we
+// show the profile that gave them
 void CCompressDialog::Profile_Detect()
 {
-  UString params;
-  m_Params.GetText(params);
-  if (!params.IsEmpty())
+  m_Profile.SetCurSel(0);
+  if (!Params_HasMethodOverride())
   {
     const CArcInfoEx &ai = Get_ArcInfoEx();
-    const UInt32 level = (UInt32)m_Level.GetItemData_of_CurSel();
+    const UInt32 level = GetLevel2();
     for (unsigned i = 1; i < Z7_ARRAY_SIZE(k_Profiles); i++)
     {
       const CProfile &p = k_Profiles[i];
-      if (p.Params[0] != 0 && p.Level == level
+      if (p.Level == level
           && ai.Name.IsEqualTo_Ascii_NoCase(p.Format)
-          && params == UString(p.Params))
+          && IsMethodEqualTo(UString(p.Method)))
       {
         m_Profile.SetCurSel((int)i);
         break;
@@ -1408,22 +1517,24 @@ void CCompressDialog::Profile_Detect()
 }
 
 // "0=method" (7z) or "m=method" in the Parameters field replaces the method of the
-// combo box (see UpdateGUI.cpp): the method controls are disabled
-void CCompressDialog::Params_UpdateMethodEnable()
+// combo box (see UpdateGUI.cpp)
+bool CCompressDialog::Params_HasMethodOverride()
 {
   UString s;
   m_Params.GetText(s);
-  bool methodOverride = false;
   for (unsigned i = 0; i + 1 < s.Len(); i++)
   {
     const wchar_t c = s[i];
     if ((i == 0 || s[i - 1] == ' ') && s[i + 1] == '=' && (c == '0' || c == 'm' || c == 'M'))
-    {
-      methodOverride = true;
-      break;
-    }
+      return true;
   }
-  if (methodOverride)
+  return false;
+}
+
+// with a method in the Parameters field the method controls are disabled
+void CCompressDialog::Params_UpdateMethodEnable()
+{
+  if (Params_HasMethodOverride())
   {
     EnableItem(IDC_COMPRESS_METHOD, false);
     EnableItem(IDC_COMPRESS_DICTIONARY, false);
@@ -1437,29 +1548,21 @@ void CCompressDialog::Params_UpdateMethodEnable()
   }
 }
 
-void CCompressDialog::Profile_SetCustom(bool clearProfileParams)
+// a change of format, level or method by the user: the profile is "Custom" (unless the
+// profile itself is being applied)
+void CCompressDialog::Profile_SetCustom()
 {
   if (_profileIsChanging)
     return;
-  const int cur = m_Profile.GetCurSel();
-  if (cur <= 0)
-    return;
-  m_Profile.SetCurSel(0);
-  if (!clearProfileParams)
-    return;
-  // the method of the profile must not remain without the profile
-  UString params;
-  m_Params.GetText(params);
-  const UString profileParams (k_Profiles[(unsigned)cur].Params);
-  if (!profileParams.IsEmpty() && params == profileParams)
-    m_Params.SetText(L"");
+  if (m_Profile.GetCurSel() > 0)
+    m_Profile.SetCurSel(0);
 }
 
 bool CCompressDialog::OnCommand(unsigned code, unsigned itemID, LPARAM lParam)
 {
   if (code == EN_CHANGE && itemID == IDE_COMPRESS_PARAMETERS)
   {
-    Profile_SetCustom(false);  // the parameters are the user's now
+    Profile_SetCustom();  // the parameters are the user's now
     Params_UpdateMethodEnable();
     return true;
   }
@@ -2157,86 +2260,58 @@ void CCompressDialog::SetDictionary2()
       break;
     }
 
-    /*
-    case kZSTD:
+    // Heptazip: the methods of the fork
+    case kZstd:
     {
-      if (defaultDict != (UInt32)(Int32)-1 &&
-          defaultDict > kZstd_MAX_DictSize)
-        defaultDict = kZstd_MAX_DictSize;
-
-      if (defaultDict_Chain != (UInt32)(Int32)-1 &&
-          defaultDict_Chain > kZstd_MAX_DictSize_Chain)
-        defaultDict_Chain = kZstd_MAX_DictSize_Chain;
-
+      // the window ("Dictionary"): the level's one by default, 256 KiB .. 128 MiB
+      _auto_Dict = (UInt32)1 << Zstd_WindowLog_ForLevel(level);
+      int curSel = AddDict2(k_Auto_Dict, _auto_Dict);
+      for (unsigned i = 18; i <= 27; i++)
       {
-        CZstdEncProps props;
-        ZstdEncProps_Init(&props);
-        // props.level_zstd = level;
-        props.level_7z = level;
-        ZstdEncProps_Set_WindowSize(&props, defaultDict != (UInt32)(Int32)-1 ? defaultDict: 0);
-        ZstdEncProps_NormalizeFull(&props);
-        _auto_Dict_Chain = (UInt32)1 << props.windowLog_Chain;
+        const size_t dict = (size_t)1 << i;
+        const int index = AddDict(dict);
+        if (defaultDict != (UInt32)(Int32)-1)
+          if (dict <= defaultDict || curSel <= 0)
+            curSel = index;
       }
-      {
-        CZstdEncProps props;
-        ZstdEncProps_Init(&props);
-        // props.level_zstd = level;
-        props.level_7z = level;
-        ZstdEncProps_Set_WindowChainSize(&props, defaultDict_Chain != (UInt32)(Int32)-1 ? defaultDict_Chain: 0);
-        ZstdEncProps_NormalizeFull(&props);
-        _auto_Dict = (UInt32)1 << props.windowLog;
-      }
-
-      // if there is collision of two window sizes, we reduce dict_Chain
-      if (defaultDict != (UInt32)(Int32)-1 &&
-          defaultDict_Chain != (UInt32)(Int32)-1 &&
-          defaultDict < defaultDict_Chain)
-        defaultDict_Chain = defaultDict;
-
-      {
-        int curSel = AddDict2(k_Auto_Dict, _auto_Dict);
-
-        // defaultDict = 12 << 10; // for debug
-        const UInt32 kWinStart = 18;
-        if (defaultDict != 0 && defaultDict < ((UInt32)1 << kWinStart))
-          curSel = AddDict(defaultDict);
-        
-        for (unsigned i = kWinStart; i <= MY_ZSTD_WINDOWLOG_MAX; i++)
-        {
-          const size_t dict = (size_t)1 << i;
-          const int index = AddDict(dict);
-          if (defaultDict != (UInt32)(Int32)-1)
-            if (dict <= defaultDict || curSel <= 0)
-              curSel = index;
-        }
-        m_Dictionary.SetCurSel(curSel);
-      }
-
-      {
-        int curSel = Combo_AddDict2(m_Dictionary_Chain, k_Auto_Dict, _auto_Dict_Chain);
-        
-        // defaultDict_Chain = 10 << 10; // for debug
-        const UInt32 kWinChainStart = 15;
-        if (defaultDict_Chain != 0 && defaultDict_Chain < ((UInt32)1 << kWinChainStart))
-          curSel = AddDict_Chain(defaultDict_Chain);
-
-        for (unsigned i = kWinChainStart; i <= kMaxDictChain; i++)
-        {
-          const size_t dict = (size_t)1 << i;
-          if (defaultDict != (UInt32)(Int32)-1 && dict > defaultDict)
-            break;
-          const int index = AddDict_Chain(dict);
-          if (defaultDict_Chain != (UInt32)(Int32)-1)
-            if (dict <= defaultDict_Chain || curSel <= 0)
-              curSel = index;
-        }
-        m_Dictionary_Chain.SetCurSel(curSel);
-      }
-
+      m_Dictionary.SetCurSel(curSel);
       break;
     }
-    */
-    
+
+    case kBrotli:
+    {
+      // the window follows the frame of the level (BrotliCoder.cpp): no choice
+      _auto_Dict = (UInt32)1 << Brotli_WindowLog_ForFrame(Brotli_FrameSize_ForLevel(level));
+      AddDict2(k_Auto_Dict, _auto_Dict);
+      m_Dictionary.SetCurSel(0);
+      break;
+    }
+
+    case kBwt:
+    {
+      // the block ("Dictionary" of a BWT): the level's one by default, 64 KiB .. 1 GiB
+      _auto_Dict = Bwt_BlockSize_ForLevel(level);
+      int curSel = AddDict2(k_Auto_Dict, _auto_Dict);
+      for (unsigned i = 16; i <= 30; i++)
+      {
+        const size_t dict = (size_t)1 << i;
+        const int index = AddDict(dict);
+        if (defaultDict != (UInt32)(Int32)-1)
+          if (dict <= defaultDict || curSel <= 0)
+            curSel = index;
+      }
+      m_Dictionary.SetCurSel(curSel);
+      break;
+    }
+
+    case kFloat:
+    {
+      _auto_Dict = 0;
+      AddDict(0);
+      m_Dictionary.SetCurSel(0);
+      break;
+    }
+
     case kPPMd:
     {
       _auto_Dict = (UInt32)1 << (level + 19);
@@ -2643,6 +2718,11 @@ void CCompressDialog::SetSolidBlockSize2()
       blockSize = cs << 6;
       kMaxSize = (UInt64)1 << 34;
     }
+    else if (methodId == kZstd || methodId == kBrotli || methodId == kBwt || methodId == kFloat)
+    {
+      // Heptazip: the 7z handler keeps its maximum (kSolidBytes_Max) for these methods
+      blockSize = kMaxSize;
+    }
     else
     {
       UInt64 dict2 = dict;
@@ -2801,7 +2881,11 @@ void CCompressDialog::SetNumThreads2()
     case kLZMA: numAlgoThreadsMax = 2; break;
     case kLZMA2: numAlgoThreadsMax = 256 * 2; break; // MTCODER_THREADS_MAX * 2
     case kBZip2: numAlgoThreadsMax = 64; break;
-    // case kZSTD: numAlgoThreadsMax = num_ZSTD_threads_MAX; break;
+    // Heptazip: frames or blocks in parallel (ZSTDMT_NBWORKERS_MAX, CSlotPipeline)
+    case kZstd:
+    case kBrotli:
+    case kBwt:
+    case kFloat: numAlgoThreadsMax = 256; break;
     case kCopy:
     case kPPMd:
     case kDeflate:
@@ -2846,20 +2930,18 @@ void CCompressDialog::SetNumThreads2()
       }
       autoThreads = numBlockThreads * numThreads1;
     }
-    /*
-    else if (methodID == kZSTD)
+    else if (methodID == kZstd || methodID == kBrotli || methodID == kBwt || methodID == kFloat)
     {
-      if (num_ZSTD_threads_MAX != 0)
+      // Heptazip: one frame or block per thread, each with its own memory
+      const UInt64 dict64 = GetDict2();
+      for (; autoThreads > 1; autoThreads--)
       {
-        CZstdEncProps props;
-        ZstdEncProps_Init(&props);
-        // props.level_zstd = level;
-        props.level_7z = GetLevel2();
-        ZstdEncProps_SetDictProps_From_CompressDialog(&props, *this);
-        autoThreads = ZstdEncProps_GetNumThreads_for_MemUsageLimit(&props, memUse_Limit, autoThreads);
+        UInt64 decompressMemory;
+        const UInt64 usage = GetMemoryUsage_Threads_Dict_DecompMem(autoThreads, dict64, decompressMemory);
+        if (usage <= memUse_Limit)
+          break;
       }
     }
-    */
   }
 
   _auto_NumThreads = autoThreads;
@@ -3205,22 +3287,34 @@ UInt64 CCompressDialog::GetMemoryUsage_Threads_Dict_DecompMem(UInt32 numThreads,
       return size;
     }
 
-    /*
-    case kZSTD:
+    // Heptazip: the methods of the fork, one frame or block per thread
+    case kZstd:
     {
-      CZstdEncProps props;
-      ZstdEncProps_Init(&props);
-      // props.level_zstd = level;
-      props.level_7z = level;
-      props.nbWorkers = numThreads;
-      ZstdEncProps_SetDictProps_From_CompressDialog(&props, *this);
-      ZstdEncProps_NormalizeFull(&props);
-      size = ZstdEncProps_GetMemUsage(&props);
-      decompressMemory = (UInt64)1 << props.windowLog;
-      return size;
+      const UInt64 window = dict64;
+      decompressMemory = window + (2 << 20);
+      return size + Zstd_ThreadMemory(level, window) * numThreads;
     }
-    */
-    
+
+    case kBrotli:
+    {
+      const size_t frame = Brotli_FrameSize_ForLevel(level);
+      decompressMemory = dict64 + (UInt64)frame * 2;
+      return size + Brotli_ThreadMemory(level, frame) * numThreads;
+    }
+
+    case kBwt:
+    {
+      // libbsc needs about 5 x block to decompress one block
+      decompressMemory = dict64 * 5 + (16 << 20);
+      return size + Bwt_ThreadMemory(dict64) * numThreads;
+    }
+
+    case kFloat:
+    {
+      decompressMemory = k_Float_ThreadMemory;
+      return size + k_Float_ThreadMemory * numThreads;
+    }
+
     case kPPMd:
     {
       decompressMemory = dict64 + (2 << 20);
