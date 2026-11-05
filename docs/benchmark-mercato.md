@@ -727,3 +727,32 @@ rapporto: 0,12 punti). Sui testi singoli il vantaggio è grande (webster 16,0% c
 20,2%, dickens 22,3 contro 27,8, nci 3,65 contro 5,19); sui binari perde (mozilla 31,6
 contro 26,1; corpus 64,8% contro 63,9% con decompressione a 33 MB/s contro 445): è un
 metodo per testi e dati strutturati. A un thread: 25 MB/s contro 3,2 di LZMA2 `-mx5`.
+
+## Estrazione zip in parallelo sui file (2026-11-05, #86)
+
+Il formato zip non ha blocchi solid: ogni file è un flusso indipendente, ma 7-Zip li
+decodifica uno alla volta nel thread chiamante. Il fork li affida a worker che decodificano
+in memoria e riproduce in ordine le stesse callback (design 0017), come per i folder dei
+`.7z`. Tempi di `7zz t` e `7zz x` in `/dev/shm` (minimo di 4 prove, i7-12700H):
+
+| Archivio (`-tzip -mx5`) | `-mmt=1` | `-mmt=8` | `-mmt=20` |
+|---|---|---|---|
+| silesia (12 file, 203 MB) test | 0,248 s | **0,126 s** | 0,126 s |
+| silesia estrazione | 0,285 s | **0,171 s** | 0,167 s |
+| corpus AES-256 (1285 file, 110 MB) test | 0,445 s | **0,133 s** | 0,111 s |
+| corpus AES-256 estrazione | 0,492 s | **0,161 s** | 0,146 s |
+| corpus ZipCrypto test | 0,530 s | 0,384 s | 0,385 s |
+| corpus (1285 file) test | 0,060 s | 0,058 s | 0,054 s |
+| 1200 file sorgente (27 MB) test | 0,021 s | **0,010 s** | 0,013 s |
+| 2 file quasi incomprimibili (66 MB) test | 0,015 s | 0,014 s | 0,014 s |
+
+Il corpus in chiaro non guadagna: 66 dei 110 MB sono due file memorizzati o quasi
+(`nvdisasm` è Deflate al 98,7%) che si decodificano alla velocità di una copia e che un
+worker rallenterebbe (due buffer e due copie: 14 → 42 ms), quindi restano sequenziali;
+il resto si decodifica in 20 ms. Con ZipCrypto il limite è il file più grande: il cifrario
+è seriale a byte (~156 MB/s), 50 MB costano 0,32 s qualunque sia il numero di thread; AES
+(AES-NI + HMAC-SHA1) scala invece di 3-4 volte. Gli stessi risultati per file in 272 casi
+(`tests/zip_extract_equivalence.py`), ASan e TSan puliti.
+
+Nota al punto 5 della lettura del 2026-11-02: `-m0=zstd -mx22` nel 7z funziona (24,67% su
+Silesia, come `zstd --ultra -22`); il punto era già coperto.

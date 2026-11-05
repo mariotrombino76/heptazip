@@ -33,7 +33,9 @@ con una società omonima).
   contro 22,97% a 7,6 MB/s di LZMA2 `-mx9`; webster 16,0% contro 20,2%. Solo Heptazip,
   come FLOAT; sui binari resta meglio LZMA2.
 - **Estrazione e compressione parallele** dei folder 7z (`-mpfd`, `-mpfc`), con archivi
-  identici byte per byte a quelli a un thread.
+  identici byte per byte a quelli a un thread; **estrazione parallela degli zip** sui file
+  (`-mpfd`): 2 volte più veloce su silesia, da 3 a 4 volte sugli zip AES, stessi risultati
+  per file dell'estrazione a un thread.
 - **gzip e zip in parallelo**: Deflate a blocchi su tutti i core, 8,6 volte più veloce
   (`-tgzip -mx5`: 105 MB/s, meglio di pigz -9 come rapporto), file leggibili da
   qualunque gzip/unzip e identici per ogni numero di thread. I blocchi sono compressi

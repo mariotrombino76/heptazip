@@ -180,6 +180,13 @@ add_test(NAME extract_equivalence_mt
           --config-b=-mmt=on)
 set_tests_properties(extract_equivalence_mt PROPERTIES TIMEOUT 3600 ENVIRONMENT "${_test_env}")
 
+# Estrazione zip in parallelo (design 0017): traccia delle callback identica fra -mmt=1,
+# -mmt=8 e -mpfd=off, su zip con vari metodi, cifrati, da stdin, e copie corrotte.
+add_test(NAME zip_extract_equivalence
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/zip_extract_equivalence.py
+          --7zz ${_7zz} --trace ${_extract_trace} --threads 8)
+set_tests_properties(zip_extract_equivalence PROPERTIES TIMEOUT 1800 ENVIRONMENT "${_test_env}")
+
 add_test(NAME unit_7zextract_mt COMMAND ${_test_launcher} ${_emu} $<TARGET_FILE:unit_7zextract_mt>)
 set_tests_properties(unit_7zextract_mt PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 

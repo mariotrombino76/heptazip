@@ -33,7 +33,9 @@ with a company of the same name).
   threads, against 22.97% at 7.6 MB/s for LZMA2 `-mx9`; webster 16.0% vs 20.2%. Heptazip
   only, like FLOAT; for binaries LZMA2 stays better.
 - **Parallel extraction and compression** of 7z folders (`-mpfd`, `-mpfc`), with
-  archives byte-for-byte identical to the single-thread ones.
+  archives byte-for-byte identical to the single-thread ones; **parallel zip extraction**
+  over the files (`-mpfd`): 2 times faster on silesia, 3 to 4 times on AES zips, the same
+  per-file results as the single-thread extraction.
 - **Parallel gzip and zip**: block-based Deflate on all cores, 8.6 times faster
   (`-tgzip -mx5`: 105 MB/s, a better ratio than pigz -9), files readable by any
   gzip/unzip and identical for any number of threads. The blocks are compressed by
