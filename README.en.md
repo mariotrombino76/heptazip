@@ -36,19 +36,22 @@ with a company of the same name).
   archives byte-for-byte identical to the single-thread ones; **parallel zip extraction**
   over the files (`-mpfd`): 2 times faster on silesia, 3 to 4 times on AES zips, the same
   per-file results as the single-thread extraction.
-- **Parallel gzip and zip**: block-based Deflate on all cores, 8.6 times faster
-  (`-tgzip -mx5`: 105 MB/s, a better ratio than pigz -9), files readable by any
+- **Parallel gzip and zip**: block-based Deflate on all cores, over 8 times faster than
+  7-Zip (`-tgzip -mx5`: 105 MB/s, a better ratio than pigz -9), files readable by any
   gzip/unzip and identical for any number of threads. The blocks are compressed by
-  libdeflate: `-mx3` compresses more than pigz -6 at 2.5 times the speed (820 MB/s),
-  `-mx1` exceeds 1 GB/s. Deflate decompression 2.7-3 times faster (silesia 800 MB/s,
-  within 8% of libdeflate; faster than libdeflate on the corpus).
-- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 15.5 MB/s with
-  decompression at 560 MB/s, against 23.40%, 9.2 and 159 MB/s for 7-Zip 26.05; better than
-  xz -6 in ratio and compression (23.35%, 13.3 MB/s) and at 94% of its decompression (595).
+  libdeflate: `-mx3` compresses more than pigz -6 at 2.4 times the speed (790 MB/s),
+  `-mx1` exceeds 1 GB/s. Deflate decompression 2.6-2.9 times faster than 7-Zip (silesia
+  770-800 MB/s, 3 to 15% behind libdeflate; faster than libdeflate on the corpus).
+- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 16.4 MB/s with
+  decompression at 580 MB/s, against 23.40%, 9.4 and 221 MB/s for 7-Zip 26.05 built with
+  its assembly routines; better than xz -6 in ratio and compression (23.35%, 13.3 MB/s) and
+  at 91% of its decompression (635). The cost is CPU time: more threads for the same work
+  (93 s against 58 for 7-Zip, 103 for xz -6).
   From level 5, word size 64 and blocks equal to the dictionary of the level, with a 16 MiB
   dictionary for the 32 MiB blocks of level 5 (1.4 GB of memory on silesia with 20 threads
   instead of 2.3); at `-mx1` and `-mx9` the archives are identical to 7-Zip's and decompress
-  1.4-1.5 times faster. With a single block (medium files, `-mx9`, plain LZMA) the match
+  at the same speed (the assembly decoder is the same one; 1.4-1.5 times a 7-Zip built
+  without assembly). With a single block (medium files, `-mx9`, plain LZMA) the match
   finder runs on several threads, with identical archives: silesia `-mx9` from 42 to 26 s,
   a 12 MB file at `-mx5` from 2.9 to 1.7 s.
 - **More speed**: assembly on by default, CRC32 with PCLMULQDQ, optimized match finder,

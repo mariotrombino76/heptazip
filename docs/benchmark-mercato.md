@@ -8,8 +8,17 @@ più efficiente per energia consumata (secondi di CPU per lo stesso lavoro).
 
 ```sh
 tools/bench/build-competitors.sh      # concorrenti in ~/devtools/bin (versioni e SHA-256 fissati)
-PATH=~/devtools/bin:$PATH tools/bench/market-bench.py --upstream <7zz di 7-Zip 26.05>
+PATH=~/devtools/bin:$PATH tools/bench/market-bench.py --fork build/7zz \
+    --upstream <7zz di 7-Zip 26.05 in C> --upstream-asm <7zz di 7-Zip 26.05 con assembly>
 ```
+
+I due riferimenti 7-Zip si compilano dal branch `main` in `CPP/7zip/Bundles/Alone2`:
+`make -f makefile.gcc O=<dir>` (C puro, righe `7zz-26.05`) e
+`make -f ../../cmpl_gcc_x64.mak MY_ASM=uasm O=<dir>` (routine assembly, righe
+`7z26.05-asm`, dal 2026-11-05). Il fork va misurato con il build predefinito (assembly
+attivo): lo script lo riporta nella riga `fork:` e avvisa se manca. La suite va eseguita in
+una sola sessione a macchina scarica: fra sessioni diverse le righe multi-thread si
+spostano anche dell'8-10%.
 
 Strumenti (2026-10-31): 7zz del fork (`build/7zz`, Release, GCC 13), 7-Zip 26.05 originale
 (branch `main`, `Alone2/makefile.gcc`), zstd 1.5.7, xz 5.8.4, brotli 1.2.1, lz4 1.10.0,
@@ -531,6 +540,10 @@ load 1m alla fine: 3.03
 
 ### Lettura
 
+Nota (2026-11-05): qui 7-Zip 26.05 è compilato senza assembly; contro il build con assembly
+la decompressione a `-mx1` e `-mx9` è alla pari (vedi «Stato rispetto al mercato
+(2026-11-05)»).
+
 **Rispetto a 7-Zip 26.05** (stessi archivi `.7z`, byte per byte): compressione LZMA2 dall'8 al
 28% più veloce (`-mx5`: 11,8 contro 9,2 MB/s); decompressione da 1,4 a 2,3 volte più veloce
 (`-mx1` 859 contro 604, `-mx5` 358 contro 159, `-mx9` 150 contro 104 MB/s). Formato gzip:
@@ -769,3 +782,227 @@ costo di decodifica dei letterali. Il 45% dell'output di LZMA sono distanze in b
 che nessun contesto comprime, l'11% lunghezze che non si muovono: 1,5 punti vorrebbero −18%
 sui letterali, territorio dei CM completi a 1-5 MB/s. Strada chiusa (design 0018).
 
+## Stato rispetto al mercato (2026-11-05, #92)
+
+Suite completa dopo la 26.05-m2 e le modifiche successive (develop `a663c4a`): rispetto alla
+tabella del 2026-11-03 sono entrati fb 64 e blocchi LZMA2 pari al dizionario (#64),
+dizionario da 16 MiB a `-mx5` (#75), match finder bt su più thread (#77), metodo BWT (#81),
+estrazione zip in parallelo (#86). Stessi strumenti e stessa procedura (xz 5.8.4, zstd
+1.5.7, brotli 1.2.1, libdeflate, pigz 2.8, bzip2, bzip3 1.5.5, plzip 1.13; lbzip2 assente),
+2 ripetizioni, minimo, una sola sessione a macchina scarica (46 minuti).
+
+Due novità di metodo:
+
+- **Il riferimento 7-Zip è doppio.** Finora `7zz-26.05` era il build di
+  `Alone2/makefile.gcc`, in C puro. `DOC/readme.txt` di 7-Zip indica però
+  `cmpl_gcc_x64.mak` come build x86-64 con le routine assembly («you will get faster
+  7-Zip binary»): è il 7-Zip più veloce che si può compilare dai sorgenti e il confronto
+  onesto per un fork che ha l'assembly attivo di default. Le righe `7z26.05-asm` sono
+  quel build (banner `ASM`, assembler uasm). Il binario distribuito su 7-zip.org non è
+  stato verificato.
+- **Il binario del fork è `build/7zz`** (GCC 13.3, Release, `SEVENZIP_ASM=ON`), come in
+  tutte le tabelle precedenti. Una prima corsa con `build-gcc16/7zz` è stata scartata: la
+  sua cache di CMake aveva ancora `SEVENZIP_ASM=OFF` e la decompressione LZMA2 risultava
+  uguale a quella di 7-Zip in C (592 contro 932 MB/s a `-mx1`). Lo script ora stampa la
+  variante del binario (`fork: ...`) e avvisa se manca l'assembly. Le 50 righe di
+  concorrenti e 7-Zip in C comuni alle due corse si ripetono con mediana 1,000 in
+  compressione e 1,002 in decompressione.
+
+```
+CPU logiche: 20   load 1m: 0.39   ripetizioni: 2
+assenti: lbzip2
+fork: build/7zz (Heptazip 26.05-m2, assembly attivo)
+
+input    strumento   profilo                  rapporto comp MB/s  dec MB/s comp CPU s dec CPU s comp RSS  dec RSS
+-----------------------------------------------------------------------------------------------------------------
+silesia  7zz-modern  -m0=lzma2 -mx1             27.88%     196.6     931.8       18.1      3.00       87       42
+silesia  7zz-modern  -m0=lzma2 -mx5             23.22%      16.4     579.9       92.9      1.92     1374      256
+silesia  7zz-modern  -m0=lzma2 -mx9             22.97%       7.8     143.3       89.6      1.47     2102      255
+silesia  7zz-modern  -m0=zstd -mx3              31.24%    1044.3    1178.7        1.2      0.17      232        8
+silesia  7zz-modern  -m0=zstd -mx19             24.93%      10.1    1198.4      104.7      0.17      824       15
+silesia  7zz-modern  -m0=brotli -mx5            28.28%     233.9    1924.6       13.4      1.13      694      316
+silesia  7zz-modern  -m0=brotli -mx11           23.66%       2.8    1279.1      401.3      0.77     1586      295
+silesia  7zz-modern  -m0=bwt -mx3               22.85%     102.5     237.2       34.3     13.65      931      740
+silesia  7zz-modern  -m0=bwt -mx5               22.41%      72.0     114.1       31.1     16.34     1134      564
+silesia  7zz-modern  -m0=FLOAT                  32.38%    1369.6    3925.6        2.3      0.29      117       69
+silesia  7zz-modern  -tgzip -mx1                32.78%    1017.9     778.5        3.5      0.26       67        7
+silesia  7zz-modern  -tgzip -mx3                31.85%     791.4     782.3        4.6      0.25       70        7
+silesia  7zz-modern  -tgzip -mx4                31.68%     651.3     800.6        5.3      0.25       70        7
+silesia  7zz-modern  -tgzip -mx5                30.61%     105.2     766.7       37.4      0.26      203        7
+silesia  7zz-modern  -tgzip -mx9                30.53%      54.3     785.9       70.2      0.26      212        7
+silesia  7zz-modern  -tbzip2 -mx5               25.76%      84.0      99.7       44.6      3.04      206       11
+silesia  7zz-modern  -tbzip2 -mx9               25.58%      12.5     100.0      314.0      2.91      217       11
+silesia  7zz-26.05   -m0=lzma2 -mx1             27.88%     191.8     615.0       18.6      4.27       86       40
+silesia  7zz-26.05   -m0=lzma2 -mx5             23.40%       9.2     155.6       60.2      2.20      906      255
+silesia  7zz-26.05   -m0=lzma2 -mx9             22.97%       4.5     100.8       66.6      2.07     2088      254
+silesia  7zz-26.05   -tgzip -mx1                33.15%      72.3     281.3        2.9      0.75        6        5
+silesia  7zz-26.05   -tgzip -mx5                30.96%      12.2     296.1       17.4      0.71        6        5
+silesia  7zz-26.05   -tbzip2 -mx5               25.76%      78.1     104.6       48.6      2.97      205       10
+silesia  7z26.05-asm -m0=lzma2 -mx1             27.88%     188.8     874.5       18.5      3.07       86       41
+silesia  7z26.05-asm -m0=lzma2 -mx5             23.40%       9.4     220.9       58.5      1.58      906      255
+silesia  7z26.05-asm -m0=lzma2 -mx9             22.97%       4.6     147.9       65.1      1.43     2088      254
+silesia  7z26.05-asm -tgzip -mx1                33.15%      73.1     284.8        2.9      0.74        6        5
+silesia  7z26.05-asm -tgzip -mx5                30.96%      12.7     298.3       16.8      0.71        6        5
+silesia  7z26.05-asm -tbzip2 -mx5               25.76%      83.0     106.0       44.4      2.91      205       10
+silesia  zstd        -3 -T0 -q                  31.24%    1087.6    1222.3        1.4      0.18      156        7
+silesia  zstd        -19 -T0 -q                 24.93%      10.2    1154.5      104.9      0.18      823       12
+silesia  zstd        --ultra -22 -T0 -q         24.67%       2.3     926.9       92.5      0.23      970      133
+silesia  xz          -1 -T0                     27.74%     113.1     920.8       28.5      3.40      270      167
+silesia  xz          -6 -T0                     23.35%      13.3     634.5      103.2      2.21     1080      305
+silesia  xz          -9 -T0                     23.01%       2.9     157.6       75.8      1.48     1079      322
+silesia  brotli      -q 5                       28.15%      71.3     531.3        3.0      0.39      104       20
+silesia  brotli      -q 11 -w 24                23.48%       0.7     495.0      296.4      0.42      289       20
+silesia  lz4         -1 -q                      47.62%    1529.1    1893.1        0.5      0.12      133       34
+silesia  pigz        -6 -p 20                   32.20%     324.3     304.6       12.3      0.76       16        2
+silesia  pigz        -9 -p 20                   31.92%     142.8     316.5       25.8      0.76       16        2
+silesia  gzip        -6                         32.19%      37.3     242.2        5.7      0.86        2        2
+silesia  libdeflate  -1                         34.68%     261.9     828.7        0.8      0.24      274      273
+silesia  libdeflate  -6                         31.85%     139.1     903.6        1.5      0.22      268      268
+silesia  libdeflate  -9                         31.48%      69.7     860.1        3.0      0.23      268      267
+silesia  libdeflate  -12                        30.52%       8.2     870.9       25.6      0.23      273      265
+silesia  bzip2       -9                         25.76%      18.7      50.0       11.3      4.25        8        5
+silesia  bzip3       -j 20                      22.29%      56.8      69.7       34.6     26.45     1720     1725
+silesia  plzip       -6 -n20                    23.68%      16.3     424.8      125.6      4.68     1293      254
+corpus   7zz-modern  -m0=lzma2 -mx1             64.23%     115.3    2032.3       18.4      0.35      100       49
+corpus   7zz-modern  -m0=lzma2 -mx5             63.03%      30.0     766.6       15.4      0.26      821      184
+corpus   7zz-modern  -m0=lzma2 -mx9             63.02%      17.4     421.2       17.3      0.25     1130      183
+corpus   7zz-modern  -m0=zstd -mx3              64.84%    1162.9    3176.1        0.2      0.02      182        8
+corpus   7zz-modern  -m0=zstd -mx19             63.32%      13.8    3098.8       22.6      0.03      506       14
+corpus   7zz-modern  -m0=brotli -mx5            64.13%     507.8    2174.6        1.4      0.22      384      224
+corpus   7zz-modern  -m0=brotli -mx11           63.06%       2.2    1333.4      114.9      0.18      663      221
+corpus   7zz-modern  -m0=bwt -mx3               63.59%      81.7     202.2       13.0      1.38      527      249
+corpus   7zz-modern  -m0=bwt -mx5               63.54%      42.1      78.1       12.5      3.13      537      257
+corpus   7zz-modern  -m0=FLOAT                  65.15%    1650.0    2968.0        0.3      0.07      123       80
+corpus   7zz-modern  -tgzip -mx1                66.47%     905.3    1979.4        2.0      0.04       76        7
+corpus   7zz-modern  -tgzip -mx3                66.26%     756.5    2033.4        2.4      0.04       79        7
+corpus   7zz-modern  -tgzip -mx4                66.23%     724.8    2034.0        2.4      0.05       79        7
+corpus   7zz-modern  -tgzip -mx5                66.01%     226.4    2034.1        8.4      0.04      164        7
+corpus   7zz-modern  -tgzip -mx9                66.00%     140.0    1991.0       11.6      0.05      167        7
+corpus   7zz-modern  -tbzip2 -mx5               64.67%      92.6      74.6       20.9      2.44      218       11
+corpus   7zz-modern  -tbzip2 -mx9               64.48%      10.8      73.7      193.2      2.45      234       11
+corpus   7zz-26.05   -m0=lzma2 -mx1             64.23%     112.0    1467.7       19.2      0.50       98       48
+corpus   7zz-26.05   -m0=lzma2 -mx5             63.06%      15.6     339.9       12.3      0.32      380      182
+corpus   7zz-26.05   -m0=lzma2 -mx9             63.02%      15.3     336.7       12.6      0.33     1116      182
+corpus   7zz-26.05   -tgzip -mx1                66.61%      78.4     697.6        1.4      0.16        6        5
+corpus   7zz-26.05   -tgzip -mx5                66.07%      29.7     754.1        3.8      0.14        6        5
+corpus   7zz-26.05   -tbzip2 -mx5               64.67%      91.5      75.1       21.3      2.52      217       10
+corpus   7z26.05-asm -m0=lzma2 -mx1             64.23%     110.1    1801.5       19.1      0.39       98       48
+corpus   7z26.05-asm -m0=lzma2 -mx5             63.06%      16.4     430.9       11.8      0.26      380      182
+corpus   7z26.05-asm -m0=lzma2 -mx9             63.02%      16.7     410.8       11.9      0.26     1116      182
+corpus   7z26.05-asm -tgzip -mx1                66.61%      75.7     679.0        1.4      0.15        6        5
+corpus   7z26.05-asm -tgzip -mx5                66.07%      31.2     762.0        3.6      0.14        6        5
+corpus   7z26.05-asm -tbzip2 -mx5               64.67%      93.9      74.6       20.7      2.46      217       10
+corpus   zstd        -3 -T0 -q                  64.84%    1511.7    2648.7        0.2      0.05      178        7
+corpus   zstd        -19 -T0 -q                 63.32%      14.1    2448.0       22.1      0.04      504       13
+corpus   zstd        --ultra -22 -T0 -q         63.29%       5.7    1561.4       20.1      0.07      887      112
+corpus   xz          -1 -T0                     64.01%      50.0    1621.4       37.6      0.33      294      103
+corpus   xz          -6 -T0                     63.05%      12.4     734.9       32.4      0.30      627      187
+corpus   xz          -9 -T0                     63.03%       3.2     402.4       35.8      0.31      852      243
+corpus   brotli      -q 5                       64.08%     163.8    1070.8        0.7      0.09       60       19
+corpus   brotli      -q 11 -w 24                63.07%       1.0    1178.0      114.8      0.08      218       19
+corpus   lz4         -1 -q                      70.02%    1375.4    2263.6        0.2      0.05      123       34
+corpus   pigz        -6 -p 20                   66.37%     443.9     574.1        4.6      0.24       16        2
+corpus   pigz        -9 -p 20                   66.32%     293.1     574.2        6.7      0.23       17        2
+corpus   gzip        -6                         66.37%      52.0     287.2        2.2      0.39        2        2
+corpus   libdeflate  -1                         66.96%     192.4    1472.6        0.6      0.07      182      182
+corpus   libdeflate  -6                         66.26%     131.2    1627.4        0.9      0.06      182      181
+corpus   libdeflate  -9                         66.20%     106.6    1506.6        1.1      0.06      182      181
+corpus   libdeflate  -12                        65.99%      24.5    1584.0        4.6      0.06      187      181
+corpus   bzip2       -9                         64.66%      19.5      34.0        5.8      3.36        8        5
+corpus   bzip3       -j 20                      63.78%      28.2      31.3       17.6     15.25     1514     1513
+corpus   plzip       -6 -n20                    63.89%      15.0     115.0       39.9      4.27      653      114
+
+load 1m alla fine: 2.62
+```
+
+### 7-Zip con assembly: cosa cambia nei confronti
+
+| Silesia, LZMA2 | comp MB/s | dec MB/s | CPU comp s |
+|---|---|---|---|
+| `-mx1` Heptazip | 196,6 | 931,8 | 18,1 |
+| `-mx1` 7-Zip con assembly | 188,8 | 874,5 | 18,5 |
+| `-mx1` 7-Zip in C | 191,8 | 615,0 | 18,6 |
+| `-mx5` Heptazip (23,22%) | 16,4 | 579,9 | 92,9 |
+| `-mx5` 7-Zip con assembly (23,40%) | 9,4 | 220,9 | 58,5 |
+| `-mx5` 7-Zip in C (23,40%) | 9,2 | 155,6 | 60,2 |
+| `-mx9` Heptazip | 7,8 | 143,3 | 89,6 |
+| `-mx9` 7-Zip con assembly | 4,6 | 147,9 | 65,1 |
+| `-mx9` 7-Zip in C | 4,5 | 100,8 | 66,6 |
+
+L'assembly vale a 7-Zip 1,42-1,47 volte in decompressione LZMA e nulla in compressione
+(`LzFindOpt.asm` non è più veloce del C: 9,4 contro 9,2 MB/s), ed è lo stesso decoder
+`LzmaDecOpt.asm` che usa il fork. Quindi:
+
+- **a `-mx1` e `-mx9`, dove gli archivi sono identici, il fork decomprime come 7-Zip con
+  assembly**: +7% a `-mx1` (932 contro 875 MB/s; corpus 2032 contro 1802, +13%), −3% a
+  `-mx9` (143 contro 148; corpus 421 contro 411). Il «da 1,4 a 1,5 volte più veloce»
+  scritto nella lettura del 2026-11-03, nel README e nella wiki vale solo contro un 7-Zip
+  compilato senza assembly, ed è stato corretto;
+- **a `-mx5` il vantaggio resta ed è del fork**: decompressione 2,6 volte (580 contro 221
+  MB/s; corpus 767 contro 431, 1,8 volte) e compressione 1,7 volte (16,4 contro 9,4;
+  corpus 30,0 contro 16,4, 1,8 volte), con 0,18 punti di rapporto in meno. Viene dai
+  blocchi da 32 MiB con dizionario da 16 MiB e da fb 64, non dal decoder;
+- **compressione `-mx9` 1,7 volte più veloce** (7,8 contro 4,6 MB/s) con archivi
+  identici: è il match finder su più thread;
+- gzip e BZip2 non cambiano con l'assembly di 7-Zip: gzip `-mx1` 1018 contro 73 MB/s
+  (13,9 volte), `-mx5` 105 contro 12,7 (8,3 volte) con rapporto migliore, decompressione
+  2,6-2,7 volte; BZip2 alla pari.
+
+### Lettura
+
+**Rispetto al 2026-11-03** (righe del fork): `-mx5` su Silesia 23,42% → 23,22%,
+compressione 11,8 → 16,4 MB/s, decompressione 358 → 580 MB/s, memoria invariata (1354 →
+1374 MB); `-mx9` 5,0 → 7,8 MB/s; corpus `-mx5` 22,0 → 30,0 MB/s e 649 → 767 MB/s. Il
+prezzo è in CPU: `-mx5` 61 → 93 s, `-mx9` 62 → 90 s.
+
+**Dove il fork è il migliore**
+
+- **Rapporto alto sui testi, e con meno energia**: BWT `-mx5` 22,41% a 72 MB/s con 31 s di
+  CPU. LZMA2 `-mx9` (22,97%) ne spende 90 a 7,8 MB/s, xz `-9` (23,01%) 76 a 2,9 MB/s.
+  Contro bzip3 (22,29%, 0,12 punti meglio): compressione 1,27 volte, decompressione 1,64
+  volte (114 contro 70 MB/s), memoria 1,1 GB contro 1,7 in compressione e 0,56 contro 1,7
+  in decompressione. `-m0=bwt -mx3` (22,85%) batte ancora xz `-9` a 102 MB/s e decomprime
+  a 237 MB/s.
+- **LZMA2 `-mx5` contro xz `-6`**: rapporto migliore (23,22 contro 23,35%), compressione
+  1,23 volte (16,4 contro 13,3 MB/s) con il 10% di CPU in meno (93 contro 103 s); sul
+  corpus 2,4 volte in compressione (30,0 contro 12,4) e davanti in decompressione (767
+  contro 735).
+- **LZMA2 `-mx9` contro xz `-9`**: stesso rapporto (22,97 contro 23,01%), compressione
+  2,7 volte più veloce (7,8 contro 2,9 MB/s).
+- **gzip**: il produttore di gzip più veloce a parità di rapporto. `-mx1` 32,78% a 1018
+  MB/s contro pigz `-6` 32,20% a 324; `-mx3` 31,85% a 791 MB/s, il rapporto di libdeflate
+  `-6` a 5,7 volte la velocità; `-mx5` 30,61% a 105 MB/s contro libdeflate `-12` 30,52% a
+  8 MB/s. Decompressione 767-801 MB/s su un thread contro 305-317 di pigz e 242 di gzip.
+- **brotli**: 3,3 volte la CLI in compressione e 3,6 in decompressione a `-mx5` (234 e
+  1925 MB/s contro 71 e 531); `-mx11` 23,66% decomprime a 1279 MB/s (zstd `-19`: 24,93% a
+  1155).
+- **zstd nel 7z**: alla pari con la CLI su Silesia (1044 contro 1088 MB/s, 1179 contro
+  1222; `-mx19` 10,1 contro 10,2).
+- **Modelli AI**: FLOAT senza concorrenti (sezione dedicata).
+
+**Dove perde o è alla pari**
+
+1. **Energia a parità di formato**: per comprimere Silesia a `-mx5` il fork spende 93 s di
+   CPU contro 58 di 7-Zip (+59%) per 0,18 punti e 1,7 volte la velocità; a `-mx9` 90
+   contro 65 s (+38%) per lo stesso archivio in 27 s invece di 46. Il tempo reale scende,
+   il lavoro totale sale: i thread in più del match finder e dei blocchi rendono meno dei
+   primi (design 0015, §7). Il vantaggio di energia su xz `-6` del 2026-11-03 (61 contro
+   103 s) si è ridotto al 10%. È il punto più lontano dall'obiettivo del progetto.
+2. **Decoder LZMA su un blocco**: uguale a quello di 7-Zip con assembly. A `-mx9` (un
+   blocco da 256 MiB) Silesia si decomprime a 143 MB/s, come 7-Zip (148) e sotto xz `-9`
+   (158); il guadagno a `-mx5` è tutto parallelismo fra blocchi.
+3. **Decompressione LZMA2 `-mx5` di un file grande**: 580 MB/s contro 635 di xz `-6`
+   (91%; era il 60% il 2026-11-03).
+4. **Memoria di compressione LZMA2 `-mx5`**: 1374 MB contro 906 di 7-Zip e 1080 di xz
+   `-6` (7 encoder di blocco in volo; `-mmemuse` la limita).
+5. **Decoder Deflate su Silesia**: 767-801 MB/s contro 829-904 di libdeflate (dal 3 al
+   15% sotto); sul corpus è davanti (1979-2034 contro 1473-1627).
+6. **Rapporto massimo sui testi**: bzip3 22,29% contro 22,41% di BWT `-mx5`. Sui binari
+   BWT non conviene: corpus 63,54% a 78 MB/s in decompressione contro 63,03% a 767 di
+   LZMA2 `-mx5`.
+7. **brotli e zstd nel 7z contro le CLI**: brotli perde 0,13-0,18 punti di rapporto (frame
+   indipendenti: 28,28 contro 28,15%, 23,66 contro 23,48%) e usa più memoria (1,6 GB
+   contro 0,3 a `-mx11`); zstd `-mx3` sul corpus fa 1163 contro 1512 MB/s (95 contro 73
+   ms: costi fissi dell'archivio su tempi sotto 0,1 s).
+8. **BZip2**: come 7-Zip (84 contro 83 MB/s, decompressione 100 contro 106); per i testi
+   il metodo da usare è BWT.
