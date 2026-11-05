@@ -756,3 +756,16 @@ il resto si decodifica in 20 ms. Con ZipCrypto il limite è il file più grande:
 
 Nota al punto 5 della lettura del 2026-11-02: `-m0=zstd -mx22` nel 7z funziona (24,67% su
 Silesia, come `zstd --ultra -22`); il punto era già coperto.
+
+## Strada 2 chiusa: modelli più ricchi su LZMA (2026-11-05, #90)
+
+Il punto 2 del programma "algoritmi" chiedeva un LZMA solo Heptazip con modelli più ricchi,
+se valeva 1,5 punti su Silesia a ≥ 100 MB/s di decompressione. Misurato con
+`tools/research/lzmodel` (replay del modello di LZMA sulle decisioni del suo parser, base
+che riproduce la dimensione reale a −0,03%): contatori a doppia velocità −0,07 punti, byte
+precedente intero per i letterali −0,04, APM sui bit isMatch −0,06, mixing logistico di tre
+ordini sui letterali −0,31; **tutto insieme −0,41 punti** (22,98 → 22,57%) a 2-3 volte il
+costo di decodifica dei letterali. Il 45% dell'output di LZMA sono distanze in bit diretti
+che nessun contesto comprime, l'11% lunghezze che non si muovono: 1,5 punti vorrebbero −18%
+sui letterali, territorio dei CM completi a 1-5 MB/s. Strada chiusa (design 0018).
+
