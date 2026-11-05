@@ -114,8 +114,28 @@ L'output e le callback sono identici all'estrazione sequenziale (vedi
 `docs/design/0001-estrazione-parallela-folder-7z.md`). Usa al massimo `-mmt` thread e il
 budget di memoria di decompressione (`-mmemuse`). I folder che producono più di 64 MiB
 sono decompressi in linea con tutti i thread (il decoder LZMA2 a blocchi è più veloce
-così). Risultati: da 1,15× a 2,9× sugli archivi con più folder (design 0001, §10). È un'opzione dell'handler 7z: come
-`-mtf`, non è accettata da altri formati (zip, xz…).
+così). Risultati: da 1,15× a 2,9× sugli archivi con più folder (design 0001, §10). È un'opzione
+degli handler 7z e zip (sotto): come `-mtf`, non è accettata dagli altri formati (xz…).
+
+## Estrazione parallela degli zip (`-mpfd`)
+
+```sh
+7zz x archivio.zip             # attiva di default: file diversi decodificati in parallelo
+7zz x -mpfd=off archivio.zip   # estrazione sequenziale (comportamento upstream)
+```
+
+I file di uno zip sono flussi indipendenti: i worker ne leggono i byte compressi sotto
+lock dello stream dell'archivio e li decodificano in memoria, il thread chiamante
+riproduce in ordine le stesse callback dell'estrazione sequenziale (stream, risultato per
+file, esito), così quello che l'utente o il gestore di archivi osserva è identico
+(`docs/design/0017-estrazione-zip-parallela.md`). Usa al massimo `-mmt` thread e il budget
+di memoria `-mmemuse`. Restano sequenziali, con lo stesso codice di prima: gli archivi
+multivolume, i file oltre 64 MiB, i metodi la cui memoria non si conosce dagli header
+(LZMA, PPMd, zstd, xz), i file grandi non cifrati memorizzati o quasi (si decodificano
+alla velocità di una copia). Risultati (i7-12700H, 8 thread): silesia Deflate 0,25 → 0,13 s
+in test e 0,29 → 0,17 in estrazione; corpus AES-256 0,45 → 0,13 s (0,11 con 20 thread);
+1200 file piccoli 0,021 → 0,010 s. ZipCrypto è un cifrario seriale a byte (~156 MB/s): il
+file più grande fa da limite (corpus 0,53 → 0,38 s).
 
 ## Compressione parallela dei folder `.7z` (`-mpfc`)
 
@@ -275,6 +295,11 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   configurazioni** (`--config-a/-b`) o di **due build** (`--trace-a/-b`), che devono
   essere identiche.
 
+- `tests/zip_extract_equivalence.py`: zip con Deflate ai livelli, Store, Deflate64, BZip2,
+  LZMA, PPMd, ZipCrypto, AES-256, da stdin (descrittori) e 150 file piccoli, più copie
+  corrotte (byte invertiti, tagli) di ciascuno: 272 casi in cui la traccia delle callback
+  di `extract_trace -z` con `-mmt=8` (e `-mpfd=off` sugli archivi integri) deve essere
+  identica a `-mmt=1`, anche con selezioni parziali, modalità test e password sbagliata.
 - `tests/unit_7zextract_mt`: test unitari di `7zExtractMt` e del pool `Common/MtTaskPool` (stima della memoria
   dei decoder, budget, stream su buffer, cache della password, pool di thread con stress).
 - `tests/update_equivalence.py`: crea ogni archivio con due configurazioni

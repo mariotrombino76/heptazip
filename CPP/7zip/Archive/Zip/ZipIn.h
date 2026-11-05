@@ -333,6 +333,11 @@ class CInArchive
   HRESULT GetVolStream(unsigned vol, UInt64 pos, CMyComPtr<ISequentialInStream> &stream);
 
 public:
+  /* Heptazip (issue #86): the stream of a single-volume archive, read by the worker
+     threads of the parallel extraction (ZipExtractMt.cpp) under a lock, while this
+     object doesn't read it. */
+  IInStream *GetReadStream() const { return Stream; }
+
   CInArchiveInfo ArcInfo;
   
   bool IsArc;

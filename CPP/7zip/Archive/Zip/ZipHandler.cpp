@@ -37,6 +37,8 @@
 
 
 #include "ZipHandler.h"
+#include "ZipDecoder.h"     // Heptazip (#86)
+#include "ZipExtractMt.h"   // Heptazip (#86)
 
 using namespace NWindows;
 
@@ -796,15 +798,7 @@ Z7_COM7F_IMF(CHandler::Close())
 }
 
 
-Z7_CLASS_IMP_NOQIB_3(
-  CLzmaDecoder
-  , ICompressCoder
-  , ICompressSetFinishMode
-  , ICompressGetInStreamProcessedSize
-)
-public:
-  CMyComPtr2_Create<ICompressCoder, NCompress::NLzma::CDecoder> Decoder;
-};
+// CLzmaDecoder: declared in ZipDecoder.h (Heptazip, #86)
 
 static const unsigned kZipLzmaPropsSize = 4 + LZMA_PROPS_SIZE;
 
@@ -845,41 +839,11 @@ Z7_COM7F_IMF(CLzmaDecoder::GetInStreamProcessedSize(UInt64 *value))
 
 
 
-struct CMethodItem
-{
-  unsigned ZipMethod;
-  CMyComPtr<ICompressCoder> Coder;
-};
+// CMethodItem: declared in ZipDecoder.h (Heptazip, #86)
 
 
 
-class CZipDecoder
-{
-  CMyComPtr2<ICompressFilter, NCrypto::NZip::CDecoder> _zipCryptoDecoder;
-  CMyComPtr2<ICompressFilter, NCrypto::NZipStrong::CDecoder> _pkAesDecoder;
-  CMyComPtr2<ICompressFilter, NCrypto::NWzAes::CDecoder> _wzAesDecoder;
-
-  CMyComPtr2<ISequentialInStream, CFilterCoder> filterStream;
-  CMyComPtr<ICryptoGetTextPassword> getTextPassword;
-  CObjectVector<CMethodItem> methodItems;
-
-  CLzmaDecoder *lzmaDecoderSpec;
-public:
-  CZipDecoder():
-      lzmaDecoderSpec(NULL)
-    {}
-
-  HRESULT Decode(
-    DECL_EXTERNAL_CODECS_LOC_VARS
-    CInArchive &archive, const CItemEx &item,
-    ISequentialOutStream *realOutStream,
-    IArchiveExtractCallback *extractCallback,
-    ICompressProgressInfo *compressProgress,
-    #ifndef Z7_ST
-    UInt32 numThreads, UInt64 memUsage,
-    #endif
-    Int32 &res);
-};
+// CZipDecoder: declared in ZipDecoder.h (Heptazip, #86); the code follows
 
 
 static HRESULT SkipStreamData(ISequentialInStream *stream,
@@ -978,7 +942,8 @@ HRESULT CZipDecoder::Decode(
     #ifndef Z7_ST
     UInt32 numThreads, UInt64 memUsage,
     #endif
-    Int32 &res)
+    Int32 &res,
+    ISequentialInStream *packStreamIn)
 {
   res = NExtract::NOperationResult::kHeadersError;
   
@@ -1043,7 +1008,12 @@ HRESULT CZipDecoder::Decode(
         return S_OK;
       packSize -= NCrypto::NWzAes::kMacSize;
     }
-    RINOK(archive.GetItemStream(item, true, packStream))
+    if (packStreamIn)
+      packStream = packStreamIn;  // Heptazip (#86): the data already read by a worker thread
+    else
+    {
+      RINOK(archive.GetItemStream(item, true, packStream))
+    }
     if (!packStream)
     {
       res = NExtract::NOperationResult::kUnavailable;
@@ -1579,9 +1549,30 @@ Z7_COM7F_IMF(CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
   CZipDecoder myDecoder;
   UInt64 cur_Unpacked, cur_Packed;
-  
+
   CMyComPtr2_Create<ICompressProgressInfo, CLocalProgress> lps;
   lps->Init(extractCallback, false);
+
+  #ifndef Z7_ST
+  /* Heptazip (issue #86): the items decoded in parallel by worker threads, with the
+     same callbacks in the same order (ZipExtractMt.cpp); the sequential loop below runs
+     when the parallel path is not applicable (one thread, one item, multi-volume). */
+  if (_parallelFileDecoding && _props._numThreads > 1)
+  {
+    CZipExtractCtx ctx(EXTERNAL_CODECS_VARS m_Archive, m_Items);
+    ctx.Callback = extractCallback;
+    ctx.Lps = lps.ClsPtr();
+    ctx.Indices = allFilesMode ? NULL : indices;
+    ctx.NumItems = numItems;
+    ctx.TestMode = (testMode != 0);
+    ctx.NumThreads = _props._numThreads;
+    ctx.MemUsage = _props._memUsage_Decompress;
+    bool wasUsed = false;
+    const HRESULT res = ExtractItemsParallel(ctx, myDecoder, wasUsed);
+    if (wasUsed)
+      return res;
+  }
+  #endif
 
   for (i = 0;; i++,
       lps->OutSize += cur_Unpacked,

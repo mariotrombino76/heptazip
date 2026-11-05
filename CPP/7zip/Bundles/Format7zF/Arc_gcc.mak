@@ -230,6 +230,7 @@ WIM_OBJS = \
 ZIP_OBJS = \
   $O/ZipAddCommon.o \
   $O/ZipHandler.o \
+  $O/ZipExtractMt.o \
   $O/ZipHandlerOut.o \
   $O/ZipIn.o \
   $O/ZipItem.o \
