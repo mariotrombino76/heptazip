@@ -21,6 +21,8 @@ jobs:
   build:
     name: Sito (build)
     runs-on: ubuntu-latest
+    outputs:
+      indexnow_key: ${{ steps.indexnow.outputs.key }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -40,6 +42,12 @@ jobs:
           test -s site/dist/style.css
           test -s site/dist/llms.txt
           python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('site/dist/sitemap.xml')"
+      - name: Chiave IndexNow (il file <chiave>.txt pubblicato dal sito)
+        id: indexnow
+        run: |
+          key=$(ls site/static | sed -n 's/^\([0-9a-f]\{32\}\)\.txt$/\1/p')
+          test -n "$key" && test "$(cat site/dist/$key.txt)" = "$key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
@@ -58,3 +66,21 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+      # Avvisa i motori che usano IndexNow (Bing, Yandex, Seznam, Naver) che le pagine sono
+      # cambiate. Google non lo usa: vedi site/README.md. Un errore qui non ferma nulla.
+      - name: Segnala le pagine a IndexNow
+        continue-on-error: true
+        env:
+          SITE: ${{ steps.deployment.outputs.page_url }}
+          KEY: ${{ needs.build.outputs.indexnow_key }}
+        run: |
+          site="${SITE%/}"
+          host="${site#https://}"; host="${host%%/*}"
+          # il file della chiave deve essere gia' leggibile, o la segnalazione viene rifiutata
+          for i in 1 2 3 4 5 6; do
+            curl -fsS -o /dev/null "$site/$KEY.txt" && break
+            sleep 10
+          done
+          curl -sS -o /dev/null -w 'IndexNow: HTTP %{http_code}\n' -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -d "{\"host\":\"$host\",\"key\":\"$KEY\",\"keyLocation\":\"$site/$KEY.txt\",\"urlList\":[\"$site/\",\"$site/en/\"]}"

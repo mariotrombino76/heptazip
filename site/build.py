@@ -30,6 +30,9 @@ HERE = Path(__file__).resolve().parent
 LOGO = HERE.parent / "docs" / "logo"
 REPO = "https://github.com/mariotrombino76/heptazip"
 DEFAULT_URL = "https://mariotrombino76.github.io/heptazip"
+# Codice del tag "google-site-verification" dato dalla Search Console (metodo "Tag HTML"):
+# vuoto finche' la proprieta' non e' stata aggiunta. Non e' un segreto.
+GOOGLE_SITE_VERIFICATION = ""
 
 # lingua -> cartella sotto la radice del sito, percorso verso la radice, testi dell'intestazione
 META = {
@@ -215,6 +218,8 @@ def head(lang, site):
         "author": {"@type": "Person", "name": "Mario Trombino"},
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"},
     }
+    verify = (f'<meta name="google-site-verification" content="{GOOGLE_SITE_VERIFICATION}">\n'
+              if GOOGLE_SITE_VERIFICATION else "")
     return f"""<!doctype html>
 <html lang="{lang}" class="motion-safe:scroll-smooth">
 <head>
@@ -224,7 +229,7 @@ def head(lang, site):
 <meta name="description" content="{m["desc"]}">
 <meta name="author" content="Mario Trombino">
 <meta name="theme-color" content="#0F1D2E">
-<link rel="canonical" href="{url}">
+{verify}<link rel="canonical" href="{url}">
 <link rel="alternate" hreflang="it" href="{site}/">
 <link rel="alternate" hreflang="en" href="{site}/en/">
 <link rel="alternate" hreflang="x-default" href="{site}/en/">

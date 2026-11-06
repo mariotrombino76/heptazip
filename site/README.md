@@ -39,5 +39,15 @@ Il workflow [`site.yml`](../.github/workflows/site.yml) genera il sito a ogni pu
 request che lo tocca e lo pubblica su GitHub Pages a ogni push su `develop`.
 
 Il sito è una pagina di progetto (`/heptazip/`): un `robots.txt` lì non avrebbe effetto
-(vale solo alla radice del dominio), quindi non c'è; la sitemap si segnala dalla Search
-Console.
+(vale solo alla radice del dominio), quindi non c'è.
+
+## Indicizzazione
+
+- **IndexNow** (Bing, Yandex, Seznam, Naver): dopo ogni pubblicazione il workflow segnala
+  le due pagine. La chiave è il file `static/<32 cifre esadecimali>.txt`, pubblico per
+  protocollo: il motore lo legge dal sito per controllare che la segnalazione sia nostra.
+- **Google** non usa IndexNow e non accetta più il ping della sitemap: serve la
+  [Search Console](https://search.google.com/search-console). Si aggiunge la proprietà
+  «Prefisso URL» `https://mariotrombino76.github.io/heptazip/`, si sceglie la verifica
+  «Tag HTML» e si copia il codice in `GOOGLE_SITE_VERIFICATION` di `build.py`; dopo la
+  pubblicazione si preme «Verifica» e si invia la sitemap `sitemap.xml`.
