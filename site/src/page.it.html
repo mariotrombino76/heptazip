@@ -1,9 +1,22 @@
 <div id="top" class="bg-paper font-sans text-ink antialiased">
 
 <header class="bg-ink text-paper">
-<nav aria-label="Principale" class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-10 gap-y-3 px-6 py-6 lg:px-10">
+<nav aria-label="Principale" class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-6 lg:gap-x-10 lg:px-10">
 <a href="#top" aria-label="Heptazip, inizio pagina" class="flex min-h-11 items-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core"><img src="@@ROOT@@heptazip-logo-dark.svg" alt="Heptazip" width="920" height="256" class="h-10 w-auto"></a>
-<div class="flex flex-wrap items-center gap-x-8 gap-y-1 font-mono text-sm">
+<!-- Sotto lg le voci stanno in un pannello a comparsa (popover) aperto da questo pulsante; da lg in su,
+     e nei browser senza Popover API, il pulsante non si vede e le voci restano in riga: vedi .site-menu in input.css -->
+<button type="button" popovertarget="menu" class="site-menu-button min-h-11 items-center gap-3 border border-rule px-4 font-mono text-sm text-paper hover:border-core focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+Menu
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M4 9h16"></path><path d="M4 15h16"></path></svg>
+</button>
+<div id="menu" popover class="site-menu font-mono text-sm">
+<div class="site-menu-head">
+<p aria-hidden="true" class="font-mono text-xs uppercase tracking-[0.16em] text-fog">Menu</p>
+<button type="button" popovertarget="menu" popovertargetaction="hide" class="inline-flex min-h-11 items-center gap-3 border border-rule px-4 font-mono text-sm text-paper hover:border-core focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<span>Chiudi</span>
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+</button>
+</div>
 <a href="#lame" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Funzioni</a>
 <a href="#misure" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Misure</a>
 <a href="#limiti" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Limiti</a>
