@@ -49,5 +49,6 @@ Il sito è una pagina di progetto (`/heptazip/`): un `robots.txt` lì non avrebb
 - **Google** non usa IndexNow e non accetta più il ping della sitemap: serve la
   [Search Console](https://search.google.com/search-console). Si aggiunge la proprietà
   «Prefisso URL» `https://mariotrombino76.github.io/heptazip/`, si sceglie la verifica
-  «Tag HTML» e si copia il codice in `GOOGLE_SITE_VERIFICATION` di `build.py`; dopo la
-  pubblicazione si preme «Verifica» e si invia la sitemap `sitemap.xml`.
+  «Tag HTML» e si copia il codice in `GOOGLE_SITE_VERIFICATION` di `build.py` (fatto il
+  2026-11-06); dopo la pubblicazione si preme «Verifica» e si invia la sitemap
+  `sitemap.xml`. Il tag deve restare nella pagina, o la proprietà perde la verifica.

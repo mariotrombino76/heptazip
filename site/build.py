@@ -31,8 +31,8 @@ LOGO = HERE.parent / "docs" / "logo"
 REPO = "https://github.com/mariotrombino76/heptazip"
 DEFAULT_URL = "https://mariotrombino76.github.io/heptazip"
 # Codice del tag "google-site-verification" dato dalla Search Console (metodo "Tag HTML"):
-# vuoto finche' la proprieta' non e' stata aggiunta. Non e' un segreto.
-GOOGLE_SITE_VERIFICATION = ""
+# vuoto = nessun tag. Non e' un segreto.
+GOOGLE_SITE_VERIFICATION = "cglE_lnZMFGyuR0gDocY3gAZXG-NiyUFGiOwP3tu44w"
 
 # lingua -> cartella sotto la radice del sito, percorso verso la radice, testi dell'intestazione
 META = {
