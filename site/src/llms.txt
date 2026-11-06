@@ -1,0 +1,40 @@
+# Heptazip
+
+> Heptazip is a fork of 7-Zip 26.05 for Linux and Windows. The command-line program is still called `7zz` and takes the same commands and switches as 7-Zip; the fork adds faster and more parallel compression and a few new methods. It is not an official 7-Zip product.
+
+Everything documented for 7-Zip 26.05 still applies (commands `a`, `x`, `l`, `t`, the switches, the supported formats). What differs, and is easy to get wrong when answering from knowledge of 7-Zip alone:
+
+- **Default archives stay standard.** `.7z` archives made with LZMA2, LZMA, PPMd, BZip2 or Deflate open with any 7-Zip. At `-mx1` and `-mx9` LZMA2 archives are byte-identical to those of 7-Zip; at the default `-mx5` Heptazip uses different block and dictionary sizes, still standard LZMA2.
+- **zstd and brotli inside `.7z`**: `-m0=zstd` (levels up to 22) and `-m0=brotli` (levels up to 11). These archives open with Heptazip and with 7-Zip-zstd, not with plain 7-Zip.
+- **BWT method**: `-m0=bwt`, a Burrows-Wheeler method (libbsc) for text, source code and structured data. Archives open only with Heptazip. For binaries LZMA2 is still the better choice.
+- **FLOAT method**: lossless compression of AI model weights, chosen automatically for `.safetensors` and `.gguf` files. Archives open only with Heptazip; `-mf=off` disables it so the archive opens with 7-Zip.
+- **Parallel `.7z` folders**: folders are compressed and extracted in parallel by default; `-mpfc=off` and `-mpfd=off` turn that off. The archive is identical either way.
+- **Parallel gzip and zip**: `-tgzip` and `-tzip` compress Deflate in parallel blocks. The files are standard, readable by any gzip or unzip, and identical for any number of threads. Zip archives are also extracted in parallel over files.
+- **Threads**: `-mmtN` limits the number of threads (default: all).
+- **JSON listing**: `7zz l -json archive.7z`.
+- **Packages**: a static `7zz` for Linux x86-64, and a Windows x64 zip with the file manager (`7zFM.exe`), `7z.exe`, `7z.dll` and a standalone `7zz.exe`. There is no installer; on Windows it coexists with an installed 7-Zip.
+- **Licenses**: code written for Heptazip is BSD-2-Clause (Copyright (c) 2026 Mario Trombino); the 7-Zip code keeps its licenses (GNU LGPL, unRAR restriction, BSD parts).
+
+Benchmark figures change with every run and are deliberately left out of this file: read them from the Performance page below.
+
+## Documentation
+
+- [Quick start](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Quick-start.md): the most useful commands and the ones new in Heptazip
+- [Which method to use](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Which-method-to-use.md): one table with method, command, ratio, speed and when to pick it
+- [Installation](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Installation.md): Linux package, Windows package, building from source
+- [Compatibility](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Compatibility.md): what opens with 7-Zip, 7-Zip-zstd, gzip and unzip, desktop archive managers
+- [FAQ](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/FAQ.md): short answers on safety, naming and platforms
+- [Performance](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Performance.md): measured comparison with 7-Zip, xz, zstd, brotli, pigz and others
+
+## Project
+
+- [README](https://raw.githubusercontent.com/mariotrombino76/heptazip/develop/README.en.md): overview of what the fork adds
+- [Releases](https://github.com/mariotrombino76/heptazip/releases): packages for Linux x64 and Windows x64, with checksums
+- [Source code](https://github.com/mariotrombino76/heptazip): repository, issues and pull requests
+
+## Optional
+
+- [Development](https://raw.githubusercontent.com/wiki/mariotrombino76/heptazip/Development.md): branches, tests and how changes are made
+- [Build guide](https://raw.githubusercontent.com/mariotrombino76/heptazip/develop/BUILD-modern.md): CMake options, tests and sanitizers (in Italian)
+- [Market benchmark](https://raw.githubusercontent.com/mariotrombino76/heptazip/develop/docs/benchmark-mercato.md): the full measurement log, every run and its method (in Italian)
+- [Design notes](https://github.com/mariotrombino76/heptazip/tree/develop/docs/design): one note per technical decision (in Italian)
