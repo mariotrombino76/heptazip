@@ -1,0 +1,13 @@
+{
+  "name": "heptazip-site",
+  "private": true,
+  "description": "Build dependencies of the Heptazip presentation site (Tailwind CSS CLI)",
+  "license": "BSD-2-Clause",
+  "scripts": {
+    "build": "python3 build.py"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.4",
+    "tailwindcss": "4.3.4"
+  }
+}

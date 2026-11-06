@@ -1,0 +1,44 @@
+/* Foglio di stile del sito: Tailwind 4 con i colori e i caratteri del logo (docs/logo).
+   Le classi vengono lette dalle pagine generate da build.py. */
+@import "tailwindcss" source(none);
+@source "../dist/index.html";
+@source "../dist/en/index.html";
+
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("outfit.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ibm-plex-mono-500.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* inchiostro, nucleo e carta sono i tre colori del logo; gli altri ne derivano */
+  --color-ink: #0F1D2E;
+  --color-ink-2: #15273B;
+  --color-rule: #2A3B50;
+  --color-steel: #5E6E80;
+  --color-fog: #9AA5B1;
+  --color-core: #2EC4B6;
+  --color-core-deep: #0B5F59;
+  --color-paper: #ECE8DF;
+  --color-rule-paper: #CFC9BB;
+  --color-slate: #4A5563;
+}

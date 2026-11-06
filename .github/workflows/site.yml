@@ -1,0 +1,60 @@
+# Sito di presentazione (site/): build a ogni pull request che lo tocca,
+# pubblicazione su GitHub Pages a ogni push su develop.
+name: Site
+
+on:
+  push:
+    branches: [develop]
+    paths: ['site/**', 'docs/logo/**', '.github/workflows/site.yml']
+  pull_request:
+    paths: ['site/**', 'docs/logo/**', '.github/workflows/site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Sito (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Dipendenze (Tailwind CLI)
+        working-directory: site
+        run: npm ci
+      - name: Genera il sito
+        run: python3 site/build.py
+      - name: Controlla le pagine generate
+        run: |
+          test -s site/dist/index.html
+          test -s site/dist/en/index.html
+          test -s site/dist/style.css
+          test -s site/dist/llms.txt
+          python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('site/dist/sitemap.xml')"
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    name: Sito (pubblicazione)
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
