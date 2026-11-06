@@ -133,6 +133,14 @@ static const char * const kCopyrightString = "\n7-Zip"
   " : " MY_COPYRIGHT_DATE "\n"
   HZ_NAME " " HZ_VERSION " : " HZ_COPYRIGHT "\n";
 
+/* Heptazip: the methods added by the fork are listed in the help of the programs that the
+   fork ships: 7zz (variant Z) and 7z with 7z.dll / 7z.so (external codecs, no variant).
+   The reduced programs of 7-Zip (7zr, 7za) share this file but not those methods. */
+#if defined(Z7_PROG_VARIANT_Z) \
+    || (defined(Z7_EXTERNAL_CODECS) && !defined(Z7_PROG_VARIANT_R) && !defined(Z7_PROG_VARIANT_A))
+  #define HZ_HELP_METHODS
+#endif
+
 static const char * const kHelpString =
     "Usage: 7z"
     PROG_POSTFIX
@@ -163,7 +171,18 @@ static const char * const kHelpString =
     "  -bt : show execution time statistics\n"
     "  -i[r[-|0]][m[-|2]][w[-]]{@listfile|!wildcard} : Include filenames\n"
     "  -m{Parameters} : set compression Method\n"
+    #ifdef HZ_HELP_METHODS
+    // Heptazip: the methods of the fork; "7z i" stays the reference for what a build contains
+    "    -m0={Method} : set method for 7z archives: LZMA2 (default), PPMD, BZip2, Deflate,\n"
+    "        ZSTD and BROTLI (fast, compatible with 7-Zip-zstd), BWT (text and structured data),\n"
+    "        FLOAT (AI model weights, automatic for .safetensors and .gguf).\n"
+    "        Archives with BWT or FLOAT can be extracted only with " HZ_NAME ".\n"
+    "        \"7z" PROG_POSTFIX " i\" lists the methods of this build\n"
+    #endif
     "    -mmt[N] : set number of CPU threads\n"
+    // Heptazip: properties "pfc" and "pfd" of the 7z handler (docs/design/0003, 0001)
+    "    -mpfc={on|off} : parallel compression of 7z folders (default: on)\n"
+    "    -mpfd={on|off} : parallel extraction of 7z folders and zip files (default: on)\n"
     "    -mx[N] : set compression level: -mx1 (fastest) ... -mx9 (ultra)\n"
     "  -o{Directory} : set Output directory\n"
     #ifndef Z7_NO_CRYPTO
