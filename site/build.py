@@ -58,6 +58,27 @@ META = {
     },
 }
 
+# Il pannello del menu (popover, vedi .site-menu in src/input.css) si apre e si chiude senza script:
+# pulsanti, Esc e tocco fuori li gestisce il browser. Lo script copre quello che il browser non fa:
+# - a pannello aperto rende inerte il resto della pagina (i fratelli di <header>). Il tocco fuori chiude il pannello ma
+#   arriverebbe anche a quello che c'e' sotto la sfocatura (un link partirebbe); in piu' tastiera e
+#   lettori di schermo non finiscono nella pagina coperta;
+# - chiude il pannello quando si sceglie una voce (il tocco cade dentro il pannello, che resterebbe
+#   aperto sopra la sezione raggiunta) e quando la finestra si allarga fino al modo in riga.
+MENU_SCRIPT = """<script type="module">
+const menu = document.getElementById("menu");
+if (menu && "hidePopover" in menu) {
+  const close = () => { if (menu.matches(":popover-open")) menu.hidePopover(); };
+  const header = menu.closest("header");
+  menu.addEventListener("toggle", (e) => {
+    for (const el of header.parentElement.children) if (el !== header) el.inert = e.newState === "open";
+  });
+  menu.addEventListener("click", (e) => { if (e.target.closest("a")) close(); });
+  matchMedia("(min-width: 64rem)").addEventListener("change", close);
+}
+</script>
+"""
+
 MONO_B = '<span class="font-mono text-base">'
 MONO_S = '<span class="font-mono text-sm">'
 
@@ -66,6 +87,7 @@ MONO_S = '<span class="font-mono text-sm">'
 EN = [
     ('aria-label="Principale"', 'aria-label="Main"', 1),
     ('aria-label="Heptazip, inizio pagina"', 'aria-label="Heptazip, top of page"', 1),
+    ('<span>Chiudi</span>', '<span>Close</span>', 1),
     ('>Funzioni</a>', '>Features</a>', 1),
     ('>Misure</a>', '>Benchmarks</a>', 1),
     ('>Limiti</a>', '>Limits</a>', 1),
@@ -279,7 +301,7 @@ def main():
     body = (HERE / "src" / "page.it.html").read_text(encoding="utf-8").strip()
     pages = {"it": body, "en": translate(body)}
     for lang, b in pages.items():
-        page = head(lang, site) + finish(b, lang) + "\n</body>\n</html>\n"
+        page = head(lang, site) + finish(b, lang) + "\n" + MENU_SCRIPT + "</body>\n</html>\n"
         (out / META[lang]["dir"] / "index.html").write_text(page, encoding="utf-8")
 
     (out / "sitemap.xml").write_text(sitemap(site), encoding="utf-8")

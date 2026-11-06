@@ -32,6 +32,11 @@ un altro dominio); i percorsi dei file sono relativi e non dipendono dall'indiri
   lingue; in inglese si scrivono con la virgola come in italiano, `build.py` le porta
   al punto decimale.
 - **Colori e caratteri**: `@theme` in `src/input.css`.
+- **Menu dell'intestazione**: le voci stanno in un solo elemento (`<div id="menu" popover>`).
+  Da 1024 px in su sono in riga; sotto, l'intestazione mostra logo e pulsante «Menu» e le voci
+  si aprono in un pannello a comparsa del browser (Popover API). Lo stile è `.site-menu` in
+  `src/input.css`, il piccolo script di contorno è `MENU_SCRIPT` in `build.py`. Nei browser
+  senza Popover API le voci restano in riga e vanno a capo.
 
 ## Pubblicazione
 
