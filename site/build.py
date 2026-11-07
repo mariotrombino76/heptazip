@@ -39,8 +39,10 @@ META = {
     "it": {
         "dir": "", "root": "",
         "title": "Heptazip: stessi comandi di 7-Zip, più veloce e più parallelo",
-        "desc": "Heptazip è un fork di 7-Zip 26.05: stessi comandi, LZMA2 e gzip più veloci, lavoro in "
-                "parallelo, metodi nuovi per testi e modelli AI. Per Linux e Windows.",
+        "desc": "Heptazip, fork di 7-Zip 26.05 per Linux e Windows: stessi comandi, LZMA2 e gzip più veloci, "
+                "estrazione in parallelo, zstd, brotli e BWT nel 7z, FLOAT per i modelli AI.",
+        "keywords": ["7-Zip", "7z", "compressione", "archivi", "zstd", "brotli", "LZMA2", "BWT", "gzip",
+                     "parallelo", "multithread", "modelli AI", "safetensors", "GGUF", "Linux", "Windows"],
         "locale": "it_IT", "alt_locale": "en_US",
         "img_alt": "Logo di Heptazip: un ettagono diviso in sette lame attorno a un nucleo",
         "skip": "Vai al contenuto",
@@ -49,8 +51,10 @@ META = {
     "en": {
         "dir": "en/", "root": "../",
         "title": "Heptazip: the same commands as 7-Zip, faster and more parallel",
-        "desc": "Heptazip is a fork of 7-Zip 26.05: same commands, faster LZMA2 and gzip, parallel work, "
-                "new methods for text and AI models. For Linux and Windows.",
+        "desc": "Heptazip, a fork of 7-Zip 26.05 for Linux and Windows: same commands, faster LZMA2 and gzip, "
+                "parallel extraction, zstd, brotli and BWT in 7z, FLOAT for AI models.",
+        "keywords": ["7-Zip", "7z", "compression", "archiver", "zstd", "brotli", "LZMA2", "BWT", "gzip",
+                     "parallel", "multithreaded", "AI models", "safetensors", "GGUF", "Linux", "Windows"],
         "locale": "en_US", "alt_locale": "it_IT",
         "img_alt": "Heptazip logo: a heptagon split into seven blades around a core",
         "skip": "Skip to content",
@@ -232,7 +236,7 @@ def head(lang, site):
         "name": "Heptazip", "description": m["desc"], "url": url,
         "image": f"{site}/heptazip-card.png",
         "applicationCategory": "UtilitiesApplication", "operatingSystem": "Linux, Windows",
-        "softwareVersion": "26.05-m3", "inLanguage": lang,
+        "softwareVersion": "26.05-m3", "inLanguage": lang, "keywords": ", ".join(m["keywords"]),
         "downloadUrl": f"{REPO}/releases/latest",
         "license": f"{REPO}/blob/develop/LICENSE-Heptazip",
         "sameAs": [REPO],
