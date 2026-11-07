@@ -276,7 +276,9 @@ static bool IsJolietChar(wchar_t c)
     case L'*': case L'/': case L':': case L';': case L'?': case L'\\':
       return false;
   }
-  return c < 0x10000;   // surrogates: Joliet is UCS-2, not UTF-16
+  // characters outside the BMP arrive as surrogate pairs (7-Zip keeps UTF-16 units in
+  // UString on every platform) and are written as such: Windows reads them
+  return true;
 }
 
 static UString MakeIdJoliet(const UString &name)
