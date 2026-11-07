@@ -56,6 +56,10 @@ with a company of the same name).
   a 12 MB file at `-mx5` from 2.9 to 1.7 s.
 - **More speed**: assembly on by default, CRC32 with PCLMULQDQ, optimized match finder,
   SIMD decoders (AVX2, NEON).
+- **ISO images**: 7-Zip only reads them, Heptazip creates them (`7zz a -tiso disc.iso
+  folder/`, and from the GUI): ISO 9660 with Joliet (Windows) and Rock Ridge (Linux, macOS:
+  long names, permissions, links), files over 4 GB, label with `-mvol=NAME`; an existing ISO
+  is updated by rewriting it.
 - **Modern build** with CMake (GCC/Clang, C++20, optional LTO/PGO), tests with CTest,
   sanitizers, fuzzing (libFuzzer) and ARM64 builds.
 

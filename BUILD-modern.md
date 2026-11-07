@@ -217,6 +217,23 @@ quantizzati qui sopra quando il metodo è quello di default (`-mf=off` lo disatt
 `-m0=zstd` e altri metodi espliciti non cambia nulla). Metodo `3F707F5E728B0001`, solo in
 questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 
+## Immagini ISO (`-tiso`)
+
+```sh
+7zz a -tiso disco.iso cartella/                 # ISO 9660 + Joliet + Rock Ridge
+7zz a -tiso -mvol="DATI 2026" -snl disco.iso cartella/   # etichetta; -snl conserva i link
+7zz a -tiso -mjoliet=off disco.iso cartella/    # solo 9660 + Rock Ridge
+7zz a -tiso -mrr=off disco.iso cartella/        # solo 9660 + Joliet
+7zz a disco.iso altro.txt                       # aggiunge riscrivendo l'immagine
+```
+
+Immagine ISO 9660 con l'albero Joliet (nomi Unicode fino a 103 caratteri, Windows) e
+l'albero Rock Ridge (nomi interi in UTF-8, permessi, mtime, link simbolici: Linux, macOS);
+file oltre 4 GiB con estensioni multiple; nessuna compressione, nessun thread. `-mvol`
+accetta lettere maiuscole, cifre, `_` e spazio (32 caratteri al massimo; `ISOIMAGE` se
+assente; nella riscrittura resta quella dell'immagine). Il dialogo Aggiungi della GUI ha
+`iso` tra i formati. Non si scrivono El Torito (avviabili) e UDF. Design: `docs/design/0019`.
+
 ## Output JSON dell'elenco (`l -json`)
 
 ```sh

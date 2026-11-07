@@ -12,11 +12,20 @@
 namespace NArchive {
 namespace NIso {
 
-Z7_CLASS_IMP_CHandler_IInArchive_1(
-  IInArchiveGetStream
+Z7_CLASS_IMP_CHandler_IInArchive_3(
+  IInArchiveGetStream,
+  ISetProperties,
+  IOutArchive
 )
   CMyComPtr<IInStream> _stream;
   CInArchive _archive;
+
+  // Heptazip: options of the writer (IsoHandlerOut.cpp, IsoOut.cpp)
+  AString _volumeId;
+  bool _joliet;
+  bool _rockRidge;
+public:
+  CHandler(): _joliet(true), _rockRidge(true) {}
 };
 
 }}

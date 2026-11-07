@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: pycdlib (verifica indipendente delle immagini ISO)
+        run: pip3 install --user pycdlib
       - name: Configura
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
       - name: Compila
@@ -41,6 +43,8 @@ jobs:
       CXX: clang++
     steps:
       - uses: actions/checkout@v7
+      - name: pycdlib (verifica indipendente delle immagini ISO)
+        run: pip3 install --user pycdlib
       - name: Configura
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DSEVENZIP_ASM=OFF
       - name: Compila

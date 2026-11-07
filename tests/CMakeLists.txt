@@ -299,6 +299,12 @@ add_test(NAME list_json
           --7zz ${_7zz})
 set_tests_properties(list_json PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
 
+# Scrittura di immagini ISO (design 0019): round trip, parser indipendente, pycdlib se c'e'.
+add_test(NAME iso_writer
+  COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/iso_writer.py
+          --7zz ${_7zz})
+set_tests_properties(iso_writer PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
 # File di lingua della GUI (Lang/): formato letto da CLang e stringhe del fork (issue #104).
 add_test(NAME lang_files
   COMMAND $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/lang_files.py)
