@@ -242,7 +242,12 @@ rem -> 7z.dll, 7z.exe, 7zFM.exe, 7zG.exe, 7-zip.dll in out-msvc\
 ```
 
 I file si usano senza installazione (stessa cartella). La CI li pubblica come artefatto
-`heptazip-windows-x64-msvc`. Heptazip convive con 7-Zip installato: impostazioni in
+`heptazip-windows-x64-msvc`. 7zFM e 7zG richiedono Windows 10 1903 o successivo: i loro
+makefile compilano con `Z7_WIN32_WINNT_MIN=0x0a00` e collegano `uxtheme` e `dwmapi` in modo
+statico (`DarkMode.cpp` cerca a runtime solo le funzioni del tema scuro esportate per
+ordinale); i manifest dichiarano solo Windows 10/11; su una versione più vecchia la GUI
+avvisa all'avvio e parte con il tema chiaro. `7z.exe`, `7z.dll`, `7-zip.dll` e `7zz.exe`
+mantengono il minimo di 7-Zip. Heptazip convive con 7-Zip installato: impostazioni in
 `HKCU\Software\Heptazip`, codec cercati solo nella propria cartella (non in quella di
 7-Zip), associazioni dei file con il prefisso `Heptazip.`, estensione di Explorer con un
 CLSID proprio (`{90642948-CE43-44BE-810E-2CA2A1F77CEE}`). I file di traduzione di 7-Zip

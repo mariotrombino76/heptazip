@@ -79,9 +79,12 @@ basta `-mf=off`.
 (Linux x64, Windows x64) sono nelle [release](https://github.com/mariotrombino76/heptazip/releases),
 le novità in [docs/release-notes](docs/release-notes).
 
-Il pacchetto Windows contiene la cartella `Lang` con le traduzioni della GUI (le 92 lingue di
-7-Zip; le stringhe nuove di Heptazip per ora solo in italiano): 7zFM e 7zG usano da soli la
-lingua di Windows, si cambia da Strumenti > Opzioni > Lingua. Vedi [Lang/README.md](Lang/README.md).
+Il pacchetto Windows richiede Windows 10 versione 1903 (maggio 2019) o successiva, oppure
+Windows 11: la GUI (7zFM, 7zG) usa le API del tema scuro e del DPI per monitor di quelle versioni,
+e Windows 7 e 8.1 non sono più supportati da Microsoft. Il pacchetto contiene la cartella `Lang`
+con le traduzioni della GUI (le 92 lingue di 7-Zip; le stringhe nuove di Heptazip per ora solo in
+italiano): 7zFM e 7zG usano da soli la lingua di Windows, si cambia da Strumenti > Opzioni > Lingua.
+Vedi [Lang/README.md](Lang/README.md).
 
 ## Branch
 

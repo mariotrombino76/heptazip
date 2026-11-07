@@ -4,7 +4,9 @@ CFLAGS = $(CFLAGS) \
 !IFDEF UNDER_CE
 LIBS = $(LIBS) ceshell.lib Commctrl.lib
 !ELSE
-LIBS = $(LIBS) comctl32.lib htmlhelp.lib comdlg32.lib Mpr.lib Gdi32.lib
+# Heptazip: the GUI requires Windows 10 1903 or later (DarkMode.cpp, manifest)
+CFLAGS = $(CFLAGS) -DZ7_WIN32_WINNT_MIN=0x0a00
+LIBS = $(LIBS) comctl32.lib htmlhelp.lib comdlg32.lib Mpr.lib Gdi32.lib uxtheme.lib dwmapi.lib
 CFLAGS = $(CFLAGS) -DZ7_DEVICE_FILE
 LFLAGS = $(LFLAGS) /DELAYLOAD:mpr.dll
 LIBS = $(LIBS) delayimp.lib
