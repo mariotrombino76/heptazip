@@ -16,7 +16,8 @@ which license applies to each part of the code.
 
    (among others C/Float*.c/h, C/7zCrcClmul.h, C/LzFindMatchLen.h, the *Mt.cpp/h files
    of parallel extraction and compression, CPP/7zip/Compress/Float*,
-   CPP/7zip/Compress/Zstd*, CPP/7zip/UI/Console/ListJson.*, the CMake build, the tests
+   CPP/7zip/Compress/Zstd*, CPP/7zip/Archive/Iso/IsoOut.* and IsoHandlerOut.cpp,
+   CPP/7zip/UI/Console/ListJson.*, the CMake build, the tests
    in tests/ and the tools in tools/) are distributed under the 2-clause BSD license
    reproduced below.
 

@@ -13,7 +13,8 @@ quale licenza ha ciascuna parte del codice. Traduzione inglese: LICENSE-Heptazip
 
    (tra gli altri C/Float*.c/h, C/7zCrcClmul.h, C/LzFindMatchLen.h, i file *Mt.cpp/h
    dell'estrazione e della compressione parallela, CPP/7zip/Compress/Float*,
-   CPP/7zip/Compress/Zstd*, CPP/7zip/UI/Console/ListJson.*, il build CMake, i test in
+   CPP/7zip/Compress/Zstd*, CPP/7zip/Archive/Iso/IsoOut.* e IsoHandlerOut.cpp,
+   CPP/7zip/UI/Console/ListJson.*, il build CMake, i test in
    tests/ e gli strumenti in tools/) sono distribuiti con la licenza BSD a 2 clausole
    riportata qui sotto.
 

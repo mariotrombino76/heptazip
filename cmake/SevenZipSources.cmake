@@ -221,8 +221,10 @@ set(SEVENZIP_CPP_SOURCES
   CPP/7zip/Archive/Chm/ChmIn.cpp
   # CPP/7zip/Archive/Iso
   CPP/7zip/Archive/Iso/IsoHandler.cpp
+  CPP/7zip/Archive/Iso/IsoHandlerOut.cpp
   CPP/7zip/Archive/Iso/IsoHeader.cpp
   CPP/7zip/Archive/Iso/IsoIn.cpp
+  CPP/7zip/Archive/Iso/IsoOut.cpp
   CPP/7zip/Archive/Iso/IsoRegister.cpp
   # CPP/7zip/Archive/Nsis
   CPP/7zip/Archive/Nsis/NsisDecode.cpp

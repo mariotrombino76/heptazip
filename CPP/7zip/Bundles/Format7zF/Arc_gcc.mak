@@ -190,8 +190,10 @@ CHM_OBJS = \
 
 ISO_OBJS = \
   $O/IsoHandler.o \
+  $O/IsoHandlerOut.o \
   $O/IsoHeader.o \
   $O/IsoIn.o \
+  $O/IsoOut.o \
   $O/IsoRegister.o \
 
 NSIS_OBJS = \

@@ -446,6 +446,13 @@ static const CFormatInfo g_Formats[] =
     // | kFF_Time_Win
   },
   {
+    // Heptazip: ISO 9660 images (IsoOut.cpp): no compression, no threads
+    "iso",
+    (1 << 0),
+    0, NULL,
+    0
+  },
+  {
     "Hash",
     (0 << 0),
     METHODS_PAIR(g_HashMethods),

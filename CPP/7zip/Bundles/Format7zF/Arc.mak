@@ -149,8 +149,10 @@ CHM_OBJS = \
 
 ISO_OBJS = \
   $O\IsoHandler.obj \
+  $O\IsoHandlerOut.obj \
   $O\IsoHeader.obj \
   $O\IsoIn.obj \
+  $O\IsoOut.obj \
   $O\IsoRegister.obj \
 
 NSIS_OBJS = \

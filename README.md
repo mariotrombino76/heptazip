@@ -56,6 +56,10 @@ con una società omonima).
   26 s, un file da 12 MB a `-mx5` da 2,9 a 1,7 s.
 - **Più velocità**: assembly attivo di default, CRC32 con PCLMULQDQ, match finder
   ottimizzato, decoder SIMD (AVX2, NEON).
+- **Immagini ISO**: 7-Zip le legge soltanto, Heptazip le crea (`7zz a -tiso disco.iso
+  cartella/`, e dalla GUI): ISO 9660 con Joliet (Windows) e Rock Ridge (Linux, macOS: nomi
+  lunghi, permessi, link), file oltre 4 GB, etichetta con `-mvol=NOME`; una ISO esistente si
+  aggiorna riscrivendola.
 - **Build moderno** con CMake (GCC/Clang, C++20, LTO/PGO opzionali), test con CTest,
   sanitizer, fuzzing (libFuzzer) e build ARM64.
 

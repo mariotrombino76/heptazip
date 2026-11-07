@@ -653,9 +653,13 @@ $O/ChmIn.o: ../../Archive/Chm/ChmIn.cpp
 
 $O/IsoHandler.o: ../../Archive/Iso/IsoHandler.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/IsoHandlerOut.o: ../../Archive/Iso/IsoHandlerOut.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/IsoHeader.o: ../../Archive/Iso/IsoHeader.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/IsoIn.o: ../../Archive/Iso/IsoIn.cpp
+	$(CXX) $(CXXFLAGS) $<
+$O/IsoOut.o: ../../Archive/Iso/IsoOut.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/IsoRegister.o: ../../Archive/Iso/IsoRegister.cpp
 	$(CXX) $(CXXFLAGS) $<
