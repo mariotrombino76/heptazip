@@ -29,7 +29,9 @@ quale licenza ha ciascuna parte del codice. Traduzione inglese: LICENSE-Heptazip
    Il resto del codice e le modifiche di Heptazip ai file di 7-Zip distribuiti con la
    GNU LGPL restano con le licenze di 7-Zip (GNU LGPL 2.1 o successiva, con la
    restrizione unRAR per il codice di decompressione RAR, e le parti con licenza BSD):
-   vedi DOC/License.txt. Copyright (c) 1999-2026 Igor Pavlov.
+   vedi DOC/License.txt. Copyright (c) 1999-2026 Igor Pavlov. Lo stesso vale per i file di
+   lingua della GUI in Lang/, presi dall'installatore di 7-Zip 26.05 e adattati da
+   tools/import-lang.py (copyright dei traduttori indicati in testa a ogni file).
 
 3. Codice di terzi
 
