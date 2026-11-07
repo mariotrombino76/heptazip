@@ -7,7 +7,7 @@
 /* Heptazip: the fork of 7-Zip (branch modern), version = upstream base + "-m" release */
 #define HZ_NAME     "Heptazip"
 #define HZ_RELEASE  1
-#define HZ_VERSION  MY_VERSION_NUMBERS "-m2"
+#define HZ_VERSION  MY_VERSION_NUMBERS "-m3"
 #define HZ_COPYRIGHT  "Copyright (c) 2026 Mario Trombino"
 #define HZ_NAME_W   L"Heptazip"   /* captions of the GUI (MessageBoxW) */
 #define HZ_HOME_PAGE "https://github.com/mariotrombino76/heptazip"
