@@ -9,13 +9,14 @@
 #include <commctrl.h>
 #include <uxtheme.h>
 #include <vssym32.h>
+#include <dwmapi.h>
 
-// 7-Zip builds with a low _WIN32_IE: values of commctrl.h (IE 6)
-#ifndef TBCDRF_NOBACKGROUND
-#define TBCDRF_NOBACKGROUND  0x00400000
-#endif
-#ifndef TBCDRF_USECDCOLORS
-#define TBCDRF_USECDCOLORS   0x00800000
+// The GUI programs are built with Z7_WIN32_WINNT_MIN=0x0a00 (Windows 10 or later,
+// see the makefiles): uxtheme, dwmapi and the per-monitor DPI functions of user32 are
+// linked statically. Only the dark-mode functions that uxtheme exports by ordinal, with
+// their meaning fixed since Windows 10 1903, are still looked up at run time.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
+#error DarkMode.cpp requires _WIN32_WINNT >= 0x0A00 (Z7_WIN32_WINNT_MIN=0x0a00)
 #endif
 
 #include "../../../Windows/Registry.h"
@@ -28,9 +29,6 @@ using namespace NWindows;
 namespace NDarkMode {
 
 // ---------- scale (PerMonitorV2)
-
-typedef UINT (WINAPI *Func_GetDpiForWindow)(HWND);
-typedef BOOL (WINAPI *Func_SystemParametersInfoForDpi)(UINT, UINT, PVOID, UINT, UINT);
 
 static UInt32 g_SystemDpi;
 
@@ -51,18 +49,9 @@ UInt32 GetSystemDpi()
 
 UInt32 GetWindowDpi(HWND wnd)
 {
-  static Func_GetDpiForWindow f;
-  static bool loaded;
-  if (!loaded)
+  if (wnd)
   {
-    loaded = true;
-    const HMODULE user = ::GetModuleHandleW(L"user32.dll");
-    if (user)
-      f = Z7_GET_PROC_ADDRESS(Func_GetDpiForWindow, user, "GetDpiForWindow");
-  }
-  if (f && wnd)
-  {
-    const UINT dpi = f(wnd);
+    const UINT dpi = ::GetDpiForWindow(wnd);
     if (dpi != 0)
       return dpi;
   }
@@ -80,18 +69,9 @@ HFONT GetUiFont(UInt32 dpi)
   NONCLIENTMETRICSW ncm;
   memset(&ncm, 0, sizeof(ncm));
   ncm.cbSize = sizeof(ncm);
-  bool ok = false;
-  const HMODULE user = ::GetModuleHandleW(L"user32.dll");
-  if (user)
+  if (!::SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0, dpi))
   {
-    const Func_SystemParametersInfoForDpi f = Z7_GET_PROC_ADDRESS(
-        Func_SystemParametersInfoForDpi, user, "SystemParametersInfoForDpi");
-    if (f)
-      ok = f(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0, dpi) != FALSE;
-  }
-  if (!ok)
-  {
-    // older Windows: the font of the system DPI, scaled
+    // the font of the system DPI, scaled
     if (!::SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0))
       return NULL;
     ncm.lfMessageFont.lfHeight = ::MulDiv(ncm.lfMessageFont.lfHeight, (int)dpi, (int)GetSystemDpi());
@@ -130,28 +110,19 @@ static HBRUSH GetBrush(HBRUSH &b, COLORREF c)
 #define CTRL_BRUSH  GetBrush(g_CtrlBrush, k_Ctrl)
 #define HOT_BRUSH   GetBrush(g_HotBrush, k_Hot)
 
-// ---------- run-time APIs
+// ---------- run-time APIs (uxtheme exports them by ordinal only)
 
-typedef HRESULT (WINAPI *Func_SetWindowTheme)(HWND, LPCWSTR, LPCWSTR);
-typedef HTHEME  (WINAPI *Func_OpenThemeData)(HWND, LPCWSTR);
-typedef HRESULT (WINAPI *Func_CloseThemeData)(HTHEME);
-typedef HRESULT (WINAPI *Func_DrawThemeBackground)(HTHEME, HDC, int, int, LPCRECT, LPCRECT);
-typedef HRESULT (WINAPI *Func_GetThemePartSize)(HTHEME, HDC, int, int, LPCRECT, enum THEMESIZE, SIZE *);
 typedef int     (WINAPI *Func_SetPreferredAppMode)(int mode);   // ordinal 135 (1903+)
 typedef void    (WINAPI *Func_FlushMenuThemes)(void);           // ordinal 136
 typedef BOOL    (WINAPI *Func_AllowDarkModeForWindow)(HWND, BOOL);  // ordinal 133
-typedef HRESULT (WINAPI *Func_DwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
 typedef void    (WINAPI *Func_RtlGetNtVersionNumbers)(DWORD *, DWORD *, DWORD *);
 
-static Func_SetWindowTheme f_SetWindowTheme;
-static Func_OpenThemeData f_OpenThemeData;
-static Func_CloseThemeData f_CloseThemeData;
-static Func_DrawThemeBackground f_DrawThemeBackground;
-static Func_GetThemePartSize f_GetThemePartSize;
 static Func_SetPreferredAppMode f_SetPreferredAppMode;
 static Func_FlushMenuThemes f_FlushMenuThemes;
 static Func_AllowDarkModeForWindow f_AllowDarkModeForWindow;
-static Func_DwmSetWindowAttribute f_DwmSetWindowAttribute;
+
+// Windows 10 1903: the ordinals above take their current meaning
+static const DWORD k_MinBuild = 18362;
 
 static bool g_Supported;
 static DWORD g_Build;
@@ -231,30 +202,27 @@ void Init()
     }
   }
 
-  const HMODULE ux = ::LoadLibraryW(L"uxtheme.dll");
-  if (ux)
+  if (g_Build < k_MinBuild)
   {
-    f_SetWindowTheme = Z7_GET_PROC_ADDRESS(Func_SetWindowTheme, ux, "SetWindowTheme");
-    f_OpenThemeData = Z7_GET_PROC_ADDRESS(Func_OpenThemeData, ux, "OpenThemeData");
-    f_CloseThemeData = Z7_GET_PROC_ADDRESS(Func_CloseThemeData, ux, "CloseThemeData");
-    f_DrawThemeBackground = Z7_GET_PROC_ADDRESS(Func_DrawThemeBackground, ux, "DrawThemeBackground");
-    f_GetThemePartSize = Z7_GET_PROC_ADDRESS(Func_GetThemePartSize, ux, "GetThemePartSize");
-    // the undocumented functions exist with these meanings since Windows 10 1903 (18362)
-    if (g_Build >= 18362)
+    // the program runs, in the light theme, but the user is told that this Windows is
+    // not supported instead of a silent degradation
+    ::MessageBoxW(NULL,
+        L"Heptazip requires Windows 10 version 1903 (May 2019) or later.\n"
+        L"This version of Windows is not supported: the program may not work correctly.",
+        L"Heptazip", MB_OK | MB_ICONWARNING);
+  }
+  else
+  {
+    // uxtheme.dll is linked statically, so it is already loaded
+    const HMODULE ux = ::GetModuleHandleW(L"uxtheme.dll");
+    if (ux)
     {
       f_SetPreferredAppMode = Z7_GET_PROC_ADDRESS(Func_SetPreferredAppMode, ux, MAKEINTRESOURCEA(135));
       f_FlushMenuThemes = Z7_GET_PROC_ADDRESS(Func_FlushMenuThemes, ux, MAKEINTRESOURCEA(136));
       f_AllowDarkModeForWindow = Z7_GET_PROC_ADDRESS(Func_AllowDarkModeForWindow, ux, MAKEINTRESOURCEA(133));
     }
   }
-  const HMODULE dwm = ::LoadLibraryW(L"dwmapi.dll");
-  if (dwm)
-    f_DwmSetWindowAttribute = Z7_GET_PROC_ADDRESS(Func_DwmSetWindowAttribute, dwm, "DwmSetWindowAttribute");
-
-  g_Supported = g_Build >= 18362
-      && f_SetWindowTheme && f_OpenThemeData && f_CloseThemeData
-      && f_DrawThemeBackground && f_GetThemePartSize
-      && f_SetPreferredAppMode && f_AllowDarkModeForWindow;
+  g_Supported = f_SetPreferredAppMode && f_AllowDarkModeForWindow;
 
   g_Dark = ComputeDark();
   SetAppMode();
@@ -335,8 +303,7 @@ static void Subclass(HWND wnd, int kind)
 
 static void SetTheme(HWND wnd, LPCWSTR darkClass)
 {
-  if (f_SetWindowTheme)
-    f_SetWindowTheme(wnd, g_Dark ? darkClass : NULL, NULL);
+  ::SetWindowTheme(wnd, g_Dark ? darkClass : NULL, NULL);
 }
 
 static void ThemeTooltips(HWND tooltip)
@@ -456,12 +423,9 @@ static void SetTitleBar(HWND top)
 {
   if (f_AllowDarkModeForWindow)
     f_AllowDarkModeForWindow(top, g_Dark ? TRUE : FALSE);
-  if (f_DwmSetWindowAttribute && g_Build >= 17763)
-  {
-    const BOOL value = g_Dark ? TRUE : FALSE;
-    // DWMWA_USE_IMMERSIVE_DARK_MODE: 20 (19 before Windows 10 20H1)
-    f_DwmSetWindowAttribute(top, (DWORD)(g_Build >= 18985 ? 20 : 19), &value, (DWORD)sizeof(value));
-  }
+  const BOOL value = g_Dark ? TRUE : FALSE;
+  // DWMWA_USE_IMMERSIVE_DARK_MODE: 20 (19 in Windows 10 1903 and 1909, before 20H1)
+  ::DwmSetWindowAttribute(top, (DWORD)(g_Build >= 18985 ? 20 : 19), &value, (DWORD)sizeof(value));
 }
 
 static BOOL CALLBACK EnumChildProc(HWND wnd, LPARAM)
@@ -659,17 +623,17 @@ static void PaintButton(HWND wnd, HDC dc)
 
   SIZE gs = { 13, 13 };
   int textLeft = rc.left + 17;
-  const HTHEME theme = f_OpenThemeData(wnd, L"Button");
+  const HTHEME theme = ::OpenThemeData(wnd, L"Button");
   if (theme)
   {
-    f_GetThemePartSize(theme, dc, part, state, NULL, TS_DRAW, &gs);
+    ::GetThemePartSize(theme, dc, part, state, NULL, TS_DRAW, &gs);
     RECT gr;
     gr.left = rc.left;
     gr.top = rc.top + (rc.bottom - rc.top - gs.cy) / 2;
     gr.right = gr.left + gs.cx;
     gr.bottom = gr.top + gs.cy;
-    f_DrawThemeBackground(theme, dc, part, state, &gr, NULL);
-    f_CloseThemeData(theme);
+    ::DrawThemeBackground(theme, dc, part, state, &gr, NULL);
+    ::CloseThemeData(theme);
     // the space of Windows between the glyph and the text: 1/3 of the text height
     TEXTMETRICW tm;
     ::GetTextMetricsW(dc, &tm);
