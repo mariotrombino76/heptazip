@@ -80,6 +80,10 @@ use `-mf=off`.
 (Linux x64, Windows x64) are in the [releases](https://github.com/mariotrombino76/heptazip/releases),
 the changes in [docs/release-notes](docs/release-notes).
 
+The Windows package contains the `Lang` folder with the GUI translations (the 92 languages
+of 7-Zip; Heptazip's new strings only in Italian for now): 7zFM and 7zG pick the Windows
+language on their own, and Tools > Options > Language changes it. See [Lang/README.md](Lang/README.md) (Italian).
+
 ## Branches
 
 | branch | content |

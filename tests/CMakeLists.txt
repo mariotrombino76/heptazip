@@ -298,3 +298,8 @@ add_test(NAME list_json
   COMMAND ${_test_launcher} $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/list_json.py
           --7zz ${_7zz})
 set_tests_properties(list_json PROPERTIES TIMEOUT 600 ENVIRONMENT "${_test_env}")
+
+# File di lingua della GUI (Lang/): formato letto da CLang e stringhe del fork (issue #104).
+add_test(NAME lang_files
+  COMMAND $<TARGET_FILE:Python3::Interpreter> -I ${CMAKE_CURRENT_SOURCE_DIR}/lang_files.py)
+set_tests_properties(lang_files PROPERTIES TIMEOUT 120)

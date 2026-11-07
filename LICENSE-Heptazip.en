@@ -32,7 +32,9 @@ which license applies to each part of the code.
    The rest of the code, and Heptazip's changes to the 7-Zip files distributed under
    the GNU LGPL, keep the 7-Zip licenses (GNU LGPL 2.1 or later, with the unRAR
    restriction for the RAR decompression code, and the parts under the BSD license):
-   see DOC/License.txt. Copyright (c) 1999-2026 Igor Pavlov.
+   see DOC/License.txt. Copyright (c) 1999-2026 Igor Pavlov. The same applies to the GUI
+   language files in Lang/, taken from the 7-Zip 26.05 installer and adapted by
+   tools/import-lang.py (copyright of the translators named at the top of each file).
 
 3. Third-party code
 
