@@ -185,6 +185,7 @@ WIM_OBJS = \
 ZIP_OBJS = \
   $O\ZipAddCommon.obj \
   $O\ZipHandler.obj \
+  $O\ZipExtractMt.obj \
   $O\ZipHandlerOut.obj \
   $O\ZipIn.obj \
   $O\ZipItem.obj \

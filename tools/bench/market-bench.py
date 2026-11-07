@@ -4,7 +4,8 @@
 """Benchmark di mercato: il fork contro gli altri strumenti di compressione.
 
 Uso:
-    tools/bench/market-bench.py [--fork build/7zz] [--upstream 7zz-26.05] [-r 2]
+    tools/bench/market-bench.py [--fork build/7zz] [--upstream 7zz-26.05]
+                                [--upstream-asm 7zz-26.05-asm] [-r 2]
                                 [--inputs silesia,corpus] [--only REGEX]
 
 Per ogni strumento disponibile e per ogni profilo comprime un input a stream singolo
@@ -67,11 +68,12 @@ def stream(name, exe, copts, dopts, ext, stdin=True):
     }
 
 
-def profiles(fork, upstream):
+def profiles(fork, upstream, upstream_asm=None):
     p = []
     for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"],
                  ["-m0=zstd", "-mx3"], ["-m0=zstd", "-mx19"],
                  ["-m0=brotli", "-mx5"], ["-m0=brotli", "-mx11"],   # design 0014
+                 ["-m0=bwt", "-mx3"], ["-m0=bwt", "-mx5"],           # design 0016 (testi)
                  ["-m0=FLOAT"]):   # pesi dei modelli AI (design 0008); su altri dati ~ copia
         p.append(seven("7zz-modern", fork, opts))
     # Deflate e BZip2 di 7-Zip nei loro formati, contro gzip/pigz/libdeflate e bzip2/lbzip2
@@ -81,12 +83,16 @@ def profiles(fork, upstream):
                            ("gzip", ["-mx9"], ".gz"),
                            ("bzip2", ["-mx5"], ".bz2"), ("bzip2", ["-mx9"], ".bz2")):
         p.append(seven_fmt("7zz-modern", fork, fmt, opts, ext))
-    if upstream:
+    # 7-Zip originale: "7zz-26.05" e' il build di Alone2/makefile.gcc (C puro), "7z26.05-asm"
+    # quello di cmpl_gcc_x64.mak (routine assembly, come i binari ufficiali per Linux x64)
+    for name, binary in (("7zz-26.05", upstream), ("7z26.05-asm", upstream_asm)):
+        if not binary:
+            continue
         for opts in (["-m0=lzma2", "-mx1"], ["-m0=lzma2", "-mx5"], ["-m0=lzma2", "-mx9"]):
-            p.append(seven("7zz-26.05", upstream, opts))
+            p.append(seven(name, binary, opts))
         for fmt, opts, ext in (("gzip", ["-mx1"], ".gz"), ("gzip", ["-mx5"], ".gz"),
                                ("bzip2", ["-mx5"], ".bz2")):
-            p.append(seven_fmt("7zz-26.05", upstream, fmt, opts, ext))
+            p.append(seven_fmt(name, binary, fmt, opts, ext))
     p += [
         stream("zstd", "zstd", ["-3", "-T0", "-q"], ["-d", "-q"], ".zst"),
         stream("zstd", "zstd", ["-19", "-T0", "-q"], ["-d", "-q"], ".zst"),
@@ -114,6 +120,21 @@ def profiles(fork, upstream):
 
 def available(exe):
     return Path(exe).is_file() if "/" in exe else shutil.which(exe) is not None
+
+
+def fork_variant(binary):
+    """Versione e variante del 7zz in prova, dal suo banner: ("Heptazip 26.05-m2", True).
+
+    Il secondo valore dice se il binario ha le routine assembly (", ASM" nella riga
+    delle proprietà): senza, il decoder LZMA è quello C, 1,4-1,5 volte più lento, e i
+    numeri non sono confrontabili con docs/benchmark-mercato.md. Capita con una
+    directory di build configurata prima che SEVENZIP_ASM diventasse il default
+    (il valore OFF resta nella cache di CMake).
+    """
+    out = subprocess.run([binary], capture_output=True, text=True).stdout
+    head = out.split("Usage:")[0]
+    m = re.search(r"^(Heptazip \S+)", head, re.M)
+    return (m.group(1) if m else "7zz"), bool(re.search(r",\s*ASM\b", head))
 
 
 def timed(cmd, out_path=None):
@@ -155,12 +176,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--fork", type=Path, default=REPO / "build" / "7zz")
     ap.add_argument("--upstream", type=Path, help="7zz di 7-Zip originale (riferimento)")
+    ap.add_argument("--upstream-asm", type=Path,
+                    help="7zz di 7-Zip originale compilato con cmpl_gcc_x64.mak (assembly)")
     ap.add_argument("-r", "--repeat", type=int, default=2)
     ap.add_argument("--inputs", default="silesia,corpus")
     ap.add_argument("--only", help="regex su 'strumento profilo'")
     args = ap.parse_args()
 
-    profs = profiles(str(args.fork.resolve()), str(args.upstream.resolve()) if args.upstream else None)
+    profs = profiles(str(args.fork.resolve()),
+                     str(args.upstream.resolve()) if args.upstream else None,
+                     str(args.upstream_asm.resolve()) if args.upstream_asm else None)
     missing = sorted({p["need"] for p in profs if not available(p["need"])})
     profs = [p for p in profs if available(p["need"])
              and (not args.only or re.search(args.only, f"{p['tool']} {p['profile']}"))]
@@ -170,7 +195,15 @@ def main() -> int:
         inputs = make_inputs(work, args.inputs.split(","))
         l1 = os.getloadavg()[0]
         print(f"CPU logiche: {NCPU}   load 1m: {l1:.2f}   ripetizioni: {args.repeat}")
-        print(f"assenti: {', '.join(missing) if missing else '-'}\n")
+        print(f"assenti: {', '.join(missing) if missing else '-'}")
+        if available(str(args.fork)):
+            version, asm = fork_variant(str(args.fork.resolve()))
+            print(f"fork: {args.fork} ({version}, assembly {'attivo' if asm else 'ASSENTE'})")
+            if not asm and os.uname().machine in ("x86_64", "AMD64"):
+                print("ATTENZIONE: 7zz del fork senza assembly (SEVENZIP_ASM=OFF nella cache di "
+                      "CMake?): LZMA non confrontabile con docs/benchmark-mercato.md",
+                      file=sys.stderr)
+        print()
         hdr = (f"{'input':8} {'strumento':11} {'profilo':24} {'rapporto':>8} {'comp MB/s':>9} "
                f"{'dec MB/s':>9} {'comp CPU s':>10} {'dec CPU s':>9} {'comp RSS':>8} {'dec RSS':>8}")
         print(hdr)

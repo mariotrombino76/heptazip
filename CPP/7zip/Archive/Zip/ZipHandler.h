@@ -61,6 +61,7 @@ private:
   bool _force_SeqOutMode; // for creation
   bool _force_OpenSeq;
   bool _forceCodePage;
+  bool _parallelFileDecoding;  // Heptazip (#86): property "pfd", items decoded in parallel in Extract()
   UInt32 _specifiedCodePage;
 
   DECL_EXTERNAL_CODECS_VARS
@@ -78,6 +79,7 @@ private:
     _force_SeqOutMode = false;
     _force_OpenSeq = false;
     _forceCodePage = false;
+    _parallelFileDecoding = true;
     _specifiedCodePage = CP_OEMCP;
   }
 

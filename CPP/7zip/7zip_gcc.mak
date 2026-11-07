@@ -711,6 +711,8 @@ $O/ZipHandler.o: ../../Archive/Zip/ZipHandler.cpp
 	$(CXX) $(CXXFLAGS) $(ZIP_FLAGS) $<
 $O/ZipHandlerOut.o: ../../Archive/Zip/ZipHandlerOut.cpp
 	$(CXX) $(CXXFLAGS) $<
+$O/ZipExtractMt.o: ../../Archive/Zip/ZipExtractMt.cpp
+	$(CXX) $(CXXFLAGS) $<
 $O/ZipIn.o: ../../Archive/Zip/ZipIn.cpp
 	$(CXX) $(CXXFLAGS) $<
 $O/ZipItem.o: ../../Archive/Zip/ZipItem.cpp

@@ -576,6 +576,11 @@ Z7_COM7F_IMF(CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
     {
       RINOK(PROPVARIANT_to_bool(prop, _force_SeqOutMode))
     }
+    else if (name.IsEqualTo("pfd"))
+    {
+      // Heptazip (issue #86): parallel decoding of the items in extraction (ZipExtractMt.cpp)
+      RINOK(PROPVARIANT_to_bool(prop, _parallelFileDecoding))
+    }
     else if (name.IsEqualTo("ros"))
     {
       RINOK(PROPVARIANT_to_bool(prop, _force_OpenSeq))

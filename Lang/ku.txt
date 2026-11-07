@@ -1,0 +1,408 @@
+﻿;!@Lang2@!UTF-8!
+;  4.37 : Rizoyê Xerzî
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+; Heptazip (tools/import-lang.py): 7-Zip -> Heptazip in 961, 2201, 2301, 2900; voci tolte: 2901; stringhe del fork: 0
+
+0
+7-Zip
+Kurdish
+Kurdî
+
+401
+Temam
+Betal
+
+406
+&Erê
+&Na
+Bi&gire
+Alîkarî
+
+411
+Bi&domîne
+
+440
+&Ji Bo Hemûyî Erê
+Ji &Bo Hemûyî Na
+Raweste
+Dîsa Destpêke
+L%i Pişt
+Li &Pêş
+&Rawestîne
+Rawestiya -
+Ma bila betal bibe?
+
+500
+&Dosya
+&Bipergalîne
+&Nîşan Bide
+Bi&jare
+&Amûr
+A&lîkarî
+
+540
+&Veke
+&Di Panelê De Veke
+Di &Paceyê De Veke
+&Nîşan Bide
+&Sererast bike
+&Navekî Nû Bidê
+&Ji Ber Bigire
+B&ar Bike
+Jê B&ibe
+Parçe Bi&ke...
+Bike &Yek...
+&Taybetî
+Da&xuyanî
+checksum heseb bike
+
+555
+Pe&ldankeke Nû
+Do&siyeke Nû
+De&rkeve
+
+600
+&Hemûyî hilbijêre
+He&mû hilijartinê rake
+Be&revajî wê hilbijêre
+&Hilbijêre...
+Hilbijarti&nê Rake...
+Vî cureyî hilbijêre
+Hilbijartina cure rake
+
+700
+&Dawêrên Mezin
+D&awêrên Biçûk
+&Lîste
+&Hûragahî
+
+730
+Bê Dor
+xuyakirina sade
+&2 Panelan veke
+Da&rikê amûran
+Peldanka Kok Veke
+Astekê Berjor
+Dîroka Peldankê...
+&Nû Bike
+
+750
+Darikê arşîvê
+Darikê standart
+Bişkojkên mezin
+Bila nivîsa bişkojkan bixuye
+
+800
+Pe&ldanka derbasdar veke
+Cih
+
+900
+&Vebijêrk...
+&Pîvana Çalakbûnê
+
+960
+&Naverok...
+D&er barê Heptazip de...
+
+1003
+Rê
+Nav
+Cure
+Peldank
+Mezinahî
+Mezinahiya di arşîvê de
+Taybetiyên xweser
+Çêbûyî
+Gihaştî
+Guhertî
+Hişk
+Daxuyankirî
+Şîfrekirî
+Parçeyê borî
+Parçeyê piştre
+Ferheng
+CRC
+Cure
+Dij
+Awayê şidandinê
+Platform
+Pergala Dosiyê
+Bikarhêner
+Kom
+Stûn
+Daxuyanî
+Cih
+Path Prefix
+
+1055
+Çewtî
+Hemû Mezinahî
+Cihê Vala
+Mezinahiya telpikî
+Etîket
+Navê Herêmî
+Derfetkar
+
+2100
+Vebijêrk
+Ziman
+Ziman:
+Per&galker
+Pergalkerê De&qê:
+
+2200
+Pergal
+Bi Heptazip re têkildar bike:
+
+2301
+Bila di pêşekên naverokê de Heptazip bixuye
+Pêşeka naverokê ya sûlavî
+Hêmanên peşeka naverokê:
+
+2320
+<Peldank>
+<Arşîv>
+Arşîvê veke
+Dosiyan derxe...
+Bike Arşîv...
+Arşîvê bihêçîne
+Valake vir
+Peldanka {0} derxe
+Wekî {0} bike arşîv
+Bişidîne û bişîne...
+Wekî {0} bişidîne û bişîne
+
+2400
+Peldank
+Peldanka &Xebatê
+&Peldanka TEMP a Pergalê
+P&eldanka Derbasdar
+Pe&ldanka Navborî:
+Bi tenê ji bo ajokarên derketî bi kar bîne
+Ji bo dosiyên demdemî yên arşîvê cih belî bike.
+
+2500
+Mîheng
+Bila hêmana ".." xuya bike
+Bila dawêrên dosiyên rastî xuya bikin
+Bila pêşeka pergalê xuya bike
+Bila &hemû rêzikê bibore
+Bila &xêzên tabloyê xuya bike
+
+2507
+&Kipa hilbijartina alternatîf
+bîra berfireh bikar bîne
+
+2900
+Der barê Heptazip de
+
+3001
+Çewtî nîn e.
+{0} heb hêman hilbijartî ne
+Peldanka '{0}' nayê çêkirin
+Tu nikarî vê arşîvê rojane bikî.
+
+3009
+Dosiya '{0}' hatiye guhartin.\nMa bila di arşîvê bête rojanekirin?
+Dosiya '{0}' nehate rojanekirin
+Pergalkerê deqê nehate destpêkirin.
+
+3016
+Hêman zêde ne
+
+3300
+Tên derxistin
+tên şidandin
+tê hêçandin
+vedibe...
+Tê raguhestin
+
+3400
+Derxe
+&Cihê Dê Derkevê:
+Ji bo dosya derkevinê cihekî belî bike.
+
+3410
+Navê Rê
+Navê tevahî yên rê
+Bila navên rê tune bin
+
+3420
+Dosiyên heyî
+Ji bo li ser binivîse bipirse
+Bê pirs li ser binivîse
+Derxistin
+Navekî nû li yên di arşîvê de bike
+Navekî nû li yên heyî bike
+
+3500
+Rewla Lisernivîsandinê
+Di dosiya armanckirî de bi vî navî dosiyek heye. Bila li ser bête nivîsîn?
+Dosiya heyî:
+Dosiya tê derxistin:
+{0} bayt
+Na&vekî nû lê bike
+
+3700
+Ji bo '{0}' awayê şidandinê nehate nasîn.
+'{0}' xerabe ye. (Çewtiya daneyê)
+'{0}' xerabe ye. (Çewtiya CRC)
+
+3800
+Têketina Şîfreyê
+Şîfreyê binivîse:
+
+3803
+Bi&la şîfre bixuye
+
+3807
+Şîfre
+
+3900
+Dema borî:
+Dema mayî:
+Mezinahî:
+Lez:
+
+3906
+Çewt:
+
+4000
+Bike Arşîv
+&Arşîv:
+A&wayê rojanekirinê:
+Awa&yê arşîvê:
+A&sta şidandinê:
+Awayê şi&dandinê:
+Me&zinahiya ferhengê:
+M&ezinahiya bêjeyê:
+
+4010
+&Parametre:
+Vebijêrk
+Bila ew bixwe derxe (SFX)
+
+4016
+Navên dosiyê bike şîfre
+Bikaranîna bîrê (Şidandin):
+Bikaranîna bîrê (Vekirin):
+
+4050
+Bêyî şidandin
+Leztirîn
+Bi Lez
+Asayî
+Herî Pir
+Ultra
+
+4060
+Dosiyan têxê, yên heyî derxe
+Dosiyan têxê, yên kevin rojane bike
+Bi tenê yên kevin rojane bike
+Dosiyan bike wekî hev
+
+4070
+Bibîne
+Hemû dosya
+
+6000
+Ji Ber Bigire
+Bar Bike
+Cihê Dê Were Jibergirtin:
+Cihê Dê Were Barkirin:
+tê jibergirtin...
+tê barkirin...
+navekî nû tê lêkirin...
+
+6008
+Kirin ne pêkan e.
+Çewtiya Navlêkirinê
+Erêkirina Jibergirtinê
+Ma bila dosî ji bo arşîvê bên jibergirtin
+
+6100
+Erêkirina jêbirina dosiyê
+Erêkirina jêbirina peldankê
+Erêkirina jêbirina gelek dosiyan
+Ma bila dosiya '{0}' bête jêbirin?
+Ma bila peldanka  '{0}' û yên tê de bên jêbirin?
+Ma bila hêmana {0} bête jêbirin?
+tê jêbirin...
+Çewtiya Jêbirinê
+
+6300
+Peldankeke nû
+Dosiyeke Nû
+Navê peldankê:
+Navê Dosiyê:
+Peldankeke Nû
+Dosiyeke Nû
+Çewtiya Çêkirina peldankê
+Çewtiya çêkirina Dosiyê
+
+6400
+Daxuyanî
+&Daxuyanî:
+Hilbijêre
+Hilbijartinê rake
+Derbirîna hilbijartinê:
+
+6601
+Rabirdûya Peldankê
+Peyamên haydariyê
+Peyam
+
+7100
+Komputer
+Tor
+
+7103
+Pergal
+
+7200
+Bike Arşîv
+Derxe
+Bihêçîne
+Ji Ber Bigire
+Bar Bike
+Jê Bibe
+Agahî
+
+7300
+Bike Parçe
+Di &vê peldankê de parçe bike:
+Wekî Bayt/&cilt bike parçe:
+tê parçekirin...
+
+7400
+Bike Yek
+Di vê &peldankê de bike yek:
+tê yekirin...
+
+7500
+Hesabê sererastkirî...
+Agahiyên hesabê sererast
+CRC hesabê sererast bo data:
+CRC hesabê sererast bo data û nav:
+
+7600
+Çalakiya komputerê
+Bikaranîna birê:
+Şidandin
+Vekirin
+Puan
+bi guloverî puanan
+Carî
+Encam
+
+7610
+Serkeftî:

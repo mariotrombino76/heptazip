@@ -51,6 +51,7 @@
 #include "../CPP/7zip/Common/FileStreams.h"
 #include "../CPP/7zip/Archive/IArchive.h"
 #include "../CPP/7zip/Archive/7z/7zHandler.h"
+#include "../CPP/7zip/Archive/Zip/ZipHandler.h"  // Heptazip (#86): -z opens a zip
 #include "../CPP/7zip/IPassword.h"
 #include "../CPP/7zip/UI/Common/SetProperties.h"
 // Non usato direttamente: incluso dopo MyInitGuid.h per DEFINIRE i GUID delle
@@ -273,6 +274,7 @@ Z7_COM7F_IMF(CTraceExtractCallback::CryptoGetTextPassword(BSTR *password))
 struct COptions
 {
   const char *ArcPath;
+  bool Zip;          // -z: the zip handler instead of the 7z one (Heptazip, #86)
   bool TestMode;
   bool PasswordIsDefined;
   UString Password;
@@ -284,6 +286,7 @@ struct COptions
 
   COptions():
       ArcPath(NULL),
+      Zip(false),
       TestMode(false),
       PasswordIsDefined(false),
       IndicesDefined(false),
@@ -330,6 +333,8 @@ bool ParseArgs(int argc, char **argv, COptions &o)
     const char *a = argv[i];
     if (strcmp(a, "-t") == 0)
       o.TestMode = true;
+    else if (strcmp(a, "-z") == 0)
+      o.Zip = true;
     else if (strncmp(a, "-p", 2) == 0)
     {
       o.PasswordIsDefined = true;
@@ -386,7 +391,11 @@ int Run(const COptions &o)
     return 2;
   }
 
-  CMyComPtr<IInArchive> archive = new NArchive::N7z::CHandler;
+  CMyComPtr<IInArchive> archive;
+  if (o.Zip)
+    archive = new NArchive::NZip::CHandler;   // Heptazip (#86)
+  else
+    archive = new NArchive::N7z::CHandler;
 
   COpenCallback *openCallbackSpec = new COpenCallback;
   CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
@@ -454,7 +463,8 @@ int main(int argc, char **argv)
   if (!ParseArgs(argc, argv, options))
   {
     fprintf(stderr,
-        "uso: extract_trace <archivio> [-t] [-p<password>] [-i<i,j,...>] [-m<nome>=<valore>]...\n"
+        "uso: extract_trace <archivio> [-z] [-t] [-p<password>] [-i<i,j,...>] [-m<nome>=<valore>]...\n"
+        "  -z  archivio zip (handler zip) invece di .7z\n"
         "                   [--abort-at-file=N] [--fail-write-at-file=N]\n");
     return 2;
   }

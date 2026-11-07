@@ -251,6 +251,7 @@ set(SEVENZIP_CPP_SOURCES
   # CPP/7zip/Archive/Zip
   CPP/7zip/Archive/Zip/ZipAddCommon.cpp
   CPP/7zip/Archive/Zip/ZipHandler.cpp
+  CPP/7zip/Archive/Zip/ZipExtractMt.cpp
   CPP/7zip/Archive/Zip/ZipHandlerOut.cpp
   CPP/7zip/Archive/Zip/ZipIn.cpp
   CPP/7zip/Archive/Zip/ZipItem.cpp

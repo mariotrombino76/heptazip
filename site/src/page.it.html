@@ -1,0 +1,372 @@
+<div id="top" class="bg-paper font-sans text-ink antialiased">
+
+<header class="bg-ink text-paper">
+<nav aria-label="Principale" class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-6 lg:gap-x-10 lg:px-10">
+<a href="#top" aria-label="Heptazip, inizio pagina" class="flex min-h-11 items-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core"><img src="@@ROOT@@heptazip-logo-dark.svg" alt="Heptazip" width="920" height="256" class="h-10 w-auto"></a>
+<!-- Sotto lg le voci stanno in un pannello a comparsa (popover) aperto da questo pulsante; da lg in su,
+     e nei browser senza Popover API, il pulsante non si vede e le voci restano in riga: vedi .site-menu in input.css -->
+<button type="button" popovertarget="menu" class="site-menu-button min-h-11 items-center gap-3 border border-rule px-4 font-mono text-sm text-paper hover:border-core focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+Menu
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M4 9h16"></path><path d="M4 15h16"></path></svg>
+</button>
+<div id="menu" popover class="site-menu font-mono text-sm">
+<div class="site-menu-head">
+<p aria-hidden="true" class="font-mono text-xs uppercase tracking-[0.16em] text-fog">Menu</p>
+<button type="button" popovertarget="menu" popovertargetaction="hide" class="inline-flex min-h-11 items-center gap-3 border border-rule px-4 font-mono text-sm text-paper hover:border-core focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<span>Chiudi</span>
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+</button>
+</div>
+<a href="#lame" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Funzioni</a>
+<a href="#misure" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Misure</a>
+<a href="#limiti" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Limiti</a>
+<a href="#installa" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Installazione</a>
+<a href="https://github.com/mariotrombino76/heptazip" class="inline-flex min-h-11 items-center border border-rule px-4 text-paper hover:border-core focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">GitHub</a>
+</div>
+</nav>
+</header>
+
+<main id="contenuto" tabindex="-1" class="outline-none">
+<div class="bg-ink text-paper">
+<div class="mx-auto grid max-w-7xl grid-cols-1 items-center gap-x-12 gap-y-14 px-6 pb-20 pt-14 lg:grid-cols-12 lg:px-10 lg:pb-28 lg:pt-20">
+<div class="flex flex-col items-start gap-8 lg:col-span-8">
+<p class="font-mono text-sm uppercase tracking-[0.16em] text-core">Fork di 7-Zip 26.05 · versione 26.05-m3</p>
+<h1 class="text-5xl font-light leading-[1.08] tracking-tight text-balance lg:text-6xl">Stessi comandi di 7-Zip. Più veloce, più parallelo.</h1>
+<p class="max-w-2xl text-xl leading-relaxed text-fog">Heptazip è un fork di 7-Zip per compilatori moderni. Il programma resta <span class="font-mono text-lg text-paper">7zz</span>, con gli stessi comandi e le stesse opzioni, e gli archivi .7z con i metodi standard si aprono con qualunque 7-Zip. In più lavora in parallelo dove 7-Zip non lo fa, e ha metodi nuovi per i testi e per i modelli AI.</p>
+<div class="flex flex-wrap items-center gap-x-8 gap-y-4">
+<a href="https://github.com/mariotrombino76/heptazip/releases/latest" class="inline-flex h-14 items-center gap-3 bg-core px-7 text-lg font-medium text-ink hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M12 4v11"></path><path d="M7 11l5 5 5-5"></path><path d="M5 20h14"></path></svg>
+Scarica la 26.05-m3
+</a>
+<p class="font-mono text-sm text-fog">Linux x64 · Windows x64</p>
+</div>
+<p class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule pt-6 font-mono text-sm text-fog"><span class="sr-only">Esempio di comando:</span><span aria-hidden="true" class="text-core">$</span><span class="text-paper">7zz a archivio.7z cartella/</span></p>
+</div>
+<div class="flex flex-col items-center gap-6 lg:col-span-4">
+<img src="@@ROOT@@heptazip-mark-dark.svg" alt="" width="512" height="512" fetchpriority="high" class="w-full max-w-72 lg:max-w-none">
+<p class="font-mono text-xs uppercase tracking-[0.16em] text-fog">sette lame · un nucleo</p>
+</div>
+</div>
+
+<div class="border-t border-rule">
+<div class="mx-auto grid max-w-7xl grid-cols-1 gap-x-10 gap-y-10 px-6 py-14 sm:grid-cols-2 lg:grid-cols-4 lg:px-10">
+<div class="flex flex-col gap-3">
+<p class="text-6xl font-light tracking-tight"><span aria-hidden="true">1,7×</span><span class="sr-only">1,7 volte</span></p>
+<p class="text-base leading-relaxed text-fog">Compressione LZMA2 al livello predefinito: 16,4 MB/s contro 9,4 di 7-Zip.</p>
+</div>
+<div class="flex flex-col gap-3">
+<p class="text-6xl font-light tracking-tight"><span aria-hidden="true">2,6×</span><span class="sr-only">2,6 volte</span></p>
+<p class="text-base leading-relaxed text-fog">Decompressione degli stessi archivi: 580 MB/s contro 221 di 7-Zip.</p>
+</div>
+<div class="flex flex-col gap-3">
+<p class="text-6xl font-light tracking-tight"><span aria-hidden="true">8,3×</span><span class="sr-only">8,3 volte</span></p>
+<p class="text-base leading-relaxed text-fog">gzip a <span class="font-mono text-sm">-mx5</span>: 105 MB/s contro 12,7 di 7-Zip, con un rapporto migliore.</p>
+</div>
+<div class="flex flex-col gap-3">
+<p class="text-6xl font-light tracking-tight">22,41%</p>
+<p class="text-base leading-relaxed text-fog">Silesia con il metodo BWT a 72 MB/s. LZMA2 <span class="font-mono text-sm">-mx9</span> si ferma al 22,97%.</p>
+</div>
+</div>
+<p class="mx-auto max-w-7xl px-6 pb-10 font-mono text-xs leading-relaxed text-fog lg:px-10">Silesia (212 MB), 20 thread, corsa del 5 novembre 2026. 7-Zip 26.05 è compilato con le sue routine assembly.</p>
+</div>
+</div>
+
+<section id="lame" aria-labelledby="t-lame" class="mx-auto max-w-7xl px-6 py-20 lg:px-10 lg:py-28">
+<div class="flex flex-col gap-5 pb-12">
+<p class="font-mono text-sm uppercase tracking-[0.16em] text-core-deep">01 – 07</p>
+<h2 id="t-lame" class="text-4xl font-light tracking-tight lg:text-5xl">Cosa aggiunge a 7-Zip</h2>
+<p class="max-w-2xl text-lg leading-relaxed text-slate">Sette lavori sopra la base di 7-Zip. Nessuno cambia il modo di chiamare il programma.</p>
+</div>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">01</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">LZMA2 più veloce</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">È il metodo predefinito. A <span class="font-mono text-base">-mx5</span> comprime 1,7 volte più in fretta di 7-Zip e si decomprime 2,6 volte più in fretta, con un rapporto migliore. A <span class="font-mono text-base">-mx1</span> e <span class="font-mono text-base">-mx9</span> gli archivi sono identici a quelli di 7-Zip.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz a archivio.7z cartella/</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">02</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">gzip e zip in parallelo</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">Deflate a blocchi su tutti i core, compressi da libdeflate: oltre 8 volte più veloce di 7-Zip a <span class="font-mono text-base">-mx5</span>, oltre 1 GB/s a <span class="font-mono text-base">-mx1</span>. I file si aprono con qualunque gzip o unzip.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz a -tgzip -mx3 log.gz log.txt</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">03</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">Folder 7z in parallelo</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">I folder dei .7z si comprimono e si estraggono insieme, con archivi identici byte per byte a quelli a un thread. Anche gli zip si estraggono su più file alla volta: 2 volte più veloce su Silesia.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz x archivio.7z</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">04</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">BWT per i testi</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">Burrows-Wheeler con libbsc, a blocchi paralleli, per testi, sorgenti e dati strutturati. Silesia al 22,41% a 72 MB/s, contro il 22,97% a 7,8 MB/s di LZMA2 <span class="font-mono text-base">-mx9</span>. Sui binari resta meglio LZMA2.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz a -m0=bwt testi.7z docs/</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">05</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">FLOAT per i modelli AI</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">Per i pesi in .safetensors e .gguf: senza perdita e scelto in automatico. Qwen3-0.6B BF16 scende al 66,3% in 1 secondo; LZMA2 arriva al 70,2% in 90.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz a modello.7z model.safetensors</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">06</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">zstd e brotli nel 7z</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">Due metodi in più nel formato 7z, compatibili con 7-Zip-zstd. brotli <span class="font-mono text-base">-mx11</span> comprime meglio di zstd -19 e si decomprime a oltre 1 GB/s.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">7zz a -m0=zstd -mx3 dati.7z dati/</p>
+</article>
+
+<article class="grid grid-cols-1 gap-x-8 gap-y-3 border-y border-rule-paper py-8 lg:grid-cols-12">
+<p class="font-mono text-sm text-core-deep lg:col-span-1 lg:pt-1.5">07</p>
+<h3 class="text-2xl font-medium tracking-tight lg:col-span-3">Build moderno e fuzzing</h3>
+<p class="text-lg leading-relaxed text-slate lg:col-span-5">CMake con GCC e Clang, test con CTest, sanitizer a ogni push, build ARM64. Campagne di fuzzing su 59 formati e sui codec, con oltre 20 bug corretti.</p>
+<p class="font-mono text-sm leading-relaxed text-ink lg:col-span-3 lg:pt-1.5">ctest --test-dir build</p>
+</article>
+</section>
+
+<section id="misure" aria-labelledby="t-misure" class="bg-ink text-paper">
+<div class="mx-auto max-w-7xl px-6 py-20 lg:px-10 lg:py-28">
+<div class="flex flex-col gap-5 pb-14">
+<p class="font-mono text-sm uppercase tracking-[0.16em] text-core">Silesia · 212 MB · 20 thread</p>
+<h2 id="t-misure" class="text-4xl font-light tracking-tight lg:text-5xl">Misure, con i concorrenti accanto</h2>
+<p class="max-w-2xl text-lg leading-relaxed text-fog">Un solo file tar in memoria, due ripetizioni, ogni archivio verificato. Tutta la suite in una sola sessione a macchina scarica, il 5 novembre 2026. 7-Zip 26.05 è compilato con le sue routine assembly.</p>
+</div>
+
+<div class="grid grid-cols-1 gap-x-16 gap-y-14 lg:grid-cols-2">
+<div class="flex flex-col gap-5">
+<h3 class="text-xl font-medium">Compressione al livello predefinito, MB/s</h3>
+<ul role="list" class="flex flex-col gap-4">
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-paper">Heptazip -mx5</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-core" style="width: 100%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-paper">16,4</p>
+</li>
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-fog">xz -6 -T0</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-steel" style="width: 81%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-fog">13,3</p>
+</li>
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-fog">7-Zip -mx5</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-steel" style="width: 57%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-fog">9,4</p>
+</li>
+</ul>
+</div>
+
+<div class="flex flex-col gap-5">
+<h3 class="text-xl font-medium">Decompressione degli stessi archivi, MB/s</h3>
+<ul role="list" class="flex flex-col gap-4">
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-paper">Heptazip -mx5</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-core" style="width: 91%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-paper">580</p>
+</li>
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-fog">xz -6 -T0</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-steel" style="width: 100%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-fog">635</p>
+</li>
+<li class="grid grid-cols-[8.5rem_1fr_3.5rem] items-center gap-4">
+<p class="font-mono text-sm text-fog">7-Zip -mx5</p>
+<div aria-hidden="true" class="h-6 bg-ink-2"><div class="h-6 bg-steel" style="width: 35%"></div></div>
+<p class="text-right font-mono text-sm tabular-nums text-fog">221</p>
+</li>
+</ul>
+</div>
+</div>
+<p class="pt-8 font-mono text-sm leading-relaxed text-fog">Rapporto di compressione: Heptazip 23,22% · xz -6 23,35% · 7-Zip 23,40%</p>
+
+<div class="mt-16 border-t border-rule pt-12">
+<h3 id="t-tabella" class="pb-6 text-xl font-medium">Gli altri metodi, nella stessa corsa</h3>
+<div class="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core" role="region" aria-labelledby="t-tabella" tabindex="0">
+<table class="w-full min-w-[44rem] border-collapse">
+<caption class="sr-only">Rapporto di compressione, velocità di compressione e decompressione in MB/s e secondi di CPU in compressione, su Silesia con 20 thread. Rapporto più basso è meglio.</caption>
+<thead>
+<tr class="border-b border-rule">
+<th scope="col" class="py-3 pr-4 text-left font-mono text-xs font-normal uppercase tracking-[0.12em] text-fog">Strumento e profilo</th>
+<th scope="col" class="px-4 py-3 text-right font-mono text-xs font-normal uppercase tracking-[0.12em] text-fog">Rapporto</th>
+<th scope="col" class="px-4 py-3 text-right font-mono text-xs font-normal uppercase tracking-[0.12em] text-fog">Compr. MB/s</th>
+<th scope="col" class="px-4 py-3 text-right font-mono text-xs font-normal uppercase tracking-[0.12em] text-fog">Decompr. MB/s</th>
+<th scope="col" class="py-3 pl-4 text-right font-mono text-xs font-normal uppercase tracking-[0.12em] text-fog">CPU compr. s</th>
+</tr>
+</thead>
+<tbody class="font-mono text-sm tabular-nums">
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-medium text-paper"><span aria-hidden="true" class="mr-3 inline-block size-2 bg-core align-middle"></span>Heptazip BWT -mx5</th>
+<td class="px-4 py-3.5 text-right text-paper">22,41%</td>
+<td class="px-4 py-3.5 text-right text-paper">72,0</td>
+<td class="px-4 py-3.5 text-right text-paper">114</td>
+<td class="py-3.5 pl-4 text-right text-paper">31,1</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>bzip3 -j 20</th>
+<td class="px-4 py-3.5 text-right text-fog">22,29%</td>
+<td class="px-4 py-3.5 text-right text-fog">56,8</td>
+<td class="px-4 py-3.5 text-right text-fog">69,7</td>
+<td class="py-3.5 pl-4 text-right text-fog">34,6</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-medium text-paper"><span aria-hidden="true" class="mr-3 inline-block size-2 bg-core align-middle"></span>Heptazip LZMA2 -mx9</th>
+<td class="px-4 py-3.5 text-right text-paper">22,97%</td>
+<td class="px-4 py-3.5 text-right text-paper">7,8</td>
+<td class="px-4 py-3.5 text-right text-paper">143</td>
+<td class="py-3.5 pl-4 text-right text-paper">89,6</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>7-Zip LZMA2 -mx9</th>
+<td class="px-4 py-3.5 text-right text-fog">22,97%</td>
+<td class="px-4 py-3.5 text-right text-fog">4,6</td>
+<td class="px-4 py-3.5 text-right text-fog">148</td>
+<td class="py-3.5 pl-4 text-right text-fog">65,1</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>xz -9 -T0</th>
+<td class="px-4 py-3.5 text-right text-fog">23,01%</td>
+<td class="px-4 py-3.5 text-right text-fog">2,9</td>
+<td class="px-4 py-3.5 text-right text-fog">158</td>
+<td class="py-3.5 pl-4 text-right text-fog">75,8</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-medium text-paper"><span aria-hidden="true" class="mr-3 inline-block size-2 bg-core align-middle"></span>Heptazip gzip -mx5</th>
+<td class="px-4 py-3.5 text-right text-paper">30,61%</td>
+<td class="px-4 py-3.5 text-right text-paper">105</td>
+<td class="px-4 py-3.5 text-right text-paper">767</td>
+<td class="py-3.5 pl-4 text-right text-paper">37,4</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>7-Zip gzip -mx5</th>
+<td class="px-4 py-3.5 text-right text-fog">30,96%</td>
+<td class="px-4 py-3.5 text-right text-fog">12,7</td>
+<td class="px-4 py-3.5 text-right text-fog">298</td>
+<td class="py-3.5 pl-4 text-right text-fog">16,8</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-medium text-paper"><span aria-hidden="true" class="mr-3 inline-block size-2 bg-core align-middle"></span>Heptazip gzip -mx3</th>
+<td class="px-4 py-3.5 text-right text-paper">31,85%</td>
+<td class="px-4 py-3.5 text-right text-paper">791</td>
+<td class="px-4 py-3.5 text-right text-paper">782</td>
+<td class="py-3.5 pl-4 text-right text-paper">4,6</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>pigz -6</th>
+<td class="px-4 py-3.5 text-right text-fog">32,20%</td>
+<td class="px-4 py-3.5 text-right text-fog">324</td>
+<td class="px-4 py-3.5 text-right text-fog">305</td>
+<td class="py-3.5 pl-4 text-right text-fog">12,3</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-medium text-paper"><span aria-hidden="true" class="mr-3 inline-block size-2 bg-core align-middle"></span>Heptazip zstd -mx3</th>
+<td class="px-4 py-3.5 text-right text-paper">31,24%</td>
+<td class="px-4 py-3.5 text-right text-paper">1044</td>
+<td class="px-4 py-3.5 text-right text-paper">1179</td>
+<td class="py-3.5 pl-4 text-right text-paper">1,2</td>
+</tr>
+<tr class="border-b border-rule">
+<th scope="row" class="py-3.5 pr-4 text-left font-normal text-fog"><span aria-hidden="true" class="mr-3 inline-block size-2 align-middle"></span>zstd -3 -T0</th>
+<td class="px-4 py-3.5 text-right text-fog">31,24%</td>
+<td class="px-4 py-3.5 text-right text-fog">1088</td>
+<td class="px-4 py-3.5 text-right text-fog">1222</td>
+<td class="py-3.5 pl-4 text-right text-fog">1,4</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="pt-8 text-base leading-relaxed text-fog">La tabella completa ha 102 righe, con memoria e tempi di CPU di ogni strumento: <a href="https://github.com/mariotrombino76/heptazip/blob/develop/docs/benchmark-mercato.md" class="text-core underline underline-offset-4 hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">docs/benchmark-mercato.md</a></p>
+</div>
+</div>
+</section>
+
+<section id="limiti" aria-labelledby="t-limiti" class="mx-auto max-w-7xl px-6 py-20 lg:px-10 lg:py-28">
+<div class="flex flex-col gap-5 pb-12">
+<p class="font-mono text-sm uppercase tracking-[0.16em] text-core-deep">Limiti</p>
+<h2 id="t-limiti" class="text-4xl font-light tracking-tight lg:text-5xl">Dove non vince</h2>
+<p class="max-w-2xl text-lg leading-relaxed text-slate">Le stesse misure mostrano anche quello che costa. Meglio saperlo prima di scegliere.</p>
+</div>
+<div class="grid grid-cols-1 gap-x-16 md:grid-cols-2">
+<div class="flex flex-col gap-3 border-t border-rule-paper py-8">
+<h3 class="text-2xl font-medium tracking-tight">CPU</h3>
+<p class="text-lg leading-relaxed text-slate">LZMA2 a <span class="font-mono text-base">-mx5</span> usa più thread per lo stesso lavoro: 93 secondi di CPU su Silesia contro 58 di 7-Zip. xz -6 ne spende 103.</p>
+</div>
+<div class="flex flex-col gap-3 border-t border-rule-paper py-8">
+<h3 class="text-2xl font-medium tracking-tight">Memoria</h3>
+<p class="text-lg leading-relaxed text-slate">A <span class="font-mono text-base">-mx5</span> con 20 thread servono 1,4 GB, contro 0,9 GB di 7-Zip. Con meno thread la memoria scende in proporzione.</p>
+</div>
+<div class="flex flex-col gap-3 border-t border-rule-paper py-8">
+<h3 class="text-2xl font-medium tracking-tight">Decompressione</h3>
+<p class="text-lg leading-relaxed text-slate">A <span class="font-mono text-base">-mx5</span> xz -6 resta avanti, 635 MB/s contro 580. A <span class="font-mono text-base">-mx1</span> e <span class="font-mono text-base">-mx9</span> Heptazip e 7-Zip sono alla pari: il decoder è lo stesso.</p>
+</div>
+<div class="flex flex-col gap-3 border-t border-rule-paper py-8">
+<h3 class="text-2xl font-medium tracking-tight">Compatibilità</h3>
+<p class="text-lg leading-relaxed text-slate">Gli archivi con FLOAT e BWT si aprono solo con Heptazip; per FLOAT basta <span class="font-mono text-base">-mf=off</span>. zstd e brotli richiedono 7-Zip-zstd. I metodi standard si aprono con qualunque 7-Zip.</p>
+</div>
+</div>
+</section>
+
+<section id="installa" aria-labelledby="t-installa" class="bg-ink text-paper">
+<div class="mx-auto max-w-7xl px-6 py-20 lg:px-10 lg:py-28">
+<div class="flex flex-col gap-5 pb-14">
+<p class="font-mono text-sm uppercase tracking-[0.16em] text-core">26.05-m3</p>
+<h2 id="t-installa" class="text-4xl font-light tracking-tight lg:text-5xl">Installazione</h2>
+</div>
+<div class="grid grid-cols-1 gap-x-12 gap-y-12 lg:grid-cols-3">
+<div class="flex min-w-0 flex-col gap-4 border-t border-rule pt-6">
+<h3 class="text-2xl font-medium tracking-tight">Linux</h3>
+<p class="text-base leading-relaxed text-fog">Un solo eseguibile statico per x86-64, con le routine assembly.</p>
+<div role="group" aria-label="Comandi per Linux" tabindex="0" class="flex flex-col gap-2 overflow-x-auto bg-ink-2 p-5 font-mono text-sm text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<code class="block whitespace-nowrap">tar -xJf heptazip-26.05-m3-linux-x64.tar.xz</code>
+<code class="block whitespace-nowrap">sudo install -m 755 heptazip-26.05-m3-linux-x64/7zz /usr/local/bin/7zz</code>
+<code class="block whitespace-nowrap">7zz</code>
+</div>
+</div>
+<div class="flex min-w-0 flex-col gap-4 border-t border-rule pt-6">
+<h3 class="text-2xl font-medium tracking-tight">Windows</h3>
+<p class="text-base leading-relaxed text-fog">Estrai lo zip in una cartella e avvia il file manager. Non serve installazione e convive con 7-Zip. Gli eseguibili non sono firmati: SmartScreen chiede conferma al primo avvio.</p>
+<div role="group" aria-label="File del pacchetto Windows" tabindex="0" class="flex flex-col gap-2 overflow-x-auto bg-ink-2 p-5 font-mono text-sm text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<code class="block whitespace-nowrap">heptazip-26.05-m3-windows-x64.zip</code>
+<code class="block whitespace-nowrap">7zFM.exe</code>
+</div>
+</div>
+<div class="flex min-w-0 flex-col gap-4 border-t border-rule pt-6">
+<h3 class="text-2xl font-medium tracking-tight">Dai sorgenti</h3>
+<p class="text-base leading-relaxed text-fog">Servono CMake 3.20, GCC 13 o Clang 18, o versioni successive.</p>
+<div role="group" aria-label="Comandi per compilare dai sorgenti" tabindex="0" class="flex flex-col gap-2 overflow-x-auto bg-ink-2 p-5 font-mono text-sm text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<code class="block whitespace-nowrap">git clone https://github.com/mariotrombino76/heptazip.git</code>
+<code class="block whitespace-nowrap">cd heptazip</code>
+<code class="block whitespace-nowrap">cmake -S . -B build -DCMAKE_BUILD_TYPE=Release</code>
+<code class="block whitespace-nowrap">cmake --build build -j&quot;$(nproc)&quot;</code>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-x-8 gap-y-4 pt-14">
+<a href="https://github.com/mariotrombino76/heptazip/releases/latest" class="inline-flex h-14 items-center gap-3 bg-core px-7 text-lg font-medium text-ink hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="size-5"><path d="M12 4v11"></path><path d="M7 11l5 5 5-5"></path><path d="M5 20h14"></path></svg>
+Scarica la 26.05-m3
+</a>
+<p class="font-mono text-sm text-fog">Verifica i pacchetti: sha256sum -c SHA256SUMS</p>
+</div>
+</div>
+</section>
+
+</main>
+
+<footer class="border-t border-rule bg-ink text-paper">
+<div class="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-14 lg:flex-row lg:items-start lg:justify-between lg:px-10">
+<div class="flex max-w-2xl flex-col gap-4">
+<img src="@@ROOT@@heptazip-logo-dark.svg" alt="Heptazip" width="920" height="256" class="h-9 w-auto self-start">
+<p class="text-base leading-relaxed text-fog">Copyright (c) 2026 Mario Trombino. Il codice scritto per Heptazip è distribuito con la licenza BSD a 2 clausole. 7-Zip è di Igor Pavlov e mantiene le sue licenze: GNU LGPL, restrizione unRAR, parti BSD. Heptazip non è un prodotto ufficiale di 7-Zip.</p>
+</div>
+<nav aria-label="Risorse" class="flex flex-wrap gap-x-8 gap-y-1 font-mono text-sm">
+<a href="https://github.com/mariotrombino76/heptazip" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">GitHub</a>
+<a href="https://github.com/mariotrombino76/heptazip/wiki" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Wiki</a>
+<a href="https://github.com/mariotrombino76/heptazip/releases" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Release</a>
+<a href="https://github.com/mariotrombino76/heptazip/blob/develop/docs/benchmark-mercato.md" class="inline-flex min-h-11 items-center text-fog hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-core">Benchmark</a>
+</nav>
+</div>
+</footer>
+
+</div>

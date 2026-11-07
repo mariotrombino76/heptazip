@@ -33,20 +33,25 @@ with a company of the same name).
   threads, against 22.97% at 7.6 MB/s for LZMA2 `-mx9`; webster 16.0% vs 20.2%. Heptazip
   only, like FLOAT; for binaries LZMA2 stays better.
 - **Parallel extraction and compression** of 7z folders (`-mpfd`, `-mpfc`), with
-  archives byte-for-byte identical to the single-thread ones.
-- **Parallel gzip and zip**: block-based Deflate on all cores, 8.6 times faster
-  (`-tgzip -mx5`: 105 MB/s, a better ratio than pigz -9), files readable by any
+  archives byte-for-byte identical to the single-thread ones; **parallel zip extraction**
+  over the files (`-mpfd`): 2 times faster on silesia, 3 to 4 times on AES zips, the same
+  per-file results as the single-thread extraction.
+- **Parallel gzip and zip**: block-based Deflate on all cores, over 8 times faster than
+  7-Zip (`-tgzip -mx5`: 105 MB/s, a better ratio than pigz -9), files readable by any
   gzip/unzip and identical for any number of threads. The blocks are compressed by
-  libdeflate: `-mx3` compresses more than pigz -6 at 2.5 times the speed (820 MB/s),
-  `-mx1` exceeds 1 GB/s. Deflate decompression 2.7-3 times faster (silesia 800 MB/s,
-  within 8% of libdeflate; faster than libdeflate on the corpus).
-- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 15.5 MB/s with
-  decompression at 560 MB/s, against 23.40%, 9.2 and 159 MB/s for 7-Zip 26.05; better than
-  xz -6 in ratio and compression (23.35%, 13.3 MB/s) and at 94% of its decompression (595).
+  libdeflate: `-mx3` compresses more than pigz -6 at 2.4 times the speed (790 MB/s),
+  `-mx1` exceeds 1 GB/s. Deflate decompression 2.6-2.9 times faster than 7-Zip (silesia
+  770-800 MB/s, 3 to 15% behind libdeflate; faster than libdeflate on the corpus).
+- **Faster LZMA2** (the default method): at `-mx5` silesia at 23.22% at 16.4 MB/s with
+  decompression at 580 MB/s, against 23.40%, 9.4 and 221 MB/s for 7-Zip 26.05 built with
+  its assembly routines; better than xz -6 in ratio and compression (23.35%, 13.3 MB/s) and
+  at 91% of its decompression (635). The cost is CPU time: more threads for the same work
+  (93 s against 58 for 7-Zip, 103 for xz -6).
   From level 5, word size 64 and blocks equal to the dictionary of the level, with a 16 MiB
   dictionary for the 32 MiB blocks of level 5 (1.4 GB of memory on silesia with 20 threads
   instead of 2.3); at `-mx1` and `-mx9` the archives are identical to 7-Zip's and decompress
-  1.4-1.5 times faster. With a single block (medium files, `-mx9`, plain LZMA) the match
+  at the same speed (the assembly decoder is the same one; 1.4-1.5 times a 7-Zip built
+  without assembly). With a single block (medium files, `-mx9`, plain LZMA) the match
   finder runs on several threads, with identical archives: silesia `-mx9` from 42 to 26 s,
   a 12 MB file at `-mx5` from 2.9 to 1.7 s.
 - **More speed**: assembly on by default, CRC32 with PCLMULQDQ, optimized match finder,
@@ -59,6 +64,8 @@ use `-mf=off`.
 
 ## Documentation
 
+- [Website](https://mariotrombino76.github.io/heptazip/en/): presentation of the project, in English and
+  Italian (sources in [site](site)).
 - [Wiki](https://github.com/mariotrombino76/heptazip/wiki/Home-en): installation, quick
   start, which method to use, performance, compatibility, FAQ.
 - [BUILD-modern.md](BUILD-modern.md) (Italian): building, testing, using the new options.
@@ -69,9 +76,13 @@ use `-mf=off`.
 
 ## Versions
 
-`26.05-m2`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
+`26.05-m3`: the 7-Zip base (26.05) and the Heptazip release on that base. Packages
 (Linux x64, Windows x64) are in the [releases](https://github.com/mariotrombino76/heptazip/releases),
 the changes in [docs/release-notes](docs/release-notes).
+
+The Windows package contains the `Lang` folder with the GUI translations (the 92 languages
+of 7-Zip; Heptazip's new strings only in Italian for now): 7zFM and 7zG pick the Windows
+language on their own, and Tools > Options > Language changes it. See [Lang/README.md](Lang/README.md) (Italian).
 
 ## Branches
 

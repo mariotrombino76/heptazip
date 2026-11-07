@@ -354,8 +354,10 @@ public:
   void EnableMultiCombo(unsigned id);
   void FormatChanged(bool isChanged);
   void ApplyProfile(int index);
-  void Profile_SetCustom(bool clearProfileParams = true);
+  void Profile_SetCustom();
   void Profile_Detect();
+  int FindMethodItem(const char *name);
+  bool Params_HasMethodOverride();
   void Params_UpdateMethodEnable();
 
   void OnButtonSetArchive();

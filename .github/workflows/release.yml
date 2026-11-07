@@ -5,7 +5,7 @@
 # SHA-256. La bozza va pubblicata a mano dopo un controllo (issue #68).
 #
 #   heptazip-<tag>-linux-x64.tar.xz   7zz statico, con le routine assembly (uasm)
-#   heptazip-<tag>-windows-x64.zip    7zFM, 7zG, 7z.exe, 7z.dll, 7-zip.dll (MSVC) + 7zz.exe (MinGW)
+#   heptazip-<tag>-windows-x64.zip    7zFM, 7zG, 7z.exe, 7z.dll, 7-zip.dll (MSVC) + 7zz.exe (MinGW) + Lang/
 
 name: Release
 
@@ -110,6 +110,7 @@ jobs:
           New-Item -ItemType Directory $d | Out-Null
           Copy-Item out-msvc/7zFM.exe, out-msvc/7zG.exe, out-msvc/7z.exe, out-msvc/7z.dll, out-msvc/7-zip.dll, out-msvc/7zz.exe $d
           Copy-Item LICENSE-Heptazip, LICENSE-Heptazip.en, DOC/License.txt, README.md, README.en.md $d
+          Copy-Item -Recurse Lang $d/Lang    # lingue della GUI (issue #104)
           Compress-Archive -Path $d -DestinationPath "$d.zip"
           Get-Item "$d.zip" | Format-List Name, Length
       - uses: actions/upload-artifact@v7

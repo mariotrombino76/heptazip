@@ -220,6 +220,7 @@ BEGIN
     IDS_COMPRESS_PROFILE_BALANCED      "Balanced (LZMA2)"
     IDS_COMPRESS_PROFILE_BEST          "Best compression (LZMA2)"
     IDS_COMPRESS_PROFILE_COMPATIBLE    "Compatible (ZIP)"
+    IDS_COMPRESS_PROFILE_TEXT          "Texts and structured data (BWT)"
 
     IDS_COMPRESS_UPDATE_MODE_ADD    "Add and replace files"
     IDS_COMPRESS_UPDATE_MODE_UPDATE "Update and add files"

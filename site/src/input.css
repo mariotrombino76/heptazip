@@ -1,0 +1,198 @@
+/* Foglio di stile del sito: Tailwind 4 con i colori e i caratteri del logo (docs/logo).
+   Le classi vengono lette dalle pagine generate da build.py. */
+@import "tailwindcss" source(none);
+@source "../dist/index.html";
+@source "../dist/en/index.html";
+
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("outfit.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ibm-plex-mono-500.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* inchiostro, nucleo e carta sono i tre colori del logo; gli altri ne derivano */
+  --color-ink: #0F1D2E;
+  --color-ink-2: #15273B;
+  --color-rule: #2A3B50;
+  --color-steel: #5E6E80;
+  --color-fog: #9AA5B1;
+  --color-core: #2EC4B6;
+  --color-core-deep: #0B5F59;
+  --color-paper: #ECE8DF;
+  --color-rule-paper: #CFC9BB;
+  --color-slate: #4A5563;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Menu dell'intestazione.
+
+   Le voci stanno in un solo elemento, <div id="menu" popover class="site-menu">, che ha due modi:
+
+   - in riga (da lg in su, e in ogni browser senza Popover API): le voci accanto al logo;
+   - a comparsa (sotto lg, se il browser ha la Popover API): l'intestazione mostra solo logo e
+     pulsante «Menu», e le voci si aprono in un pannello in cima allo schermo. Apertura, chiusura
+     con Esc, chiusura toccando fuori e stato aria-expanded del pulsante li dà il browser
+     (attributi popover e popovertarget); lo script in build.py aggiunge solo la chiusura quando
+     si sceglie una voce.
+
+   Le regole sono fuori dai livelli di Tailwind, così prevalgono sulle classi di utilità dei link.
+   --------------------------------------------------------------------------------------------- */
+
+/* Modo in riga. L'attributo popover porta con sé lo stile del browser per i pannelli (nascosto,
+   posizione fissa al centro, bordo, sfondo e colore di sistema): qui lo si annulla. */
+.site-menu {
+  position: static;
+  inset: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: --spacing(1) --spacing(8);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: none;
+  color: inherit;
+}
+.site-menu-button,
+.site-menu-head {
+  display: none;
+}
+
+/* Modo a comparsa. */
+@supports selector(:popover-open) {
+  @media (width < theme(--breakpoint-lg)) {
+    .site-menu-button {
+      display: inline-flex;
+    }
+
+    /* Pannello: una striscia larga quanto lo schermo, appoggiata in alto, sopra l'intestazione.
+       La griglia ha due colonne solo per l'ultima riga (lingua a sinistra, GitHub a destra). */
+    .site-menu {
+      position: fixed;
+      inset: 0 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 0;
+      width: 100%;
+      max-width: none;
+      max-height: 100dvh;
+      padding: --spacing(6);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-bottom: 1px solid var(--color-core);
+      background: var(--color-ink-2);
+      color: var(--color-paper);
+    }
+    .site-menu:not(:popover-open) {
+      display: none;
+    }
+    .site-menu::backdrop {
+      background: --alpha(var(--color-ink) / 70%);
+      backdrop-filter: blur(6px);
+    }
+
+    /* Prima riga: stessa altezza e stessi margini dell'intestazione, così «Chiudi» compare
+       dove si è appena toccato «Menu». */
+    .site-menu-head {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: --spacing(6);
+    }
+
+    /* Le sezioni della pagina: una riga ciascuna, grandi, facili da toccare. */
+    .site-menu > a[href^="#"] {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: --spacing(16);
+      border-top: 1px solid var(--color-rule);
+      font-family: var(--font-sans);
+      font-size: var(--text-2xl);
+      font-weight: 300;
+      letter-spacing: -0.01em;
+      color: var(--color-paper);
+    }
+    .site-menu > a[href^="#"]::after {
+      content: "↓" / "";
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-core);
+    }
+
+    /* Ultima riga: cambio di lingua e GitHub. */
+    .site-menu > a:not([href^="#"]) {
+      margin-top: --spacing(6);
+    }
+    .site-menu > a[hreflang] {
+      justify-self: start;
+    }
+    .site-menu > a[hreflang] + a {
+      grid-column: 2;
+    }
+    .site-menu::before {
+      /* filo sopra l'ultima riga, come quello tra le sezioni */
+      content: "";
+      grid-column: 1 / -1;
+      order: 1;
+      border-top: 1px solid var(--color-rule);
+    }
+    .site-menu > a:not([href^="#"]) {
+      order: 2;
+    }
+
+    /* Entrata e uscita: il pannello scende di poco e lo sfondo sfuma. Dove @starting-style o
+       allow-discrete non ci sono, il pannello compare e scompare di colpo. */
+    @media (prefers-reduced-motion: no-preference) {
+      .site-menu,
+      .site-menu::backdrop {
+        opacity: 0;
+        transition: opacity 0.2s ease-out, translate 0.2s ease-out,
+                    display 0.2s allow-discrete, overlay 0.2s allow-discrete;
+      }
+      .site-menu {
+        translate: 0 -1rem;
+      }
+      .site-menu:popover-open,
+      .site-menu:popover-open::backdrop {
+        opacity: 1;
+        translate: 0;
+      }
+      @starting-style {
+        .site-menu:popover-open,
+        .site-menu:popover-open::backdrop {
+          opacity: 0;
+        }
+        .site-menu:popover-open {
+          translate: 0 -1rem;
+        }
+      }
+    }
+  }
+}

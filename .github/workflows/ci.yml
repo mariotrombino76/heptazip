@@ -122,6 +122,8 @@ jobs:
         run: python tests/roundtrip_smoke.py --7zz out-msvc/7z.exe
       - name: Deflate parallelo
         run: python tests/deflate_mt.py --7zz out-msvc/7z.exe
+      - name: Lingue della GUI nell'artefatto
+        run: Copy-Item -Recurse Lang out-msvc/Lang
       - uses: actions/upload-artifact@v7
         with:
           name: heptazip-windows-x64-msvc
