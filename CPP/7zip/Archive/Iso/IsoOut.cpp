@@ -1260,10 +1260,10 @@ bool CImage::PatchBootInfoTable(unsigned node, CByteBuffer &data, int mode) cons
   Byte *d = data;
   if (mode < 0)
   {
-    bool free = true;
-    for (unsigned i = 8; i < 64 && free; i++)
-      free = (d[i] == 0);
-    if (!free && GetUi32(d + 8) != 16)
+    bool unused = true;
+    for (unsigned i = 8; i < 64 && unused; i++)
+      unused = (d[i] == 0);
+    if (!unused && GetUi32(d + 8) != 16)
       return false;
   }
   UInt32 sum = 0;
