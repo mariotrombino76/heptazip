@@ -230,9 +230,37 @@ questo fork. Formato e misure: `docs/design/0008-metodo-float.md`.
 Immagine ISO 9660 con l'albero Joliet (nomi Unicode fino a 103 caratteri, Windows) e
 l'albero Rock Ridge (nomi interi in UTF-8, permessi, mtime, link simbolici: Linux, macOS);
 file oltre 4 GiB con estensioni multiple; nessuna compressione, nessun thread. `-mvol`
-accetta lettere maiuscole, cifre, `_` e spazio (32 caratteri al massimo; `ISOIMAGE` se
-assente; nella riscrittura resta quella dell'immagine). Il dialogo Aggiungi della GUI ha
-`iso` tra i formati. Non si scrivono El Torito (avviabili) e UDF. Design: `docs/design/0019`.
+accetta ASCII stampabile (32 caratteri al massimo, maiuscole e minuscole conservate;
+`ISOIMAGE` se assente; nella riscrittura resta quella dell'immagine). Il dialogo Aggiungi della GUI ha
+`iso` tra i formati. Non si scrive UDF. Design: `docs/design/0019`.
+
+**Immagini avviabili** (El Torito, design `docs/design/0020`): i percorsi sono quelli
+dentro l'immagine, quindi conviene lanciare il comando dalla directory che diventa la
+radice (`.`).
+
+```sh
+cd live/                                        # albero di una live estratta (7zz x live.iso; togliere [BOOT])
+7zz a -tiso ../nuova.iso -mboot=isolinux/isolinux.bin -mefi=boot/grub/efi.img \
+    -mcatalog=isolinux/boot.cat -mmbr=isolinux/isohdpfx.bin -mvol="LIVE" .
+7zz a nuova.iso altro.txt                       # la riscrittura conserva avvio, catalogo e MBR
+7zz d nuova.iso "[BOOT]/2-Boot-NoEmul.img"      # toglie una voce di avvio (qui quella UEFI)
+```
+
+| Opzione | Effetto |
+|---|---|
+| `-mboot=PERCORSO` | immagine di avvio BIOS (isolinux.bin, `eltorito.img` di GRUB): voce predefinita, senza emulazione, 4 settori caricati (`-mbootload=N`, 0 = tutta) |
+| `-mbootinfo=auto\|on\|off` | boot info table a byte 8..63 dell'immagine BIOS (settore del PVD, settore e lunghezza del file, checksum); `auto` la scrive se quei byte sono liberi o contengono già una tabella |
+| `-mefi=PERCORSO` | immagine di avvio UEFI (file system FAT con `EFI/BOOT/BOOTX64.EFI`), piattaforma 0xEF, caricata per intero |
+| `-mcatalog=PERCORSO` | file del catalogo di avvio (predefinito `boot.catalog`); un file con quel nome, come il vecchio catalogo di un albero estratto, viene sostituito |
+| `-mhybrid=on\|off` | MBR nei primi 512 byte: partizione 1 = tutta l'immagine (avviabile, tipo 0), partizione 2 = l'immagine UEFI (tipo 0xEF); acceso se c'è una voce di avvio. Serve ad avviare da chiavetta (`dd`, Rufus in modalità DD) |
+| `-mmbr=FILE` | codice di avvio dell'MBR (i primi 432 byte di `isohdpfx.bin` di syslinux, che le live portano con sé), con il settore dell'immagine BIOS a 0x1B0 come fa isohybrid; senza, da chiavetta parte solo l'UEFI |
+
+Un'immagine di avvio assente dall'albero dà «No such file or directory»; un catalogo su
+una directory «File exists». Nella riscrittura di un'immagine avviabile le voci restano
+(agganciate ai file dell'albero che iniziano al loro settore, altrimenti come dati
+nascosti), la boot info table è ricalcolata e il codice MBR conservato; `-mboot`/`-mefi`
+sostituiscono le voci della loro piattaforma. Non si scrive la GPT (basta l'MBR a
+BIOS, UEFI e Linux).
 
 ## Output JSON dell'elenco (`l -json`)
 

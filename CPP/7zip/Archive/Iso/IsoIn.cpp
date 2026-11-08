@@ -31,6 +31,7 @@ static const char * const kMediaTypes[] =
 bool CBootInitialEntry::Parse(const Byte *p)
 {
   Bootable = (p[0] == NBootEntryId::kInitialEntryBootable);
+  PlatformId = 0;
   BootMediaType = p[1];
   LoadSegment = GetUi16(p + 2);
   SystemType = p[4];
@@ -490,6 +491,7 @@ void CInArchive::ReadBootInfo()
     return;
   
   UInt32 blockIndex = GetUi32(_bootDesc.BootSystemUse);
+  BootCatalogBlock = blockIndex;
   SeekToBlock(blockIndex);
   
   Byte buf[32];
@@ -502,6 +504,7 @@ void CInArchive::ReadBootInfo()
       || buf[31] != 0xAA)
     return;
 
+  const Byte platform = buf[1];
   {
     UInt32 sum = 0;
     for (unsigned i = 0; i < 32; i += 2)
@@ -521,6 +524,7 @@ void CInArchive::ReadBootInfo()
     CBootInitialEntry e;
     if (!e.Parse(buf))
       return;
+    e.PlatformId = platform;
     BootEntries.Add(e);
   }
 
@@ -535,7 +539,7 @@ void CInArchive::ReadBootInfo()
       break;
 
     // Section Header
-    // Byte platform = p[1];
+    const Byte sectionPlatform = buf[1];
     unsigned numEntries = GetUi16(buf + 2);
     // id[28]
       
@@ -548,6 +552,7 @@ void CInArchive::ReadBootInfo()
         error = true;
         break;
       }
+      e.PlatformId = sectionPlatform;
       if (e.BootMediaType & (1 << 5))
       {
         // Section entry extension
@@ -764,6 +769,7 @@ void CInArchive::Clear()
   VolDescs.Clear();
   _bootIsDefined = false;
   BootEntries.Clear();
+  BootCatalogBlock = 0;
   SuspSkipSize = 0;
   IsSusp = false;
 

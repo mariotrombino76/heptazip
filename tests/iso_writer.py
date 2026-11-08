@@ -14,7 +14,9 @@ Joliet+RR, solo RR, solo Joliet, e verifica:
   ISO 9660 validi e unici, SUSP/RRIP del root, estensioni dei file dentro il volume);
 - se pycdlib è installato, anche la lettura dei tre alberi con pycdlib;
 - la riscrittura di un'immagine esistente (aggiunta e cancellazione) e le opzioni
-  -mvol, -mjoliet, -mrr.
+  -mvol, -mjoliet, -mrr;
+- le immagini avviabili (docs/design/0020): boot record, catalogo El Torito (BIOS e
+  UEFI), boot info table, MBR ibrido, conservazione delle voci nella riscrittura.
 """
 
 import argparse
@@ -193,11 +195,12 @@ def sl_target(ents):
     return b"/".join(parts).decode("utf-8")
 
 
-def check_structure(path, joliet, rr, vol, links=None):
+def check_structure(path, joliet, rr, vol, links=None, boot=False):
     with open(path, "rb") as f:
         img = f.read()
     assert len(img) % SECTOR == 0
-    assert img[:16 * SECTOR] == b"\0" * (16 * SECTOR), "area di sistema non vuota"
+    if not boot:
+        assert img[:16 * SECTOR] == b"\0" * (16 * SECTOR), "area di sistema non vuota"
     pvd = img[16 * SECTOR: 17 * SECTOR]
     assert pvd[0] == 1 and pvd[1:6] == b"CD001" and pvd[6] == 1
     assert pvd[40:72].decode("ascii").rstrip() == vol
@@ -207,15 +210,17 @@ def check_structure(path, joliet, rr, vol, links=None):
     assert pvd[574:582] == b"HEPTAZIP"
     descs = [pvd]
     sector = 17
+    if boot:
+        # El Torito: il boot record sta al settore 17
+        assert img[17 * SECTOR] == 0 and img[17 * SECTOR + 7: 17 * SECTOR + 30] == b"EL TORITO SPECIFICATION"
+        sector = 18
     svd = None
     if joliet:
-        svd = img[17 * SECTOR: 18 * SECTOR]
+        svd = img[sector * SECTOR: (sector + 1) * SECTOR]
         assert svd[0] == 2 and svd[1:6] == b"CD001" and svd[88:91] == b"%/E"
         assert both32(svd, 80) * SECTOR == len(img)
         descs.append(svd)
-        sector = 18
-    else:
-        assert img[17 * SECTOR] == 255
+        sector += 1
     term = img[sector * SECTOR: sector * SECTOR + 7]
     assert term == b"\xff" + b"CD001" + b"\x01", "terminatore mancante"
 
@@ -339,6 +344,200 @@ def check_pycdlib(path, joliet, rr, expected_names):
     print("  pycdlib: %s ok" % ", ".join(kinds))
 
 
+def parse_catalog(img):
+    """Legge il boot record e il catalogo El Torito: (settore del catalogo, piattaforma di
+    validazione, [voci (piattaforma, media, segmento, settori, lba)])."""
+    br = img[17 * SECTOR: 18 * SECTOR]
+    assert br[0] == 0 and br[1:6] == b"CD001" and br[6] == 1
+    assert br[7:39] == b"EL TORITO SPECIFICATION" + b"\0" * 9 and br[39:71] == b"\0" * 32
+    cat_sector = struct.unpack_from("<I", br, 71)[0]
+    cat = img[cat_sector * SECTOR: (cat_sector + 1) * SECTOR]
+    assert cat[0] == 1 and cat[2:4] == b"\0\0" and cat[30:32] == b"\x55\xaa", "voce di validazione"
+    assert sum(struct.unpack("<16H", cat[:32])) & 0xFFFF == 0, "checksum della validazione"
+    platform = cat[1]
+
+    def entry(off, plat):
+        e = cat[off: off + 32]
+        assert e[0] == 0x88 and e[5] == 0 and e[12:32] == b"\0" * 20, "voce di boot"
+        return (plat, e[1], struct.unpack_from("<H", e, 2)[0], struct.unpack_from("<H", e, 6)[0],
+                struct.unpack_from("<I", e, 8)[0])
+    entries = [entry(32, platform)]
+    pos = 64
+    while cat[pos] in (0x90, 0x91):
+        plat = cat[pos + 1]
+        n = struct.unpack_from("<H", cat, pos + 2)[0]
+        assert n == 1 and cat[pos + 4: pos + 32] == b"\0" * 28
+        last = cat[pos] == 0x91
+        pos += 32
+        entries.append(entry(pos, plat))
+        pos += 32
+        if last:
+            break
+    assert cat[pos:] == b"\0" * (SECTOR - pos), "catalogo con dati oltre l'ultima voce"
+    return cat_sector, platform, entries
+
+
+def check_boot(path, bios, efi=None, mbr_code=None, hybrid=True, bios_sectors=4, bootinfo=True, catalog=None):
+    """`bios`: contenuto originale dell'immagine BIOS (None se assente); `efi`: dimensione
+    dell'immagine UEFI (None se assente); `catalog`: percorso RR del file del catalogo."""
+    with open(path, "rb") as f:
+        img = f.read()
+    cat_sector, platform, entries = parse_catalog(img)
+    assert platform == (0 if bios is not None else 0xEF)
+    want = ([(0, 0, 0, bios_sectors)] if bios is not None else []) + ([(0xEF, 0, 0, (efi + 511) // 512)] if efi is not None else [])
+    assert [e[:4] for e in entries] == want, (entries, want)
+    for e in entries:
+        assert e[4] * SECTOR < len(img)
+    bios_lba = efi_lba = None
+    if bios is not None:
+        bios_lba = entries[0][4]
+        got = img[bios_lba * SECTOR: bios_lba * SECTOR + len(bios)]
+        if bootinfo:
+            pvd, lba, length, csum = struct.unpack_from("<4I", got, 8)
+            assert (pvd, lba, length) == (16, bios_lba, len(bios)), (pvd, lba, length)
+            words = struct.unpack_from("<%dI" % ((len(bios) - 64) // 4), bios, 64)
+            assert csum == sum(words) & 0xFFFFFFFF, "checksum della boot info table"
+            assert got[:8] == bios[:8] and got[24:] == bios[24:], "immagine BIOS alterata oltre la tabella"
+        else:
+            assert got == bios, "immagine BIOS alterata con bootinfo spento"
+    if efi is not None:
+        efi_lba = entries[-1][4]
+    # area di sistema
+    mbr = img[:512]
+    if not hybrid:
+        assert img[:16 * SECTOR] == b"\0" * (16 * SECTOR), "area di sistema non vuota senza hybrid"
+    else:
+        assert mbr[510:512] == b"\x55\xaa"
+        assert img[512:16 * SECTOR] == b"\0" * (16 * SECTOR - 512)
+        if mbr_code is not None:
+            assert mbr[:432] == mbr_code, "codice MBR diverso"
+        else:
+            assert mbr[:432] == b"\0" * 432
+        assert struct.unpack_from("<Q", mbr, 0x1B0)[0] == (bios_lba * 4 if bios_lba is not None else 0)
+        assert mbr[440:444] != b"\0\0\0\0" and mbr[444:446] == b"\0\0"
+        p1 = mbr[446:462]
+        assert p1[0] == 0x80 and p1[4] == 0 and struct.unpack_from("<II", p1, 8) == (0, len(img) // 512), p1.hex()
+        assert p1[1:4] == b"\x00\x01\x00"
+        p2 = mbr[462:478]
+        if efi is not None:
+            assert p2[0] == 0 and p2[4] == 0xEF and struct.unpack_from("<II", p2, 8) == (efi_lba * 4, (efi + 511) // 512), p2.hex()
+        else:
+            assert p2 == b"\0" * 16
+        assert mbr[478:510] == b"\0" * 32
+    try:
+        import pycdlib
+    except ImportError:
+        return
+    iso = pycdlib.PyCdlib()
+    iso.open(path)
+    bc = iso.eltorito_boot_catalog
+    assert bc is not None
+    got = [(bc.validation_entry.platform_id, bc.initial_entry.boot_media_type, bc.initial_entry.load_segment,
+            bc.initial_entry.sector_count, bc.initial_entry.get_rba())]
+    for sec in bc.sections:
+        for e in sec.section_entries:
+            got.append((sec.platform_id, e.boot_media_type, e.load_segment, e.sector_count, e.get_rba()))
+    assert got == entries, (got, entries)
+    if catalog is not None:
+        rec = iso.get_record(rr_path="/" + catalog)
+        assert rec.extent_location() == cat_sector and rec.get_data_length() == SECTOR, "file del catalogo"
+    iso.close()
+    print("  El Torito: %d voci, pycdlib ok" % len(entries))
+
+
+def boot_cases(zz, work):
+    """Immagini avviabili: isolinux finto (tabella a zeri in 8..63), immagine UEFI finta."""
+    src = os.path.join(work, "boot-src")
+    os.makedirs(os.path.join(src, "isolinux"))
+    os.makedirs(os.path.join(src, "efi"))
+    rnd = bytes((i * 7 + 3) & 0xFF for i in range(5000))
+    bios = rnd[:8] + b"\0" * 56 + rnd[64:]          # 5000 byte: la checksum copre anche la coda di 2 byte
+    with open(os.path.join(src, "isolinux", "isolinux.bin"), "wb") as f:
+        f.write(bios)
+    efi_size = 1474560
+    with open(os.path.join(src, "efi", "efi.img"), "wb") as f:
+        f.write(bytes((i * 13 + 1) & 0xFF for i in range(efi_size)))
+    with open(os.path.join(src, "readme.txt"), "wb") as f:
+        f.write(b"hello\n")
+    mbr_code = bytes((i * 3 + 1) & 0xFF for i in range(432))
+    mbr_file = os.path.join(work, "mbr.bin")
+    with open(mbr_file, "wb") as f:
+        f.write(mbr_code)
+    common = [zz, "a", "-tiso", "-bso0", "-bd", "-w" + work]
+    items = [os.path.join(src, "*")]
+
+    print("caso bios+uefi, MBR ibrido con codice")
+    iso = os.path.join(work, "boot.iso")
+    run(common + [iso, "-mvol=BOOT", "-mboot=isolinux/isolinux.bin", "-mefi=efi/efi.img",
+                  "-mcatalog=isolinux/boot.cat", "-mmbr=" + mbr_file] + items)
+    check_structure(iso, True, True, "BOOT", boot=True)
+    check_boot(iso, bios, efi_size, mbr_code, catalog="isolinux/boot.cat")
+    listing = run([zz, "l", iso])
+    assert "[BOOT]/1-Boot-NoEmul.img" in listing and "[BOOT]/2-Boot-NoEmul.img" in listing and "isolinux/boot.cat" in listing
+    out = os.path.join(work, "boot-out")
+    run([zz, "x", "-bso0", "-bd", "-o" + out, iso])
+    with open(os.path.join(out, "efi", "efi.img"), "rb") as f:
+        assert len(f.read()) == efi_size
+    with open(os.path.join(out, "[BOOT]", "2-Boot-NoEmul.img"), "rb") as f, open(os.path.join(src, "efi", "efi.img"), "rb") as g:
+        assert f.read() == g.read(), "immagine UEFI estratta dal catalogo"
+
+    print("caso solo bios, senza hybrid, bootinfo spento, catalogo predefinito")
+    iso2 = os.path.join(work, "boot2.iso")
+    run(common + [iso2, "-mboot=isolinux/isolinux.bin", "-mhybrid=off", "-mbootinfo=off", "-mbootload=8"] + items)
+    check_structure(iso2, True, True, "ISOIMAGE", boot=True)
+    check_boot(iso2, bios, None, None, hybrid=False, bios_sectors=8, bootinfo=False, catalog="boot.catalog")
+
+    print("caso solo uefi, hybrid senza codice")
+    iso3 = os.path.join(work, "boot3.iso")
+    run(common + [iso3, "-mefi=efi/efi.img", "-mjoliet=off"] + items)
+    check_structure(iso3, False, True, "ISOIMAGE", boot=True)
+    check_boot(iso3, None, efi_size, None, catalog="boot.catalog")
+
+    print("riscrittura di un'immagine avviabile")
+    extra = os.path.join(work, "extra.txt")
+    with open(extra, "wb") as f:
+        f.write(b"x" * 3000)
+    run([zz, "a", "-bso0", "-bd", iso, extra])
+    check_structure(iso, True, True, "BOOT", boot=True)
+    check_boot(iso, bios, efi_size, mbr_code, catalog="isolinux/boot.cat")
+    # la voce UEFI si toglie cancellando la pseudo-voce
+    run([zz, "d", "-bso0", "-bd", iso, "[BOOT]/2-Boot-NoEmul.img"])
+    check_boot(iso, bios, None, mbr_code, catalog="isolinux/boot.cat")
+    listing = run([zz, "l", iso])
+    assert "efi/efi.img" in listing and "[BOOT]/Boot-NoEmul.img" in listing and "2-Boot" not in listing
+    # il file dell'immagine BIOS cancellato dall'albero: la voce resta, con dati nascosti
+    # (i soli 4 settori che il catalogo dichiara: il lettore non conosce altro)
+    run([zz, "d", "-bso0", "-bd", iso, "isolinux/isolinux.bin"])
+    listing = run([zz, "l", iso])
+    assert "isolinux.bin" not in listing and "[BOOT]/Boot-NoEmul.img" in listing
+    check_boot(iso, bios[:2048], None, mbr_code, catalog="isolinux/boot.cat")
+    run([zz, "a", "-bso0", "-bd", iso, mbr_file])   # un'altra riscrittura conserva la voce nascosta
+    check_boot(iso, bios[:2048], None, mbr_code, catalog="isolinux/boot.cat")
+    out2 = os.path.join(work, "boot-out2")
+    run([zz, "x", "-bso0", "-bd", "-o" + out2, iso])
+    with open(os.path.join(out2, "[BOOT]", "Boot-NoEmul.img"), "rb") as f:
+        got = f.read()
+    assert len(got) == 4 * 512 and got[:8] == bios[:8] and got[24:2048] == bios[24:2048]
+    print("  riscrittura: voci conservate, cancellazione di voce e di file ok")
+
+    print("catalogo al posto di un file esistente (il vecchio catalogo di un albero estratto)")
+    iso4 = os.path.join(work, "boot4.iso")
+    run(common + [iso4, "-mboot=isolinux/isolinux.bin", "-mcatalog=readme.txt"] + items)
+    check_boot(iso4, bios, None, None, catalog="readme.txt")
+    out4 = os.path.join(work, "boot-out4")
+    run([zz, "x", "-bso0", "-bd", "-o" + out4, iso4])
+    with open(os.path.join(out4, "readme.txt"), "rb") as f:
+        cat = f.read()
+    assert len(cat) == SECTOR and cat[0] == 1 and cat[30:32] == b"\x55\xaa", "il file non contiene il catalogo"
+
+    print("errori: immagine di boot assente o directory, catalogo su una directory, MBR assente")
+    for opts in (["-mboot=isolinux/nope.bin"], ["-mboot=isolinux/isolinux.bin", "-mcatalog=isolinux"],
+                 ["-mboot=isolinux"], ["-mboot=isolinux/isolinux.bin", "-mmbr=" + os.path.join(work, "nope.bin")]):
+        r = subprocess.run(common + [os.path.join(work, "bad.iso")] + opts + items, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert r.returncode != 0, opts
+        assert not os.path.exists(os.path.join(work, "bad.iso"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--7zz", dest="zz", required=True)
@@ -357,7 +556,7 @@ def main():
         unsafe = {k for k, t in links.items() if t.startswith("/") or ".." in t.split("/")}
         cases = [
             ("joliet+rr", ["-mvol=PROVA"], True, True, "PROVA"),
-            ("rr", ["-mjoliet=off", "-mvol=solo rr"], False, True, "SOLO RR"),
+            ("rr", ["-mjoliet=off", "-mvol=solo rr-3.1"], False, True, "solo rr-3.1"),
             ("joliet", ["-mrr=off"], True, False, "ISOIMAGE"),
         ]
         for name, opts, joliet, rr, vol in cases:
@@ -411,6 +610,8 @@ def main():
         r = subprocess.run([zz, "a", "-tiso", "-bso0", "-bd", os.path.join(work, "bad.iso"), "-mvol=troppo lunga per essere accettata da iso", extra],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         assert r.returncode != 0
+
+        boot_cases(zz, work)
         print("tutto ok")
     finally:
         shutil.rmtree(work, ignore_errors=True)
