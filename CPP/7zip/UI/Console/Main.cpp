@@ -225,6 +225,7 @@ static const char * const kHelpString =
     "  -t{Type} : Set type of archive\n"
     #ifdef HZ_HELP_METHODS
     "    -tiso : create an ISO 9660 image (Joliet and Rock Ridge; -mvol={Label}, -mjoliet=off, -mrr=off)\n"
+    "            bootable: -mboot={BIOS image} -mefi={UEFI image} -mcatalog={boot catalog} -mmbr={isohdpfx.bin}\n"
     #endif
     "  -u[-][p#][q#][r#][x#][y#][z#][!newArchiveName] : Update options\n"
     "  -v{Size}[b|k|m|g] : Create volumes\n"

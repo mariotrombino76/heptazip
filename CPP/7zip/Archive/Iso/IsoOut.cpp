@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Copyright (c) 2026 Mario Trombino (Heptazip, LICENSE-Heptazip)
 //
-// ISO 9660 (ECMA-119) writer with Joliet and Rock Ridge (SUSP 1.12 / RRIP 1.12).
-// Design note: docs/design/0019-scrittura-iso.md.
+// ISO 9660 (ECMA-119) writer with Joliet, Rock Ridge (SUSP 1.12 / RRIP 1.12) and
+// El Torito boot entries. Design notes: docs/design/0019-scrittura-iso.md (the
+// file system), docs/design/0020-iso-avviabili.md (boot entries, system area).
 //
 // Image layout (sectors of 2048 bytes):
-//   0..15      system area (zeros)
+//   0..15      system area: zeros, or an MBR with a partition table (isohybrid)
 //   16         primary volume descriptor
-//   17         supplementary volume descriptor (Joliet), if enabled
+//   17         El Torito boot record volume descriptor, if there are boot entries
+//   next       supplementary volume descriptor (Joliet), if enabled
 //   next       volume descriptor set terminator
 //   next       path tables: L and M of the 9660 tree, then L and M of the Joliet tree
 //   next       directory extents of the 9660 tree (each followed by its Rock Ridge
 //              continuation area, if any), then of the Joliet tree
-//   next       file data, in the order of the items, each at a sector boundary
+//   next       file data, in the order of the items, each at a sector boundary; the
+//              boot catalog and the hidden boot images are files like the others
 // Everything before the file data is built in memory, so the output is written once,
 // sequentially, with the sizes of the files known in advance.
 
@@ -55,6 +58,10 @@ static const UInt32 kMaxExtentSize = 0xFFFFF800;
 static const unsigned kMaxId9660 = 30;      // file name + '.' + extension, without ";1"
 static const unsigned kMaxDirId9660 = 31;
 static const unsigned kMaxIdJoliet = 103;   // UCS-2 characters ("joliet-long" of mkisofs)
+static const unsigned kMaxBootEntries = 30;  // one sector of catalog: validation + default + 30 (header + entry)
+static const unsigned kMbrCodeSize = 432;    // bytes of boot code before the isohybrid fields (0x1B0)
+// a boot image is read in memory to patch its boot info table: not beyond this size
+static const UInt64 kMaxBootImageInMemory = (UInt64)64 << 20;
 
 // ---------- little helpers
 
@@ -194,9 +201,10 @@ struct CNode
   UInt64 Size;
   UInt64 MTime;
   UInt32 Mode;
-  int Item;             // index into the items, -1 for an implicit directory
+  int Item;             // index into the items, -1 for an implicit directory or the boot catalog
   unsigned Parent;
   bool IsDir;
+  bool Hidden;          // a file outside the trees (boot image not present as a file): data only
 
   std::vector<unsigned> Children;      // sorted by Id (9660 order)
   std::vector<unsigned> ChildrenJoliet;   // sorted by IdJoliet
@@ -208,7 +216,7 @@ struct CNode
   UInt32 DirExtentJoliet, DirSizeJoliet;
   UInt32 DirNum, DirNumJoliet;            // path table numbers (1 = root)
 
-  CNode(): Size(0), MTime(0), Mode(0), Item(-1), Parent(0), IsDir(false),
+  CNode(): Size(0), MTime(0), Mode(0), Item(-1), Parent(0), IsDir(false), Hidden(false),
       DataExtent(0), DirExtent(0), DirSize(0), CeExtent(0), CeSize(0),
       DirExtentJoliet(0), DirSizeJoliet(0), DirNum(0), DirNumJoliet(0) {}
 };
@@ -350,11 +358,19 @@ public:
   std::vector<CNode> Nodes;   // 0 = root
   bool Joliet;
   bool RockRidge;
+  int CatalogNode;            // the boot catalog file, -1 if none
 
-  HRESULT Build(const CObjectVector<COutItem> &items, UInt64 now);
+  CTree(): Joliet(true), RockRidge(true), CatalogNode(-1) {}
+
+  // `catalogPath`: the boot catalog file to add (generated content), NULL for none
+  HRESULT Build(const CObjectVector<COutItem> &items, UInt64 now, const UString *catalogPath);
+  // the node of a path of the tree or of a hidden item, -1 if absent
+  int Find(const UString &path) const;
 
 private:
   std::map<std::pair<unsigned, std::wstring>, unsigned> _byName;
+
+  HRESULT Insert(const UString &path, bool isDir, UInt64 now, unsigned &node, bool &existed);
 
   unsigned AddChild(unsigned parent, const UString &name, bool isDir, UInt64 now)
   {
@@ -377,9 +393,75 @@ private:
   }
 };
 
-HRESULT CTree::Build(const CObjectVector<COutItem> &items, UInt64 now)
+// walks `path` creating the missing directories; `node` is the last component (a
+// directory if `isDir`, else a file), `existed` tells whether it was already there.
+// An empty path (or ".") is the root.
+HRESULT CTree::Insert(const UString &pathIn, bool isDir, UInt64 now, unsigned &node, bool &existed)
+{
+  unsigned cur = 0;
+  existed = true;
+  UString path = pathIn;
+  path.Replace(L'\\', L'/');
+  unsigned start = 0;
+  while (start < path.Len())
+  {
+    int end = path.Find(L'/', start);
+    if (end < 0)
+      end = (int)path.Len();
+    const UString comp = path.Mid(start, (unsigned)end - start);
+    start = (unsigned)end + 1;
+    if (comp.IsEmpty() || comp == L".")
+      continue;
+    if (comp == L"..")
+      return E_INVALIDARG;
+    const bool last = (start >= path.Len());
+    const int found = FindChild(cur, comp);
+    if (found >= 0)
+    {
+      cur = (unsigned)found;
+      if (!last && !Nodes[cur].IsDir)
+        return E_INVALIDARG;   // a file used as a directory
+      existed = true;
+      continue;
+    }
+    cur = AddChild(cur, comp, !last || isDir, now);
+    existed = false;
+  }
+  node = cur;
+  return S_OK;
+}
+
+int CTree::Find(const UString &pathIn) const
+{
+  UString path = pathIn;
+  path.Replace(L'\\', L'/');
+  for (unsigned i = 1; i < Nodes.size(); i++)
+    if (Nodes[i].Hidden && Nodes[i].Name == path)
+      return (int)i;
+  unsigned cur = 0;
+  unsigned start = 0;
+  while (start < path.Len())
+  {
+    int end = path.Find(L'/', start);
+    if (end < 0)
+      end = (int)path.Len();
+    const UString comp = path.Mid(start, (unsigned)end - start);
+    start = (unsigned)end + 1;
+    if (comp.IsEmpty() || comp == L".")
+      continue;
+    const int found = FindChild(cur, comp);
+    if (found < 0)
+      return -1;
+    cur = (unsigned)found;
+  }
+  return (int)cur;
+}
+
+HRESULT CTree::Build(const CObjectVector<COutItem> &items, UInt64 now, const UString *catalogPath)
 {
   Nodes.clear();
+  _byName.clear();
+  CatalogNode = -1;
   Nodes.emplace_back();
   Nodes[0].IsDir = true;
   Nodes[0].MTime = now;
@@ -388,53 +470,61 @@ HRESULT CTree::Build(const CObjectVector<COutItem> &items, UInt64 now)
   FOR_VECTOR (i, items)
   {
     const COutItem &item = items[i];
-    unsigned cur = 0;
-    UString path = item.Path;
-    path.Replace(L'\\', L'/');
-    unsigned start = 0;
-    while (start < path.Len())
+    if (item.Hidden)
     {
-      int end = path.Find(L'/', start);
-      if (end < 0)
-        end = (int)path.Len();
-      const UString comp = path.Mid(start, (unsigned)end - start);
-      start = (unsigned)end + 1;
-      if (comp.IsEmpty() || comp == L".")
-        continue;
-      if (comp == L"..")
-        return E_INVALIDARG;
-      const bool last = (start >= path.Len());
-      const int found = FindChild(cur, comp);
-      if (found >= 0)
-      {
-        cur = (unsigned)found;
-        if (last)
-        {
-          // the same path twice (a directory given explicitly after its files, or
-          // a duplicate): the explicit item wins for the properties
-          CNode &n = Nodes[cur];
-          if (!n.IsDir || !item.IsDir)
-            return E_INVALIDARG;
-          n.Item = (int)i;
-          if (item.MTime != 0)
-            n.MTime = item.MTime;
-          if (item.Mode != 0)
-            n.Mode = item.Mode;
-        }
-        continue;
-      }
-      cur = AddChild(cur, comp, !last || item.IsDir, now);
-      if (last)
-      {
-        CNode &n = Nodes[cur];
-        n.Item = (int)i;
-        n.Size = item.IsDir ? 0 : item.Size;
-        n.SymLink = item.SymLink;
-        if (item.MTime != 0)
-          n.MTime = item.MTime;
-        n.Mode = item.Mode;
-      }
+      // not in any directory: only its data is written
+      Nodes.emplace_back();
+      CNode &n = Nodes.back();
+      n.Name = item.Path;
+      n.Hidden = true;
+      n.Item = (int)i;
+      n.Size = item.Size;
+      n.MTime = item.MTime != 0 ? item.MTime : now;
+      n.Mode = MY_LIN_S_IFREG | 0644;
+      continue;
     }
+    unsigned cur;
+    bool existed;
+    RINOK(Insert(item.Path, item.IsDir, now, cur, existed))
+    CNode &n = Nodes[cur];
+    if (existed)
+    {
+      // the same path twice (a directory given explicitly after its files, or
+      // a duplicate): the explicit item wins for the properties
+      if (!n.IsDir || !item.IsDir)
+        return E_INVALIDARG;
+      n.Item = (int)i;
+      if (item.MTime != 0)
+        n.MTime = item.MTime;
+      if (item.Mode != 0)
+        n.Mode = item.Mode;
+    }
+    else
+    {
+      n.Item = (int)i;
+      n.Size = item.IsDir ? 0 : item.Size;
+      n.SymLink = item.SymLink;
+      if (item.MTime != 0)
+        n.MTime = item.MTime;
+      n.Mode = item.Mode;
+    }
+  }
+
+  if (catalogPath)
+  {
+    // the boot catalog: one sector of generated content. A file already there with
+    // that name (the old catalog of an extracted image) is replaced, as xorriso does
+    unsigned cur;
+    bool existed;
+    RINOK(Insert(*catalogPath, false, now, cur, existed))
+    if (cur == 0 || (existed && Nodes[cur].IsDir))
+      return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+    CNode &n = Nodes[cur];
+    n.Size = kSector;
+    n.SymLink.Empty();
+    if (existed)
+      n.MTime = now;
+    CatalogNode = (int)cur;
   }
 
   // modes, identifiers and order of the children
@@ -612,18 +702,32 @@ public:
   CTree Tree;
   COutOptions Options;
 
-  UInt32 PvdSector, SvdSector, TermSector;
+  UInt32 PvdSector, BootRecordSector, SvdSector, TermSector;
   UInt32 PathTableSize, PathTableSizeJoliet;
   UInt32 PathLSector, PathMSector, PathLSectorJoliet, PathMSectorJoliet;
   UInt32 FirstDataSector;
   UInt32 TotalSectors;
   std::vector<unsigned> DirsBfs;   // directories in path table order (9660 tree)
   std::vector<unsigned> DirsBfsJoliet;
+  std::vector<unsigned> BootNodes;   // the node of each entry of Options.Boot
+  std::map<unsigned, CByteBuffer> Generated;   // content written from memory, by node: the catalog, patched boot images
 
+  CImage(): PvdSector(0), BootRecordSector(0), SvdSector(0), TermSector(0),
+      PathTableSize(0), PathTableSizeJoliet(0), PathLSector(0), PathMSector(0),
+      PathLSectorJoliet(0), PathMSectorJoliet(0), FirstDataSector(0), TotalSectors(0) {}
+
+  HRESULT ResolveBoot();   // after Tree.Build: the nodes of the boot entries
   HRESULT Layout();
   void BuildHeaders(CByteBuffer &out);   // everything before the file data
+  void BuildCatalog();                   // Generated[CatalogNode], after Layout
+  // the boot info table of a BIOS image (isolinux, GRUB): bytes 8..63
+  bool PatchBootInfoTable(unsigned node, CByteBuffer &data, int mode) const;
+  int BiosBootNode() const;   // the node of the first 80x86 entry, -1 if none
+  int EfiBootNode() const;    // the node of the first UEFI entry, -1 if none
 
 private:
+  void BuildSystemArea(Byte *area);   // sectors 0..15
+  void BuildBootRecord(Byte *d);      // the El Torito boot record volume descriptor
   // the directory extent of `dir` and, for the 9660 tree, its continuation area
   void BuildDir(unsigned dir, bool joliet, CByteBuffer &extent, CByteBuffer &ce, UInt32 ceSector);
   void BuildRecord(CByteBuffer &out, const CNode &node, unsigned extentIndex, bool joliet,
@@ -925,6 +1029,8 @@ HRESULT CImage::Layout()
 
   PvdSector = 16;
   UInt32 sector = 17;
+  if (!Options.Boot.IsEmpty())
+    BootRecordSector = sector++;   // El Torito wants it at sector 17
   if (Tree.Joliet)
     SvdSector = sector++;
   TermSector = sector++;
@@ -993,9 +1099,13 @@ void CImage::BuildHeaders(CByteBuffer &out)
   out.Alloc((size_t)FirstDataSector * kSector);
   memset(out, 0, out.Size());
   Byte *const base = out;
+  if (Options.Hybrid)
+    BuildSystemArea(base);
   CByteBuffer t;
   BuildDescriptor(t, false);
   memcpy(base + (size_t)PvdSector * kSector, t, kSector);
+  if (BootRecordSector)
+    BuildBootRecord(base + (size_t)BootRecordSector * kSector);
   if (Tree.Joliet)
   {
     t.Free();
@@ -1037,14 +1147,209 @@ void CImage::BuildHeaders(CByteBuffer &out)
     }
 }
 
+// ---------- El Torito and the system area (design note 0020)
+
+HRESULT CImage::ResolveBoot()
+{
+  BootNodes.clear();
+  if (Options.Boot.Size() > kMaxBootEntries)
+    return E_INVALIDARG;
+  FOR_VECTOR (i, Options.Boot)
+  {
+    const int node = Tree.Find(Options.Boot[i].Path);
+    if (node <= 0)
+      return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);   // the boot image must be a file of the image
+    const CNode &n = Tree.Nodes[(unsigned)node];
+    if (n.IsDir || !n.SymLink.IsEmpty() || n.Size == 0 || n.Size > 0xFFFFFFFF)
+      return E_INVALIDARG;
+    BootNodes.push_back((unsigned)node);
+  }
+  return S_OK;
+}
+
+int CImage::BiosBootNode() const
+{
+  FOR_VECTOR (i, Options.Boot)
+    if (Options.Boot[i].PlatformId == 0)
+      return (int)BootNodes[i];
+  return -1;
+}
+
+int CImage::EfiBootNode() const
+{
+  FOR_VECTOR (i, Options.Boot)
+    if (Options.Boot[i].PlatformId == 0xEF)
+      return (int)BootNodes[i];
+  return -1;
+}
+
+// boot record volume descriptor (El Torito 2.0): points to the catalog
+void CImage::BuildBootRecord(Byte *d)
+{
+  memset(d, 0, kSector);
+  d[0] = 0;   // boot record
+  memcpy(d + 1, "CD001", 5);
+  d[6] = 1;
+  static const char k_Spec[] = "EL TORITO SPECIFICATION";
+  memcpy(d + 7, k_Spec, sizeof(k_Spec) - 1);   // the rest of the 32 bytes stays zero
+  // boot identifier (32 bytes) zero; then the absolute sector of the catalog
+  SetUi32(d + 71, Tree.Nodes[(unsigned)Tree.CatalogNode].DataExtent)
+}
+
+// one sector: validation entry, default entry, then one section (header + entry)
+// per further boot image
+void CImage::BuildCatalog()
+{
+  CByteBuffer &out = Generated[(unsigned)Tree.CatalogNode];
+  out.Alloc(kSector);
+  Byte *c = out;
+  memset(c, 0, kSector);
+
+  // validation entry: id, platform of the default entry, 24 bytes of id string, checksum, 55 AA
+  c[0] = 1;
+  c[1] = Options.Boot[0].PlatformId;
+  c[30] = 0x55;
+  c[31] = 0xAA;
+  {
+    UInt32 sum = 0;
+    for (unsigned i = 0; i < 32; i += 2)
+      sum += GetUi16(c + i);
+    SetUi16(c + 28, (UInt16)(0x10000 - (sum & 0xFFFF)))
+  }
+
+  unsigned pos = 32;
+  FOR_VECTOR (i, Options.Boot)
+  {
+    const COutBootEntry &e = Options.Boot[i];
+    const CNode &n = Tree.Nodes[BootNodes[i]];
+    if (i != 0)
+    {
+      // section header: more sections follow (0x90) or the last one (0x91)
+      c[pos] = (i + 1 < Options.Boot.Size()) ? 0x90 : 0x91;
+      c[pos + 1] = e.PlatformId;
+      SetUi16(c + pos + 2, 1)   // entries in this section
+      pos += 32;
+    }
+    Byte *p = c + pos;
+    p[0] = 0x88;   // bootable
+    p[1] = e.MediaType;
+    SetUi16(p + 2, e.LoadSegment)
+    p[4] = e.SystemType;
+    UInt32 sectors = e.SectorCount;
+    if (sectors == 0)
+    {
+      // the whole image in 512-byte sectors; beyond 16 bits the UEFI rule applies:
+      // 0 = "from the image to the end of the disc"
+      const UInt64 all = (n.Size + 511) / 512;
+      sectors = all <= 0xFFFF ? (UInt32)all : 0;
+    }
+    SetUi16(p + 6, (UInt16)sectors)
+    SetUi32(p + 8, n.DataExtent)
+    pos += 32;
+  }
+}
+
+// the boot info table used by isolinux and GRUB's eltorito.img: at byte 8 the sector
+// of the PVD, the sector of the image, its length and the checksum of the rest of
+// the image (32-bit words from byte 64). `mode`: -1 = only if bytes 8..63 are free
+// or already hold a table, 1 = always. Returns whether it was patched.
+bool CImage::PatchBootInfoTable(unsigned node, CByteBuffer &data, int mode) const
+{
+  if (mode == 0 || data.Size() < 64)
+    return false;
+  Byte *d = data;
+  if (mode < 0)
+  {
+    bool free = true;
+    for (unsigned i = 8; i < 64 && free; i++)
+      free = (d[i] == 0);
+    if (!free && GetUi32(d + 8) != 16)
+      return false;
+  }
+  UInt32 sum = 0;
+  size_t i = 64;
+  for (; i + 4 <= data.Size(); i += 4)
+    sum += GetUi32(d + i);
+  if (i < data.Size())
+  {
+    Byte tail[4] = { 0, 0, 0, 0 };
+    memcpy(tail, d + i, data.Size() - i);
+    sum += GetUi32(tail);
+  }
+  SetUi32(d + 8, 16)
+  SetUi32(d + 12, Tree.Nodes[node].DataExtent)
+  SetUi32(d + 16, (UInt32)data.Size())
+  SetUi32(d + 20, sum)
+  return true;
+}
+
+// CHS address of a 512-byte sector for the partition table (geometry 64 heads, 32 sectors,
+// the one isohybrid uses), capped at the maximum representable
+static void SetChs(Byte *p, UInt64 lba)
+{
+  UInt64 cyl = lba / (64 * 32);
+  if (cyl > 1023)
+  {
+    p[0] = 0xFE;
+    p[1] = 0xFF;
+    p[2] = 0xFF;
+    return;
+  }
+  const unsigned head = (unsigned)((lba / 32) % 64);
+  const unsigned sec = (unsigned)(lba % 32) + 1;
+  p[0] = (Byte)head;
+  p[1] = (Byte)(sec | ((cyl >> 8) << 6));
+  p[2] = (Byte)cyl;
+}
+
+static void SetPartition(Byte *p, Byte status, Byte type, UInt64 startLba, UInt64 sizeLba)
+{
+  p[0] = status;
+  SetChs(p + 1, startLba);
+  p[4] = type;
+  SetChs(p + 5, startLba + sizeLba - 1);
+  SetUi32(p + 8, (UInt32)startLba)
+  SetUi32(p + 12, (UInt32)sizeLba)
+}
+
+// isohybrid MBR: boot code (if given) with the sector of the BIOS image at 0x1B0 as
+// isohdpfx expects, a disk id, partition 1 = the whole image (bootable, type 0 so that
+// UEFI firmware does not reject the table for its start at sector 0), partition 2 =
+// the UEFI image (type 0xEF) if there is one
+void CImage::BuildSystemArea(Byte *area)
+{
+  memset(area, 0, 16 * kSector);
+  Byte *mbr = area;
+  if (Options.MbrCode.Size() != 0)
+    memcpy(mbr, Options.MbrCode, Options.MbrCode.Size() < kMbrCodeSize ? Options.MbrCode.Size() : kMbrCodeSize);
+  const int bios = BiosBootNode();
+  if (bios >= 0)
+    SetUi64(mbr + 0x1B0, (UInt64)Tree.Nodes[(unsigned)bios].DataExtent * 4)
+  UInt32 diskId = (UInt32)(Options.Now ^ (Options.Now >> 32));
+  if (diskId == 0)
+    diskId = 0x48455054;   // "HEPT"
+  SetUi32(mbr + 440, diskId)
+  SetPartition(mbr + 446, 0x80, 0x00, 0, (UInt64)TotalSectors * 4);
+  const int efi = EfiBootNode();
+  if (efi >= 0)
+  {
+    const CNode &n = Tree.Nodes[(unsigned)efi];
+    SetPartition(mbr + 462, 0x00, 0xEF, (UInt64)n.DataExtent * 4, (n.Size + 511) / 512);
+  }
+  mbr[510] = 0x55;
+  mbr[511] = 0xAA;
+}
+
 // ---------- the image
 
+// ECMA-119 wants d-characters; every mastering tool (xorriso, mkisofs, oscdimg) accepts
+// printable ASCII and keeps the case, and so do the readers: same here
 static bool IsValidVolumeId(const AString &s)
 {
   if (s.Len() > 32)
     return false;
   for (unsigned i = 0; i < s.Len(); i++)
-    if (!IsDChar(s[i]) && s[i] != ' ')
+    if (s[i] < 0x20 || s[i] > 0x7E)
       return false;
   return true;
 }
@@ -1057,24 +1362,69 @@ HRESULT WriteIsoImage(ISequentialOutStream *outStream,
   image.Options = options;
   if (image.Options.VolumeId.IsEmpty())
     image.Options.VolumeId = "ISOIMAGE";
-  UpperAscii(image.Options.VolumeId);
   if (!IsValidVolumeId(image.Options.VolumeId))
     return E_INVALIDARG;
   image.Tree.Joliet = options.Joliet;
   image.Tree.RockRidge = options.RockRidge;
+  const bool boot = !options.Boot.IsEmpty();
+  UString catalogPath = options.CatalogPath;
+  if (catalogPath.IsEmpty())
+    catalogPath = L"boot.catalog";
+  if (!boot)
+    image.Options.Hybrid = false;   // a partition table makes sense only with something to boot
 
-  RINOK(image.Tree.Build(items, options.Now))
+  RINOK(image.Tree.Build(items, options.Now, boot ? &catalogPath : NULL))
+  RINOK(image.ResolveBoot())
   RINOK(image.Layout())
 
   UInt64 total = (UInt64)image.FirstDataSector * kSector;
   FOR_VECTOR (i, items)
     if (!items[i].IsDir)
       total += items[i].Size;
+  if (boot)
+    total += kSector;
   if (progress)
     RINOK(progress->SetTotal(total))
 
   CMyComPtr2_Create<ICompressProgressInfo, CLocalProgress> lps;
   lps->Init(progress, true);
+
+  // the BIOS boot images are read now, to patch their boot info table with the
+  // sectors of the layout; `changedNodes` remembers the ones that were shorter than declared
+  std::unordered_set<unsigned> changedNodes;
+  if (boot)
+  {
+    image.BuildCatalog();
+    FOR_VECTOR (i, options.Boot)
+    {
+      const COutBootEntry &e = options.Boot[i];
+      const unsigned node = image.BootNodes[i];
+      if (e.BootInfoTable == 0 || e.PlatformId != 0 || image.Generated.count(node) != 0)
+        continue;
+      const CNode &n = image.Tree.Nodes[node];
+      if (n.Size > kMaxBootImageInMemory)
+        continue;
+      CByteBuffer data;
+      data.Alloc((size_t)n.Size);
+      memset(data, 0, data.Size());
+      CMyComPtr<ISequentialInStream> inStream;
+      const HRESULT res = source.GetStream(items[(unsigned)n.Item], &inStream);
+      if (res != S_FALSE)
+      {
+        RINOK(res)
+      }
+      size_t got = 0;
+      if (inStream)
+      {
+        got = data.Size();
+        RINOK(ReadStream(inStream, data, &got))
+      }
+      if (got != data.Size())
+        changedNodes.insert(node);
+      image.PatchBootInfoTable(node, data, e.BootInfoTable);
+      image.Generated[node] = data;
+    }
+  }
 
   {
     CByteBuffer headers;
@@ -1090,9 +1440,27 @@ HRESULT WriteIsoImage(ISequentialOutStream *outStream,
   memset(zeros, 0, sizeof(zeros));
   UInt64 done = lps->OutSize;
 
-  for (const CNode &n : image.Tree.Nodes)
+  for (unsigned nodeIndex = 0; nodeIndex < image.Tree.Nodes.size(); nodeIndex++)
   {
-    if (n.IsDir || n.Item < 0)
+    const CNode &n = image.Tree.Nodes[nodeIndex];
+    if (n.IsDir)
+      continue;
+    const std::map<unsigned, CByteBuffer>::const_iterator gen = image.Generated.find(nodeIndex);
+    if (gen != image.Generated.end())
+    {
+      // content prepared in memory: the catalog, a patched boot image
+      RINOK(WriteStream(outStream, gen->second, gen->second.Size()))
+      const unsigned pad = (unsigned)((kSector - (n.Size % kSector)) % kSector);
+      if (pad)
+        RINOK(WriteStream(outStream, zeros, pad))
+      done += n.Size;
+      lps->InSize = lps->OutSize = done;
+      RINOK(lps->SetCur())
+      if (n.Item >= 0)
+        RINOK(source.ReportResult(items[(unsigned)n.Item], changedNodes.count(nodeIndex) != 0))
+      continue;
+    }
+    if (n.Item < 0)
       continue;
     const COutItem &item = items[(unsigned)n.Item];
     UInt64 written = 0;

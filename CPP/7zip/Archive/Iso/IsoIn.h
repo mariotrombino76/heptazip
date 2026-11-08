@@ -159,6 +159,7 @@ struct CBootValidationEntry
 struct CBootInitialEntry
 {
   bool Bootable;
+  Byte PlatformId;    // Heptazip: of the validation entry or of the section header (0 = 80x86, 0xEF = UEFI)
   Byte BootMediaType;
   UInt16 LoadSegment;
   /* This is the load segment for the initial boot image. If this
@@ -279,6 +280,7 @@ public:
   int MainVolDescIndex;
   // UInt32 BlockSize;
   CObjectVector<CBootInitialEntry> BootEntries;
+  UInt32 BootCatalogBlock;   // Heptazip: sector of the El Torito boot catalog (valid if BootEntries is not empty)
 
 private:
   bool _bootIsDefined;

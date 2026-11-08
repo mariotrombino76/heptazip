@@ -5,17 +5,23 @@
 // IOutArchive of the ISO handler: collects the items from the update callback (and
 // from the open image, when an existing one is rewritten) and hands them to the
 // writer of IsoOut.cpp. An image is always written whole: there is no in-place update.
+// Boot entries (El Torito) come from the -mboot / -mefi options or, on a rewrite,
+// from the open image (design note 0020).
 
 #include "StdAfx.h"
+
+#include "../../../../C/CpuArch.h"
 
 #include "../../../Common/ComTry.h"
 #include "../../../Common/StringConvert.h"
 #include "../../../Common/UTFConvert.h"
 
+#include "../../../Windows/FileIO.h"
 #include "../../../Windows/PropVariant.h"
 #include "../../../Windows/TimeUtils.h"
 
 #include "../../Common/MethodProps.h"
+#include "../../Common/StreamUtils.h"
 
 #include "../Common/ItemNameUtils.h"
 
@@ -33,11 +39,28 @@ Z7_COM7F_IMF(CHandler::GetFileTimeType(UInt32 *type))
   return S_OK;
 }
 
+static void NormalizePath(UString &s)
+{
+  NItemName::ReplaceSlashes_OsToUnix(s);
+  s.Replace(L'\\', L'/');
+  while (!s.IsEmpty() && s[0] == L'/')
+    s.Delete(0);
+  while (!s.IsEmpty() && s.Back() == L'/')
+    s.DeleteBack();
+}
+
 Z7_COM7F_IMF(CHandler::SetProperties(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps))
 {
   _volumeId.Empty();
   _joliet = true;
   _rockRidge = true;
+  _bootPath.Empty();
+  _efiPath.Empty();
+  _catalogPath.Empty();
+  _bootLoad = 4;
+  _bootInfo = -1;
+  _hybrid = -1;
+  _mbrCode.Free();
   for (UInt32 i = 0; i < numProps; i++)
   {
     UString name = names[i];
@@ -58,6 +81,59 @@ Z7_COM7F_IMF(CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
     else if (name.IsEqualTo("rr"))
     {
       RINOK(PROPVARIANT_to_bool(prop, _rockRidge))
+    }
+    else if (name.IsEqualTo("boot") || name.IsEqualTo("efi") || name.IsEqualTo("catalog"))
+    {
+      // paths inside the image
+      if (prop.vt != VT_BSTR)
+        return E_INVALIDARG;
+      UString s = prop.bstrVal;
+      NormalizePath(s);
+      if (s.IsEmpty())
+        return E_INVALIDARG;
+      (name[0] == L'b' ? _bootPath : name[0] == L'e' ? _efiPath : _catalogPath) = s;
+    }
+    else if (name.IsEqualTo("bootload"))
+    {
+      UInt32 v;
+      RINOK(ParsePropToUInt32(UString(), prop, v))
+      if (v > 0xFFFF)
+        return E_INVALIDARG;
+      _bootLoad = v;
+    }
+    else if (name.IsEqualTo("bootinfo"))
+    {
+      if (prop.vt == VT_BSTR && UString(prop.bstrVal).IsEqualTo_Ascii_NoCase("auto"))
+        _bootInfo = -1;
+      else
+      {
+        bool b;
+        RINOK(PROPVARIANT_to_bool(prop, b))
+        _bootInfo = b ? 1 : 0;
+      }
+    }
+    else if (name.IsEqualTo("hybrid"))
+    {
+      bool b;
+      RINOK(PROPVARIANT_to_bool(prop, b))
+      _hybrid = b ? 1 : 0;
+    }
+    else if (name.IsEqualTo("mbr"))
+    {
+      // a file of the local file system with the boot code of the MBR (isohdpfx.bin
+      // of syslinux: 432 bytes; a 512-byte sector is accepted, only its code is used)
+      if (prop.vt != VT_BSTR)
+        return E_INVALIDARG;
+      NFile::NIO::CInFile file;
+      if (!file.Open(us2fs(UString(prop.bstrVal))))
+        return GetLastError_noZero_HRESULT();
+      Byte buf[512];
+      size_t got = 0;
+      if (!file.ReadFull(buf, sizeof(buf), got) || got == 0)
+        return E_INVALIDARG;
+      if (got > 432)
+        got = 432;
+      _mbrCode.CopyFrom(buf, got);
     }
     else if (name[0] == L'x' || name.IsPrefixedBy_Ascii_NoCase("mt") || name.IsPrefixedBy_Ascii_NoCase("memuse"))
     {
@@ -117,9 +193,7 @@ static HRESULT GetItemFromProps(TGet get, COutItem &item, bool getSize)
   if (prop.vt != VT_BSTR)
     return E_INVALIDARG;
   item.Path = prop.bstrVal;
-  NItemName::ReplaceSlashes_OsToUnix(item.Path);
-  while (!item.Path.IsEmpty() && item.Path.Back() == L'/')
-    item.Path.DeleteBack();
+  NormalizePath(item.Path);
 
   prop.Clear();
   RINOK(get(kpidIsDir, &prop))
@@ -164,6 +238,19 @@ static HRESULT GetItemFromProps(TGet get, COutItem &item, bool getSize)
   return S_OK;
 }
 
+// the file of the open image whose data starts at `block`, -1 if none
+int CHandler::FindRefByBlock(UInt32 block) const
+{
+  FOR_VECTOR (i, _archive.Refs)
+  {
+    const CRef &ref = _archive.Refs[i];
+    const CDir &item = ref.Dir->_subItems[ref.Index];
+    if (!item.IsDir() && item.ExtentLocation == block && ref.TotalSize != 0)
+      return (int)i;
+  }
+  return -1;
+}
+
 Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numItems,
     IArchiveUpdateCallback *callback))
 {
@@ -173,14 +260,27 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
     return E_FAIL;
   if (_stream)
   {
-    // a rewrite of an open image: only if it was read cleanly and has no boot entries
-    // (El Torito is not written yet)
-    if (!_archive.IsArc || _archive.UnexpectedEnd || _archive.HeadersError
-        || _archive.BootEntries.Size() != 0)
+    // a rewrite of an open image: only if it was read cleanly
+    if (!_archive.IsArc || _archive.UnexpectedEnd || _archive.HeadersError)
       return E_NOTIMPL;
   }
+  const unsigned numRefs = _stream ? _archive.Refs.Size() : 0;
+
+  COutOptions options;
+
+  // the boot catalog of the open image: regenerated, its old content is dropped
+  int oldCatalogRef = -1;
+  if (_stream && !_archive.BootEntries.IsEmpty())
+    oldCatalogRef = FindRefByBlock(_archive.BootCatalogBlock);
 
   CObjectVector<COutItem> items;
+  // index in `items` of each item of the open image, -1 if not kept
+  CIntVector arcToItem;
+  for (unsigned i = 0; i < numRefs; i++)
+    arcToItem.Add(-1);
+  // boot pseudo-items of the open image kept by the caller, in catalog order
+  CUIntVector keptBootEntries;
+
   for (UInt32 i = 0; i < numItems; i++)
   {
     Int32 newData, newProps;
@@ -190,6 +290,14 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
     item.NewData = IntToBool(newData);
     item.IndexInClient = i;
     item.IndexInArc = indexInArc;
+    if (!item.NewData && _stream && indexInArc >= numRefs)
+    {
+      // an El Torito image of the open image ("[BOOT]/..."): handled below
+      if (indexInArc - numRefs >= _archive.BootEntries.Size())
+        return E_NOTIMPL;
+      keptBootEntries.Add(indexInArc - numRefs);
+      continue;
+    }
     if (IntToBool(newProps))
     {
       RINOK(GetItemFromProps([callback, i](PROPID pid, PROPVARIANT *v) { return callback->GetProperty(i, pid, v); },
@@ -197,7 +305,7 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
     }
     else
     {
-      if (!_stream || indexInArc >= (UInt32)_archive.Refs.Size())
+      if (!_stream || indexInArc >= numRefs)
         return E_NOTIMPL;
       RINOK(GetItemFromProps([this, indexInArc](PROPID pid, PROPVARIANT *v) { return GetProperty(indexInArc, pid, v); },
           item, false))
@@ -205,14 +313,98 @@ Z7_COM7F_IMF(CHandler::UpdateItems(ISequentialOutStream *outStream, UInt32 numIt
     if (!item.NewData && !item.IsDir && item.SymLink.IsEmpty())
     {
       // old data (new properties or not): the size is the one of the image
-      if (!_stream || indexInArc >= (UInt32)_archive.Refs.Size())
+      if (!_stream || indexInArc >= numRefs)
         return E_NOTIMPL;
       item.Size = _archive.Refs[indexInArc].TotalSize;
     }
+    if (!item.NewData && (int)indexInArc == oldCatalogRef)
+    {
+      // the old catalog: its path is reused for the new one, unless -mcatalog says otherwise
+      if (_catalogPath.IsEmpty())
+        options.CatalogPath = item.Path;
+      continue;
+    }
+    if (!item.NewData && indexInArc < numRefs)
+      arcToItem[indexInArc] = (int)items.Size();
     items.Add(item);
   }
 
-  COutOptions options;
+  // boot entries of the open image: each maps to the file of the tree that starts at
+  // its sector, or stays as hidden data; the new -mboot / -mefi replace the old
+  // entries of their platform
+  FOR_VECTOR (k, keptBootEntries)
+  {
+    const unsigned bootIndex = keptBootEntries[k];
+    const CBootInitialEntry &be = _archive.BootEntries[bootIndex];
+    if (!be.Bootable)
+      continue;
+    if ((be.PlatformId == 0 && !_bootPath.IsEmpty()) || (be.PlatformId == 0xEF && !_efiPath.IsEmpty()))
+      continue;
+    COutBootEntry e;
+    e.PlatformId = be.PlatformId;
+    e.MediaType = be.BootMediaType;
+    e.LoadSegment = be.LoadSegment;
+    e.SystemType = be.SystemType;
+    e.SectorCount = be.SectorCount;
+    e.BootInfoTable = (be.PlatformId == 0) ? -1 : 0;
+    const int ref = FindRefByBlock(be.LoadRBA);
+    if (ref >= 0 && arcToItem[(unsigned)ref] >= 0)
+      e.Path = items[(unsigned)arcToItem[(unsigned)ref]].Path;
+    else
+    {
+      // not a file of the tree (or deleted): its data travels as a hidden item
+      const UInt32 indexInArc = numRefs + bootIndex;
+      COutItem item;
+      item.NewData = false;
+      item.IndexInArc = indexInArc;
+      item.Hidden = true;
+      RINOK(GetItemFromProps([this, indexInArc](PROPID pid, PROPVARIANT *v) { return GetProperty(indexInArc, pid, v); },
+          item, false))
+      item.Size = _archive.GetBootItemSize(bootIndex);
+      if (item.Size == 0)
+        continue;
+      e.Path = item.Path;
+      items.Add(item);
+    }
+    options.Boot.Add(e);
+  }
+
+  if (!_bootPath.IsEmpty())
+  {
+    // the BIOS image is the default entry: first
+    COutBootEntry e;
+    e.Path = _bootPath;
+    e.PlatformId = 0;
+    e.SectorCount = (UInt16)_bootLoad;
+    e.BootInfoTable = _bootInfo;
+    options.Boot.Insert(0, e);
+  }
+  if (!_efiPath.IsEmpty())
+  {
+    COutBootEntry e;
+    e.Path = _efiPath;
+    e.PlatformId = 0xEF;
+    e.SectorCount = 0;   // the whole image
+    e.BootInfoTable = 0;
+    options.Boot.Add(e);
+  }
+  if (!_catalogPath.IsEmpty())
+    options.CatalogPath = _catalogPath;
+
+  // the system area: the MBR code given, or the one of the open image
+  options.MbrCode = _mbrCode;
+  bool oldMbr = false;
+  if (_stream)
+  {
+    Byte sector[512];
+    RINOK(InStream_SeekSet(_stream, 0))
+    RINOK(ReadStream_FALSE(_stream, sector, sizeof(sector)))
+    oldMbr = (sector[510] == 0x55 && sector[511] == 0xAA);
+    if (oldMbr && options.MbrCode.Size() == 0)
+      options.MbrCode.CopyFrom(sector, 432);
+  }
+  options.Hybrid = (_hybrid >= 0) ? (_hybrid != 0) : (!_stream || oldMbr || !_bootPath.IsEmpty() || !_efiPath.IsEmpty());
+
   options.VolumeId = _volumeId;
   if (options.VolumeId.IsEmpty() && _stream)
   {

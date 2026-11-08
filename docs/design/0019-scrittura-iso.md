@@ -28,7 +28,8 @@ formato di scambio, non di compressione.
 - File oltre 4 GiB (estensioni multiple), directory profonde senza rilocazione.
 - Riscrittura di un'immagine esistente (`a`, `d`, `u`): la ISO viene rigenerata per intero,
   i dati vecchi letti dal handler in lettura; nessun aggiornamento in loco.
-- Non-obiettivi: El Torito (avviabili), UDF in scrittura, multisessione, HFS ibrido.
+- Non-obiettivi: UDF in scrittura, multisessione, HFS ibrido. El Torito è arrivato dopo
+  (nota 0020).
 
 ## 3. Formato scritto
 
@@ -37,9 +38,10 @@ scrivere un byte:
 
 | Settori | Contenuto |
 |---|---|
-| 0–15 | area di sistema (zeri) |
+| 0–15 | area di sistema (zeri; MBR ibrido con la nota 0020) |
 | 16 | descrittore primario (PVD) |
-| 17 | descrittore supplementare Joliet (`%/E`, UCS-2 livello 3), se attivo |
+| 17 | boot record El Torito, se ci sono voci di avvio (nota 0020) |
+| poi | descrittore supplementare Joliet (`%/E`, UCS-2 livello 3), se attivo |
 | poi | terminatore |
 | poi | path table L e M del 9660, poi L e M di Joliet |
 | poi | estensioni delle directory del 9660 (ognuna seguita dalla propria area di continuazione Rock Ridge, se serve), poi quelle di Joliet |
@@ -67,7 +69,8 @@ PARENT). Le voci che non entrano nei 255 byte del record vanno in un'area di con
 multi-extent (0x80) su tutti tranne l'ultimo, in entrambi gli alberi.
 
 **Date**: i record in UTC con offset 0; i descrittori con data di creazione = ora della
-scrittura. **Etichetta**: `-mvol=NOME` (caratteri d e spazio, massimo 32; `ISOIMAGE` se
+scrittura. **Etichetta**: `-mvol=NOME` (ASCII stampabile, massimo 32, maiuscole e minuscole
+conservate come fanno xorriso e mkisofs, benché ECMA-119 chieda caratteri d; `ISOIMAGE` se
 assente; la riscrittura di un'immagine conserva l'etichetta che aveva). `-mjoliet=off` e
 `-mrr=off` tolgono un albero; `-mx`, `-mmt`, `-mmemuse` sono accettati e ignorati.
 
@@ -88,8 +91,8 @@ chiamante riceve `kInFileChanged`, come fa il tar.
 
 `IsoHandlerOut.cpp` raccoglie gli elementi dal callback di aggiornamento (percorso, tipo,
 dimensione, mtime, modo POSIX, destinazione del link) e, per quelli presi dall'immagine
-aperta, dal `GetProperty`/`GetStream` del handler stesso; un'immagine con voci di boot non
-si riscrive (`E_NOTIMPL`), perché El Torito non è scritto.
+aperta, dal `GetProperty`/`GetStream` del handler stesso; le voci di boot di un'immagine
+aperta si conservano come descritto nella nota 0020.
 
 ## 5. Verifica
 
@@ -114,6 +117,6 @@ e da pycdlib su Joliet; 3000 file con 13 livelli; montaggio su Windows con
   lettore che preferisca Rock Ridge (o combini i due) è un miglioramento possibile.
 - pycdlib legge un file multi-extent dall'albero Rock Ridge con la sola ultima estensione
   (limite suo: 7-Zip e l'albero Joliet lo vedono intero).
-- El Torito (`-mboot=`) e UDF in scrittura: issue a parte, se serviranno.
+- El Torito: fatto nella nota 0020 (`-mboot=`, `-mefi=`). UDF in scrittura: issue a parte, se servirà.
 - uid/gid sono sempre 0 (le immagini si montano in sola lettura, i permessi contano, i
   proprietari no).
